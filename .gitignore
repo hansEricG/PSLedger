@@ -1,0 +1,13 @@
+# Build/output
+output/
+
+# IDE
+.vscode/
+*.code-workspace
+
+# OS
+Thumbs.db
+.DS_Store
+
+# PowerShell
+*.ps1xml
