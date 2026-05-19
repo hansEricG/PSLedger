@@ -26,31 +26,58 @@ Describe 'New-LedgerJournal' {
             $Param.ParameterType.Name | Should -Be 'String'
             $Param.Attributes.Mandatory | Should -Contain $true
         }
+
+        It 'Should have a mandatory Name parameter of type String' {
+            $Param = $Command.Parameters['Name']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'String'
+            $Param.Attributes.Mandatory | Should -Contain $true
+        }
+
+        It 'Should have an optional OrgNumber parameter of type String' {
+            $Param = $Command.Parameters['OrgNumber']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'String'
+        }
     }
 
     Context 'Behavior' {
         BeforeEach {
-            $TestFile = [System.IO.Path]::GetRandomFileName() + '.ledger'
-            $TestPath = Join-Path $TestDrive $TestFile
+            $JournalName = [System.IO.Path]::GetRandomFileName()
+            $JournalPath = Join-Path $TestDrive "$JournalName.ledger"
         }
 
-        It 'Should create a new ledger file at the specified path' {
-            New-LedgerJournal -Path $TestPath
+        It 'Should create a journal directory at the specified path' {
+            New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB'
 
-            Test-Path $TestPath | Should -BeTrue
+            Test-Path $JournalPath -PathType Container | Should -BeTrue
         }
 
-        It 'Should write a valid header to the file' {
-            New-LedgerJournal -Path $TestPath
+        It 'Should create a journal.txt file inside the directory' {
+            New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB'
 
-            $Content = Get-Content $TestPath -Raw
-            $Content | Should -Match '^; PSLedger Journal'
+            $JournalFile = Join-Path $JournalPath 'journal.txt'
+            Test-Path $JournalFile | Should -BeTrue
         }
 
-        It 'Should throw if the file already exists' {
-            New-LedgerJournal -Path $TestPath
+        It 'Should write company name to journal.txt' {
+            New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB'
 
-            { New-LedgerJournal -Path $TestPath } | Should -Throw
+            $Content = Get-Content (Join-Path $JournalPath 'journal.txt') -Raw
+            $Content | Should -Match 'Testföretaget AB'
+        }
+
+        It 'Should write org number to journal.txt when provided' {
+            New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB' -OrgNumber '556677-8899'
+
+            $Content = Get-Content (Join-Path $JournalPath 'journal.txt') -Raw
+            $Content | Should -Match '556677-8899'
+        }
+
+        It 'Should throw if the journal directory already exists' {
+            New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB'
+
+            { New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB' } | Should -Throw
         }
     }
 }

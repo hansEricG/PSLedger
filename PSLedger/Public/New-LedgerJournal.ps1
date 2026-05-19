@@ -2,18 +2,31 @@ function New-LedgerJournal {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
-        [string]$Path
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string]$Name,
+
+        [string]$OrgNumber
     )
 
     if (Test-Path $Path) {
-        throw "Journal file already exists: $Path"
+        throw "Journal already exists: $Path"
     }
 
-    $Header = @(
-        '; PSLedger Journal'
+    New-Item -ItemType Directory -Path $Path -Force | Out-Null
+
+    $Lines = @(
+        "; PSLedger Journal"
         "; Created: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-        ''
+        ""
+        "Name: $Name"
     )
 
-    $Header | Set-Content -Path $Path -Encoding UTF8
+    if ($OrgNumber) {
+        $Lines += "OrgNumber: $OrgNumber"
+    }
+
+    $JournalFile = Join-Path $Path 'journal.txt'
+    $Lines | Set-Content -Path $JournalFile -Encoding UTF8
 }
