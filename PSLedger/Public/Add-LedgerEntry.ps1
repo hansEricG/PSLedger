@@ -67,6 +67,16 @@ function Add-LedgerEntry {
         throw "Fiscal year not found: $FiscalYear"
     }
 
+    # Check if fiscal year is closed
+    $YearFile = Join-Path $YearDir 'year.txt'
+    if (Test-Path $YearFile) {
+        foreach ($Line in (Get-Content $YearFile)) {
+            if ($Line -match '^Status:\s*Closed') {
+                throw "Fiscal year $FiscalYear is Closed. Cannot add entries."
+            }
+        }
+    }
+
     # Validate balance
     $Sum = ($Rows | ForEach-Object { $_.Amount }) | Measure-Object -Sum | Select-Object -ExpandProperty Sum
     if ($Sum -ne 0) {
