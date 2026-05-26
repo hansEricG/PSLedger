@@ -58,3 +58,10 @@ All entries enforce **double-entry balance** — the sum of all row amounts must
 - Tests are structured with two contexts: **Function metadata** (parameter types, mandatory flags, CmdletBinding) and **Behavior** (actual logic).
 - Tests use Pester's `$TestDrive` for isolated file system operations.
 - Each test imports the module fresh with `Import-Module ... -Force` in `BeforeAll`.
+
+## Documentation conventions
+
+- All public functions must have comment-based help (`.SYNOPSIS`, `.DESCRIPTION`, `.PARAMETER`, `.EXAMPLE`).
+- Include at least two `.EXAMPLE` blocks per function — one simple, one more realistic.
+- Examples should use Swedish company names and BAS account numbers to reflect real-world usage.
+- Help text is written in English.
