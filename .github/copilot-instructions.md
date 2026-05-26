@@ -29,7 +29,7 @@ PSLedger is a double-entry bookkeeping system that stores all data as **plain te
 ```
 <journal>.ledger/
 ├── journal.txt          # Metadata (Name, OrgNumber)
-├── kontoplan.txt        # Chart of accounts (tab-separated: number\tname)
+├── accounts.txt         # Chart of accounts (tab-separated: number\tname)
 └── <yyyy-MM>_<yyyy-MM>/ # Fiscal year directory
     ├── year.txt         # StartDate, EndDate, Status
     ├── ver0001.txt      # Verification (entry) files
@@ -40,7 +40,7 @@ Key domain concepts:
 - **Journal** — the top-level container (one per company/organisation)
 - **Fiscal year** — a date range; directory named `{StartYYYY-MM}_{EndYYYY-MM}`
 - **Verification** — a balanced ledger entry; auto-numbered `ver0001.txt`, `ver0002.txt`, etc.
-- **Chart of accounts** (`kontoplan.txt`) — flat file of account numbers and names
+- **Chart of accounts** (`accounts.txt`) — flat file of account numbers and names
 
 All entries enforce **double-entry balance** — the sum of all row amounts must equal zero.
 
@@ -50,7 +50,7 @@ All entries enforce **double-entry balance** — the sum of all row amounts must
 - All public functions use `[CmdletBinding()]` and mandatory parameters.
 - Functions follow the verb-noun pattern with the `Ledger` noun prefix (e.g., `New-LedgerJournal`, `Add-LedgerEntry`).
 - File encoding is always **UTF-8** (supporting Swedish characters like å, ä, ö).
-- Tab characters (`\t`) are the field delimiter in `kontoplan.txt` and verification row data.
+- Tab characters (`\t`) are the field delimiter in `accounts.txt` and verification row data.
 
 ## Test conventions
 
