@@ -1,3 +1,48 @@
+<#
+.SYNOPSIS
+Creates a new verification (journal entry) in a fiscal year.
+
+.DESCRIPTION
+Creates a sequentially numbered verification file (ver0001.txt, ver0002.txt, etc.)
+in the specified fiscal year directory. Enforces double-entry bookkeeping by
+requiring that the sum of all row amounts equals zero.
+
+.PARAMETER JournalPath
+The path to an existing journal directory.
+
+.PARAMETER FiscalYear
+The fiscal year identifier (e.g. '2024-01_2024-12'). Must match an existing
+fiscal year directory.
+
+.PARAMETER Date
+The date of the transaction.
+
+.PARAMETER Description
+A description of the transaction.
+
+.PARAMETER Rows
+An array of hashtables, each with 'Account' (account number) and 'Amount'
+(positive for debit, negative for credit). The sum of all amounts must be zero.
+
+.EXAMPLE
+$rows = @(
+    @{ Account = '1910'; Amount = 5000 }
+    @{ Account = '3010'; Amount = -5000 }
+)
+Add-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Date '2024-03-15' -Description 'Kontantförsäljning' -Rows $rows
+
+Records a cash sale: debit 1910 (Kassa), credit 3010 (Försäljning).
+
+.EXAMPLE
+$rows = @(
+    @{ Account = '5010'; Amount = 8000 }
+    @{ Account = '2440'; Amount = -6400 }
+    @{ Account = '2640'; Amount = -1600 }
+)
+Add-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Date '2024-03-20' -Description 'Hyra kontor' -Rows $rows
+
+Records an office rent invoice with VAT split across multiple accounts.
+#>
 function Add-LedgerEntry {
     [CmdletBinding()]
     param (

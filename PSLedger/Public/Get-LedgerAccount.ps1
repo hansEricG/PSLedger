@@ -1,3 +1,32 @@
+<#
+.SYNOPSIS
+Retrieves accounts from the journal's chart of accounts.
+
+.DESCRIPTION
+Reads kontoplan.txt and returns PSCustomObjects with AccountNumber and
+AccountName properties. Can optionally filter by a specific account number.
+
+.PARAMETER JournalPath
+The path to an existing journal directory.
+
+.PARAMETER AccountNumber
+Optional. If specified, returns only the account with that number.
+
+.EXAMPLE
+Get-LedgerAccount -JournalPath .\MinFirma.ledger
+
+Returns all accounts in the chart.
+
+.EXAMPLE
+Get-LedgerAccount -JournalPath .\MinFirma.ledger -AccountNumber '1910'
+
+Returns only the account with number 1910.
+
+.EXAMPLE
+Get-LedgerAccount -JournalPath .\MinFirma.ledger | Where-Object { $_.AccountNumber -like '3*' }
+
+Returns all income accounts (3xxx in BAS).
+#>
 function Get-LedgerAccount {
     [CmdletBinding()]
     param (

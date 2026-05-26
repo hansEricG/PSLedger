@@ -1,3 +1,23 @@
+<#
+.SYNOPSIS
+Reads journal information from an existing PSLedger journal.
+
+.DESCRIPTION
+Reads the journal.txt file from the specified journal directory and returns
+a PSCustomObject with the company information (Path, Name, OrgNumber).
+
+.PARAMETER Path
+The path to an existing journal directory.
+
+.EXAMPLE
+Get-LedgerJournal -Path .\MinFirma.ledger
+
+Returns an object with Name, OrgNumber, and Path properties.
+
+.EXAMPLE
+$journal = Get-LedgerJournal -Path .\MinFirma.ledger
+Write-Output "Company: $($journal.Name) ($($journal.OrgNumber))"
+#>
 function Get-LedgerJournal {
     [CmdletBinding()]
     param (

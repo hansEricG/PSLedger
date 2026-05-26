@@ -1,3 +1,37 @@
+<#
+.SYNOPSIS
+Retrieves verifications (journal entries) from a fiscal year.
+
+.DESCRIPTION
+Reads verification files from the specified fiscal year and returns
+PSCustomObjects with VerificationNumber, Date, Description, and Rows
+(each row having Account and Amount properties).
+
+.PARAMETER JournalPath
+The path to an existing journal directory.
+
+.PARAMETER FiscalYear
+The fiscal year identifier (e.g. '2024-01_2024-12').
+
+.PARAMETER VerificationNumber
+Optional. If specified, returns only the verification with that number.
+
+.EXAMPLE
+Get-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
+
+Returns all verifications for the fiscal year.
+
+.EXAMPLE
+Get-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -VerificationNumber 1
+
+Returns only verification #1.
+
+.EXAMPLE
+Get-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' |
+    ForEach-Object { "$($_.VerificationNumber): $($_.Date) - $($_.Description)" }
+
+Lists all entries in a readable format.
+#>
 function Get-LedgerEntry {
     [CmdletBinding()]
     param (
