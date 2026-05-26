@@ -48,17 +48,17 @@ Describe 'Add-LedgerAccount' {
             New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB'
         }
 
-        It 'Should create kontoplan.txt if it does not exist' {
+        It 'Should create accounts.txt if it does not exist' {
             Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1910' -AccountName 'Kassa'
 
-            $KontoplanFile = Join-Path $JournalPath 'kontoplan.txt'
+            $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
             Test-Path $KontoplanFile | Should -BeTrue
         }
 
-        It 'Should add the account to kontoplan.txt' {
+        It 'Should add the account to accounts.txt' {
             Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1910' -AccountName 'Kassa'
 
-            $Content = Get-Content (Join-Path $JournalPath 'kontoplan.txt') -Raw
+            $Content = Get-Content (Join-Path $JournalPath 'accounts.txt') -Raw
             $Content | Should -Match '1910'
             $Content | Should -Match 'Kassa'
         }
@@ -66,7 +66,7 @@ Describe 'Add-LedgerAccount' {
         It 'Should store account number and name on the same line' {
             Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1910' -AccountName 'Kassa'
 
-            $Lines = Get-Content (Join-Path $JournalPath 'kontoplan.txt')
+            $Lines = Get-Content (Join-Path $JournalPath 'accounts.txt')
             $Lines | Where-Object { $_ -match '^1910\s+Kassa$' } | Should -Not -BeNullOrEmpty
         }
 
@@ -74,7 +74,7 @@ Describe 'Add-LedgerAccount' {
             Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1910' -AccountName 'Kassa'
             Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2440' -AccountName 'Leverantörsskulder'
 
-            $Lines = Get-Content (Join-Path $JournalPath 'kontoplan.txt')
+            $Lines = Get-Content (Join-Path $JournalPath 'accounts.txt')
             ($Lines | Where-Object { $_ -match '^\d{4}\s+' }).Count | Should -Be 2
         }
 

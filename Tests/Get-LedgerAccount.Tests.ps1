@@ -69,7 +69,7 @@ Describe 'Get-LedgerAccount' {
             $Result | Should -BeNullOrEmpty
         }
 
-        It 'Should return empty collection if kontoplan.txt does not exist' {
+        It 'Should return empty collection if accounts.txt does not exist' {
             $EmptyJournal = Join-Path $TestDrive 'empty.ledger'
             New-LedgerJournal -Path $EmptyJournal -Name 'Tom AB'
 

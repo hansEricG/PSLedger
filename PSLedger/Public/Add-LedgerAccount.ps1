@@ -3,7 +3,7 @@
 Adds an account to the journal's chart of accounts.
 
 .DESCRIPTION
-Appends a new account entry to kontoplan.txt in the specified journal.
+Appends a new account entry to accounts.txt in the specified journal.
 The file is created if it doesn't exist. Duplicate account numbers are
 not allowed.
 
@@ -43,7 +43,7 @@ function Add-LedgerAccount {
         throw "Journal not found: $JournalPath"
     }
 
-    $KontoplanFile = Join-Path $JournalPath 'kontoplan.txt'
+    $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
 
     if (Test-Path $KontoplanFile) {
         $Existing = Get-Content $KontoplanFile

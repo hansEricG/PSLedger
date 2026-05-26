@@ -3,7 +3,7 @@
 Retrieves accounts from the journal's chart of accounts.
 
 .DESCRIPTION
-Reads kontoplan.txt and returns PSCustomObjects with AccountNumber and
+Reads accounts.txt and returns PSCustomObjects with AccountNumber and
 AccountName properties. Can optionally filter by a specific account number.
 
 .PARAMETER JournalPath
@@ -40,7 +40,7 @@ function Get-LedgerAccount {
         throw "Journal not found: $JournalPath"
     }
 
-    $KontoplanFile = Join-Path $JournalPath 'kontoplan.txt'
+    $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
     if (-not (Test-Path $KontoplanFile)) {
         return
     }
