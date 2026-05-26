@@ -73,6 +73,23 @@ function Add-LedgerEntry {
         throw "Entry does not balance. Sum of rows: $Sum (must be 0)."
     }
 
+    # Validate accounts against chart of accounts (if it exists)
+    $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
+    if (Test-Path $KontoplanFile) {
+        $ValidAccounts = @{}
+        foreach ($Line in (Get-Content $KontoplanFile)) {
+            if ($Line -match '^(\d+)\t') {
+                $ValidAccounts[$Matches[1]] = $true
+            }
+        }
+
+        foreach ($Row in $Rows) {
+            if (-not $ValidAccounts.ContainsKey($Row.Account)) {
+                throw "Account $($Row.Account) does not exist in chart of accounts."
+            }
+        }
+    }
+
     # Determine next verification number by scanning existing files
     $ExistingFiles = Get-ChildItem -Path $YearDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
     if ($ExistingFiles) {

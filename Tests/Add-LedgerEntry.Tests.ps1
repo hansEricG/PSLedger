@@ -118,5 +118,31 @@ Describe 'Add-LedgerEntry' {
         It 'Should throw if fiscal year directory does not exist' {
             { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear '2099-01_2099-12' -Date '2024-01-15' -Description 'Test' -Rows $Rows } | Should -Throw
         }
+
+        It 'Should throw if an account in Rows does not exist in chart of accounts' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1910' -AccountName 'Kassa'
+
+            $BadRows = @(
+                @{ Account = '1910'; Amount = 1000 }
+                @{ Account = '9999'; Amount = -1000 }
+            )
+
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-15' -Description 'Okänt konto' -Rows $BadRows } |
+                Should -Throw '*9999*'
+        }
+
+        It 'Should succeed when all accounts exist in chart of accounts' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1910' -AccountName 'Kassa'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '3010' -AccountName 'Försäljning'
+
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-15' -Description 'Alla konton finns' -Rows $Rows } |
+                Should -Not -Throw
+        }
+
+        It 'Should skip account validation when no accounts.txt exists' {
+            # No accounts added — accounts.txt does not exist
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-15' -Description 'Utan kontoplan' -Rows $Rows } |
+                Should -Not -Throw
+        }
     }
 }

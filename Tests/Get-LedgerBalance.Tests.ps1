@@ -122,11 +122,15 @@ Describe 'Get-LedgerBalance' {
         }
 
         It 'Should show AccountName as empty string for accounts not in chart' {
-            $Rows = @(
-                @{ Account = '9999'; Amount = 100 }
-                @{ Account = '1910'; Amount = -100 }
-            )
-            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-04-01' -Description 'Okänt konto' -Rows $Rows
+            # Simulate a legacy entry with an account that is not in the current chart
+            $VerFile = Join-Path $JournalPath $FiscalYear 'ver0004.txt'
+            @(
+                'Date: 2024-04-01'
+                'Description: Legacy post'
+                ''
+                "9999`t100"
+                "1910`t-100"
+            ) | Set-Content -Path $VerFile -Encoding UTF8
 
             $Result = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
             $Unknown = $Result | Where-Object { $_.AccountNumber -eq '9999' }
