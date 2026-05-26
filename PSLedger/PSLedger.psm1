@@ -6,5 +6,6 @@
 . $PSScriptRoot\Public\New-LedgerFiscalYear.ps1
 . $PSScriptRoot\Public\Add-LedgerEntry.ps1
 . $PSScriptRoot\Public\Get-LedgerEntry.ps1
+. $PSScriptRoot\Public\Get-LedgerBalance.ps1
 
-Export-ModuleMember -Function New-LedgerJournal, Get-LedgerJournal, Add-LedgerAccount, Get-LedgerAccount, New-LedgerFiscalYear, Add-LedgerEntry, Get-LedgerEntry
+Export-ModuleMember -Function New-LedgerJournal, Get-LedgerJournal, Add-LedgerAccount, Get-LedgerAccount, New-LedgerFiscalYear, Add-LedgerEntry, Get-LedgerEntry, Get-LedgerBalance
