@@ -1,0 +1,31 @@
+1010	Kassa
+1210	Maskiner och inventarier
+1510	Kundfordringar
+1910	Kassa och bank
+1920	PlusGiro
+1930	Företagskonto
+2010	Eget kapital
+2013	Överkursfond
+2091	Balanserad vinst eller förlust
+2099	Årets resultat
+2440	Leverantörsskulder
+2510	Skatteskulder
+2610	Utgående moms 25%
+2620	Utgående moms 12%
+2630	Utgående moms 6%
+2640	Ingående moms
+2710	Personalskatt
+2730	Arbetsgivaravgift skuld
+3010	Försäljning varor 25%
+3020	Försäljning varor 12%
+3040	Försäljning tjänster 25%
+4010	Inköp varor och material
+5010	Lokalhyra
+5410	Förbrukningsinventarier
+6110	Kontorsmateriel
+6210	Telefon och internet
+6570	Bankkostnader
+7010	Löner
+7510	Arbetsgivaravgifter
+8310	Ränteintäkter
+8410	Räntekostnader

@@ -9,5 +9,6 @@
 . $PSScriptRoot\Public\Get-LedgerBalance.ps1
 . $PSScriptRoot\Public\Get-LedgerFiscalYear.ps1
 . $PSScriptRoot\Public\Close-LedgerFiscalYear.ps1
+. $PSScriptRoot\Public\Import-LedgerChart.ps1
 
-Export-ModuleMember -Function New-LedgerJournal, Get-LedgerJournal, Add-LedgerAccount, Get-LedgerAccount, New-LedgerFiscalYear, Add-LedgerEntry, Get-LedgerEntry, Get-LedgerBalance, Get-LedgerFiscalYear, Close-LedgerFiscalYear
+Export-ModuleMember -Function New-LedgerJournal, Get-LedgerJournal, Add-LedgerAccount, Get-LedgerAccount, New-LedgerFiscalYear, Add-LedgerEntry, Get-LedgerEntry, Get-LedgerBalance, Get-LedgerFiscalYear, Close-LedgerFiscalYear, Import-LedgerChart
