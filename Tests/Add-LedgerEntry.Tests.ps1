@@ -144,5 +144,22 @@ Describe 'Add-LedgerEntry' {
             { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-15' -Description 'Utan kontoplan' -Rows $Rows } |
                 Should -Not -Throw
         }
+
+        It 'Should throw if date is before fiscal year start' {
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2023-12-31' -Description 'Före start' -Rows $Rows } |
+                Should -Throw '*outside fiscal year*'
+        }
+
+        It 'Should throw if date is after fiscal year end' {
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2025-01-01' -Description 'Efter slut' -Rows $Rows } |
+                Should -Throw '*outside fiscal year*'
+        }
+
+        It 'Should accept date on fiscal year boundary dates' {
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-01' -Description 'Första dagen' -Rows $Rows } |
+                Should -Not -Throw
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-12-31' -Description 'Sista dagen' -Rows $Rows } |
+                Should -Not -Throw
+        }
     }
 }

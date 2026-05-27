@@ -69,11 +69,26 @@ function Add-LedgerEntry {
 
     # Check if fiscal year is closed
     $YearFile = Join-Path $YearDir 'year.txt'
+    $YearStartDate = $null
+    $YearEndDate = $null
     if (Test-Path $YearFile) {
         foreach ($Line in (Get-Content $YearFile)) {
             if ($Line -match '^Status:\s*Closed') {
                 throw "Fiscal year $FiscalYear is Closed. Cannot add entries."
             }
+            elseif ($Line -match '^StartDate:\s*(.+)$') {
+                $YearStartDate = [datetime]$Matches[1]
+            }
+            elseif ($Line -match '^EndDate:\s*(.+)$') {
+                $YearEndDate = [datetime]$Matches[1]
+            }
+        }
+    }
+
+    # Validate date within fiscal year range
+    if ($YearStartDate -and $YearEndDate) {
+        if ($Date -lt $YearStartDate -or $Date -gt $YearEndDate) {
+            throw "Date $($Date.ToString('yyyy-MM-dd')) is outside fiscal year $FiscalYear ($($YearStartDate.ToString('yyyy-MM-dd')) to $($YearEndDate.ToString('yyyy-MM-dd')))."
         }
     }
 
