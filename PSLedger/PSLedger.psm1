@@ -13,5 +13,6 @@
 . $PSScriptRoot\Public\Get-LedgerIncomeStatement.ps1
 . $PSScriptRoot\Public\Get-LedgerBalanceSheet.ps1
 . $PSScriptRoot\Public\Copy-LedgerOpeningBalance.ps1
+. $PSScriptRoot\Public\Add-LedgerReversal.ps1
 
-Export-ModuleMember -Function New-LedgerJournal, Get-LedgerJournal, Add-LedgerAccount, Get-LedgerAccount, New-LedgerFiscalYear, Add-LedgerEntry, Get-LedgerEntry, Get-LedgerBalance, Get-LedgerFiscalYear, Close-LedgerFiscalYear, Import-LedgerChart, Get-LedgerIncomeStatement, Get-LedgerBalanceSheet, Copy-LedgerOpeningBalance
+Export-ModuleMember -Function New-LedgerJournal, Get-LedgerJournal, Add-LedgerAccount, Get-LedgerAccount, New-LedgerFiscalYear, Add-LedgerEntry, Get-LedgerEntry, Get-LedgerBalance, Get-LedgerFiscalYear, Close-LedgerFiscalYear, Import-LedgerChart, Get-LedgerIncomeStatement, Get-LedgerBalanceSheet, Copy-LedgerOpeningBalance, Add-LedgerReversal
