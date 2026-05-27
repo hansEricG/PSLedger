@@ -5,7 +5,8 @@ Retrieves verifications (journal entries) from a fiscal year.
 .DESCRIPTION
 Reads verification files from the specified fiscal year and returns
 PSCustomObjects with VerificationNumber, Date, Description, and Rows
-(each row having Account and Amount properties).
+(each row having Account and Amount properties). Supports filtering by
+verification number, account, and date range.
 
 .PARAMETER JournalPath
 The path to an existing journal directory.
@@ -16,21 +17,30 @@ The fiscal year identifier (e.g. '2024-01_2024-12').
 .PARAMETER VerificationNumber
 Optional. If specified, returns only the verification with that number.
 
+.PARAMETER Account
+Optional. If specified, returns only verifications containing a row with
+this account number.
+
+.PARAMETER FromDate
+Optional. If specified, returns only verifications on or after this date.
+
+.PARAMETER ToDate
+Optional. If specified, returns only verifications on or before this date.
+
 .EXAMPLE
 Get-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
 
 Returns all verifications for the fiscal year.
 
 .EXAMPLE
-Get-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -VerificationNumber 1
+Get-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Account '1910'
 
-Returns only verification #1.
+Returns all verifications that involve account 1910 (Kassa).
 
 .EXAMPLE
-Get-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' |
-    ForEach-Object { "$($_.VerificationNumber): $($_.Date) - $($_.Description)" }
+Get-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -FromDate '2024-03-01' -ToDate '2024-03-31'
 
-Lists all entries in a readable format.
+Returns all verifications from March 2024.
 #>
 function Get-LedgerEntry {
     [CmdletBinding()]
@@ -41,7 +51,13 @@ function Get-LedgerEntry {
         [Parameter(Mandatory)]
         [string]$FiscalYear,
 
-        [int]$VerificationNumber
+        [int]$VerificationNumber,
+
+        [string]$Account,
+
+        [datetime]$FromDate,
+
+        [datetime]$ToDate
     )
 
     $YearDir = Join-Path $JournalPath $FiscalYear
@@ -82,6 +98,19 @@ function Get-LedgerEntry {
                     Amount  = [decimal]$Matches[2]
                 }
             }
+        }
+
+        # Apply date filters
+        if ($FromDate -or $ToDate) {
+            $ParsedDate = [datetime]$EntryDate
+            if ($FromDate -and $ParsedDate -lt $FromDate) { continue }
+            if ($ToDate -and $ParsedDate -gt $ToDate) { continue }
+        }
+
+        # Apply account filter
+        if ($Account) {
+            $HasAccount = $EntryRows | Where-Object { $_.Account -eq $Account }
+            if (-not $HasAccount) { continue }
         }
 
         [PSCustomObject]@{

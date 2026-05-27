@@ -38,6 +38,24 @@ Describe 'Get-LedgerEntry' {
             $Param | Should -Not -BeNullOrEmpty
             $Param.ParameterType.Name | Should -Be 'Int32'
         }
+
+        It 'Should have an optional Account parameter of type String' {
+            $Param = $Command.Parameters['Account']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'String'
+        }
+
+        It 'Should have an optional FromDate parameter of type DateTime' {
+            $Param = $Command.Parameters['FromDate']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'DateTime'
+        }
+
+        It 'Should have an optional ToDate parameter of type DateTime' {
+            $Param = $Command.Parameters['ToDate']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'DateTime'
+        }
     }
 
     Context 'Behavior' {
@@ -107,6 +125,47 @@ Describe 'Get-LedgerEntry' {
 
         It 'Should throw if fiscal year directory does not exist' {
             { Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2099-01_2099-12' } | Should -Throw
+        }
+
+        It 'Should filter by Account' {
+            $Result = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '2440'
+
+            $Result.Count | Should -Be 1
+            $Result.Description | Should -Be 'Betalning leverantör'
+        }
+
+        It 'Should return empty when Account filter matches nothing' {
+            $Result = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '9999'
+
+            $Result | Should -BeNullOrEmpty
+        }
+
+        It 'Should filter by FromDate' {
+            $Result = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -FromDate '2024-02-01'
+
+            $Result.Count | Should -Be 1
+            $Result.Description | Should -Be 'Betalning leverantör'
+        }
+
+        It 'Should filter by ToDate' {
+            $Result = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -ToDate '2024-01-31'
+
+            $Result.Count | Should -Be 1
+            $Result.Description | Should -Be 'Försäljning kontant'
+        }
+
+        It 'Should filter by FromDate and ToDate together' {
+            $Result = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -FromDate '2024-01-01' -ToDate '2024-01-31'
+
+            $Result.Count | Should -Be 1
+            $Result.VerificationNumber | Should -Be 1
+        }
+
+        It 'Should combine Account and date filters' {
+            $Result = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -FromDate '2024-02-01'
+
+            $Result.Count | Should -Be 1
+            $Result.Description | Should -Be 'Betalning leverantör'
         }
     }
 }
