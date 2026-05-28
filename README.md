@@ -11,6 +11,7 @@ A simple command-line double-entry bookkeeping system built as a PowerShell modu
 - **Reports** — trial balance, income statement, balance sheet
 - **Year-end workflow** — close fiscal year, copy opening balances
 - **Corrections** — reversal entries following Swedish bookkeeping law
+- **SIE 4 import/export** — exchange data with other Swedish accounting systems
 
 ## Quick Start
 
@@ -67,6 +68,32 @@ Copy-LedgerOpeningBalance -JournalPath .\MinFirma.ledger `
 | `Get-LedgerIncomeStatement` | Income statement (resultaträkning) |
 | `Get-LedgerBalanceSheet` | Balance sheet (balansräkning) |
 | `Copy-LedgerOpeningBalance` | Roll over balances to a new year |
+| `Export-LedgerSie` | Export a fiscal year to a SIE 4E file |
+| `Import-LedgerSie` | Import verifications from a SIE 4 file |
+| `Test-LedgerSie` | Validate a SIE file without importing |
+
+## SIE Import/Export
+
+[SIE](https://sie.se/) is the Swedish standard for exchanging bookkeeping data
+between systems. PSLedger speaks SIE type 4 (full verification export).
+Files are written in CP437 (PC-8) encoding as required by the standard.
+
+```powershell
+# Export the current fiscal year to a SIE file (e.g. to send to an accountant)
+Export-LedgerSie -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' `
+    -Path .\minfirma-2024.se
+
+# Validate a SIE file received from another system before importing
+$result = Test-LedgerSie -Path .\fromfortnox.se
+$result.IsValid
+$result.Errors
+
+# Import into a fresh journal, creating any missing accounts on the fly
+New-LedgerJournal -Path .\Imported.ledger -Name 'Imported AB'
+New-LedgerFiscalYear -JournalPath .\Imported.ledger -StartDate '2024-01-01' -EndDate '2024-12-31'
+Import-LedgerSie -JournalPath .\Imported.ledger -FiscalYear '2024-01_2024-12' `
+    -Path .\fromfortnox.se -CreateMissingAccounts
+```
 
 ## Chart Templates
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.0] - Unreleased
+
+### Added
+- `Export-LedgerSie` — export a fiscal year to a SIE 4E file (CP437/PC-8 encoded)
+  - Writes `#FLAGGA`, `#PROGRAM`, `#FORMAT PC8`, `#GEN`, `#SIETYP 4`, `#FNAMN`,
+    `#ORGNR`, `#RAR`, `#KONTO`, `#VER`/`#TRANS` blocks
+  - `-Force` to overwrite an existing destination file
+- `Import-LedgerSie` — import verifications from a SIE 4 file into a journal
+  - Validates the file before importing (no partial writes)
+  - Requires the target fiscal year to exist and be open
+  - `-CreateMissingAccounts` adds referenced accounts automatically using
+    names from the SIE file's `#KONTO` records
+  - Returns a summary object with `ImportedEntries`
+- `Test-LedgerSie` — validate a SIE file without importing
+  - Checks `#VER` balance, account references and duplicate verification numbers
+  - Warns on missing or unexpected `#SIETYP`
+  - Returns a result object with `IsValid`, `Errors`, `Warnings` and counts
+- Internal CP437 encoding helpers and a SIE tokenizer/parser in `Private/`
+- Decimal amounts are read tolerantly (`.` or `,`) and written with `.` and
+  invariant culture
+
 ## [0.1.0] - Unreleased
 
 ### Added
