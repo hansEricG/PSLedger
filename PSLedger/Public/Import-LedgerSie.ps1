@@ -46,16 +46,20 @@ function Import-LedgerSie {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(ValueFromPipelineByPropertyName)]
-        [Alias('Name')]
+        [Parameter()]
         [string]$FiscalYear,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
+        [Alias('FullName')]
         [string]$Path,
 
         [switch]$CreateMissingAccounts
     )
+    begin {
+        $ExplicitFiscalYear = $FiscalYear
+    }
     process {
+        $FiscalYear = $ExplicitFiscalYear
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
         if (-not (Test-Path $JournalPath -PathType Container)) {
@@ -182,7 +186,7 @@ function Import-LedgerSie {
             if ($rec.Fields.Count -lt 3) { continue }
 
             $verDate = $rec.Fields[2]
-            $verDesc = if ($rec.Fields.Count -ge 4) { $rec.Fields[3] } else { '' }
+            $verDesc = if ($rec.Fields.Count -ge 4 -and $rec.Fields[3] -ne '') { $rec.Fields[3] } else { '(No description)' }
             $date = [datetime]::ParseExact($verDate, 'yyyyMMdd', [System.Globalization.CultureInfo]::InvariantCulture)
 
             $rows = foreach ($t in $rec.Transactions) {
