@@ -37,6 +37,8 @@ function Test-LedgerSie {
 
     $accounts = @{}
     $verKeys = @{}
+    $dimensions = @{}
+    $objects = @{}
     $verCount = 0
     $transCount = 0
     $sieType = $null
@@ -45,6 +47,20 @@ function Test-LedgerSie {
         switch ($rec.Tag) {
             'SIETYP' {
                 if ($rec.Fields.Count -ge 1) { $sieType = $rec.Fields[0] }
+            }
+            'DIM' {
+                if ($rec.Fields.Count -ge 2) {
+                    $dimensions[[int]$rec.Fields[0]] = $rec.Fields[1]
+                }
+            }
+            'OBJEKT' {
+                if ($rec.Fields.Count -ge 3) {
+                    $dimNum = [int]$rec.Fields[0]
+                    if (-not $dimensions.ContainsKey($dimNum)) {
+                        $errors.Add("#OBJEKT references undeclared dimension: $dimNum")
+                    }
+                    $objects["${dimNum}/$($rec.Fields[1])"] = $rec.Fields[2]
+                }
             }
             'KONTO' {
                 if ($rec.Fields.Count -lt 1) {
@@ -77,6 +93,19 @@ function Test-LedgerSie {
                     $acct = $t.Fields[0]
                     if (-not $accounts.ContainsKey($acct)) {
                         $errors.Add("#TRANS in VER $series $verNo references unknown account: $acct")
+                    }
+                    # Validate object references
+                    if ($t.Objects -and $t.Objects.Count -ge 2) {
+                        for ($oi = 0; $oi -lt $t.Objects.Count; $oi += 2) {
+                            if ($oi + 1 -lt $t.Objects.Count) {
+                                $dimN = [int]$t.Objects[$oi]
+                                $objN = $t.Objects[$oi + 1]
+                                $objKey = "${dimN}/${objN}"
+                                if (-not $objects.ContainsKey($objKey)) {
+                                    $errors.Add("#TRANS in VER $series $verNo references unknown object: dim=$dimN obj=$objN")
+                                }
+                            }
+                        }
                     }
                     $amountText = $t.Fields[1] -replace ',', '.'
                     $amount = [decimal]0

@@ -92,11 +92,16 @@ function Get-LedgerEntry {
             elseif ($Line -match '^Description:\s*(.+)$') {
                 $EntryDesc = $Matches[1]
             }
-            elseif ($Line -match '^(\d+)\t(.+)$') {
-                $EntryRows += [PSCustomObject]@{
+            elseif ($Line -match '^(\d+)\t([^\t]+)(?:\t(.+))?$') {
+                $rowObj = [PSCustomObject]@{
                     Account = $Matches[1]
                     Amount  = [decimal]$Matches[2]
+                    Objects = $null
                 }
+                if ($Matches[3]) {
+                    $rowObj.Objects = ConvertFrom-ObjectTag -Tag $Matches[3]
+                }
+                $EntryRows += $rowObj
             }
         }
 

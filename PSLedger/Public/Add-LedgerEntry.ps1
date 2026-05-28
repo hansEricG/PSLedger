@@ -139,7 +139,22 @@ function Add-LedgerEntry {
     )
 
     foreach ($Row in $Rows) {
-        $Lines += "$($Row.Account)`t$($Row.Amount)"
+        $line = "$($Row.Account)`t$($Row.Amount)"
+        if ($Row.ContainsKey('Objects') -and $Row.Objects -and $Row.Objects.Count -gt 0) {
+            # Validate dimension and object references
+            foreach ($dimNum in $Row.Objects.Keys) {
+                $dim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum
+                if (-not $dim) {
+                    throw "Dimension $dimNum does not exist."
+                }
+                $obj = Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $dimNum -ObjectNumber $Row.Objects[$dimNum]
+                if (-not $obj) {
+                    throw "Object '$($Row.Objects[$dimNum])' does not exist in dimension $dimNum."
+                }
+            }
+            $line += "`t$(Format-ObjectTag -Objects $Row.Objects)"
+        }
+        $Lines += $line
     }
 
     $Lines | Set-Content -Path $FilePath -Encoding UTF8

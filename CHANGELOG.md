@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.3.0] - 2026-05-28
+
+### Added
+- **General ledger** (`Get-LedgerLedger`) — chronological per-account view with
+  running balance, date filtering via `-FromDate`/`-ToDate`
+- **VAT report** (`Get-LedgerVatReport`) — maps BAS accounts to Skatteverkets
+  momsdeklaration boxes (05, 10, 11, 12, 48, 49) with period filtering
+- **Dimensions and objects**:
+  - `Add-LedgerDimension` / `Get-LedgerDimension` — manage cost centre/project
+    dimensions stored in `dimensions.txt`
+  - `Add-LedgerObject` / `Get-LedgerObject` — manage objects within dimensions
+    stored in `objects.txt`
+  - `Add-LedgerEntry` extended with optional `Objects` hashtable per row
+    (format: `@{1='sthlm'; 2='proj-a'}`)
+  - `Get-LedgerEntry` returns `Objects` property on each row
+  - Backward-compatible file format: third tab-field `{dim:obj,...}` is optional
+- **SIE 4 dimension support**:
+  - `Export-LedgerSie` writes `#DIM`, `#OBJEKT` and object tags on `#TRANS`
+  - `Import-LedgerSie` parses and imports dimensions, objects and row tags
+  - `Test-LedgerSie` validates object references against declared dimensions
+- **Accruals** (`Add-LedgerAccrual`) — creates coupled accrual + reversal
+  verifications across fiscal years with cross-reference descriptions
+- **Recurring entries**:
+  - `New-LedgerRecurringEntry` — create monthly templates in `recurring/` dir
+  - `Get-LedgerRecurringEntry` — list or filter templates
+  - `Remove-LedgerRecurringEntry` — delete a template
+  - `Invoke-LedgerRecurringEntry` — idempotent generation of verifications
+    from templates through a specified date
+
+### Changed
+- Verification row file format extended (backward-compatible) to support
+  object tags as optional third tab-separated field
+- `Export-LedgerSie` / `Import-LedgerSie` / `Test-LedgerSie` enhanced for
+  full dimension/object round-trip support
+
 ## [0.2.0] - 2026-05-28
 
 ### Added

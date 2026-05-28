@@ -8,10 +8,13 @@ A simple command-line double-entry bookkeeping system built as a PowerShell modu
 - **Double-entry enforcement** — every entry must balance (debit = credit)
 - **BAS chart templates** — built-in Swedish account plans (Mini, Småföretag, Komplett)
 - **Validation** — account existence, date range, closed-year protection
-- **Reports** — trial balance, income statement, balance sheet
+- **Reports** — trial balance, income statement, balance sheet, general ledger, VAT report
 - **Year-end workflow** — close fiscal year, copy opening balances
 - **Corrections** — reversal entries following Swedish bookkeeping law
-- **SIE 4 import/export** — exchange data with other Swedish accounting systems
+- **SIE 4 import/export** — exchange data with other Swedish accounting systems (incl. dimensions)
+- **Dimensions & objects** — cost centres, projects with SIE round-trip support
+- **Accruals** — automated accrual + reversal across fiscal years
+- **Recurring entries** — monthly templates with idempotent auto-generation
 
 ## Quick Start
 
@@ -71,6 +74,17 @@ Copy-LedgerOpeningBalance -JournalPath .\MinFirma.ledger `
 | `Export-LedgerSie` | Export a fiscal year to a SIE 4E file |
 | `Import-LedgerSie` | Import verifications from a SIE 4 file |
 | `Test-LedgerSie` | Validate a SIE file without importing |
+| `Get-LedgerLedger` | General ledger (huvudbok) per account |
+| `Get-LedgerVatReport` | VAT declaration report (momsdeklaration) |
+| `Add-LedgerDimension` | Add a dimension (e.g. cost centre, project) |
+| `Get-LedgerDimension` | List dimensions |
+| `Add-LedgerObject` | Add an object to a dimension |
+| `Get-LedgerObject` | List objects |
+| `Add-LedgerAccrual` | Create accrual + automatic reversal |
+| `New-LedgerRecurringEntry` | Create a recurring entry template |
+| `Get-LedgerRecurringEntry` | List recurring entry templates |
+| `Remove-LedgerRecurringEntry` | Remove a recurring entry template |
+| `Invoke-LedgerRecurringEntry` | Generate entries from templates |
 
 ## SIE Import/Export
 
@@ -93,6 +107,54 @@ New-LedgerJournal -Path .\Imported.ledger -Name 'Imported AB'
 New-LedgerFiscalYear -JournalPath .\Imported.ledger -StartDate '2024-01-01' -EndDate '2024-12-31'
 Import-LedgerSie -JournalPath .\Imported.ledger -FiscalYear '2024-01_2024-12' `
     -Path .\fromfortnox.se -CreateMissingAccounts
+```
+
+## General Ledger & VAT
+
+```powershell
+# View all transactions for a specific account
+Get-LedgerLedger -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Account '1910'
+
+# Generate a VAT report for a quarter
+Get-LedgerVatReport -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' `
+    -FromDate '2024-01-01' -ToDate '2024-03-31'
+```
+
+## Dimensions & Objects
+
+```powershell
+# Set up cost centres and projects
+Add-LedgerDimension -JournalPath .\MinFirma.ledger -DimensionNumber 1 -Name 'Kostnadsställe'
+Add-LedgerObject -JournalPath .\MinFirma.ledger -DimensionNumber 1 -ObjectNumber 'sthlm' -Name 'Stockholm'
+
+# Add entries with object tags
+$rows = @(
+    @{ Account = '5010'; Amount = 8000; Objects = @{1='sthlm'} }
+    @{ Account = '2440'; Amount = -8000 }
+)
+Add-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' `
+    -Date '2024-03-01' -Description 'Hyra Stockholm' -Rows $rows
+```
+
+## Accruals & Recurring Entries
+
+```powershell
+# Accrue a prepaid expense across fiscal years
+Add-LedgerAccrual -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' `
+    -Date '2024-12-31' -Description 'Förutbetald försäkring Q1 2025' `
+    -ExpenseAccount '6310' -AccrualAccount '1730' -Amount 12000 `
+    -ReversalFiscalYear '2025-01_2025-12' -ReversalDate '2025-01-01'
+
+# Set up a monthly recurring entry
+New-LedgerRecurringEntry -JournalPath .\MinFirma.ledger -Name 'Hyra' `
+    -Description 'Kontorshyra' -Schedule 'monthly' -DayOfMonth 1 `
+    -StartDate '2024-01-01' -EndDate '2024-12-31' -Rows @(
+    @{ Account = '5010'; Amount = 10000 }
+    @{ Account = '2440'; Amount = -10000 }
+)
+
+# Generate all pending entries through today
+Invoke-LedgerRecurringEntry -JournalPath .\MinFirma.ledger
 ```
 
 ## Chart Templates
@@ -121,6 +183,10 @@ Import-LedgerChart -JournalPath .\MinFirma.ledger -Path .\min-kontoplan.tsv
 MinFirma.ledger/
 ├── journal.txt              # Name, OrgNumber
 ├── accounts.txt             # Tab-separated: 1910\tKassa och bank
+├── dimensions.txt           # Tab-separated: 1\tKostnadsställe
+├── objects.txt              # Tab-separated: 1\tsthlm\tStockholm
+├── recurring/               # Recurring entry templates
+│   └── Hyra.txt
 └── 2024-01_2024-12/         # Fiscal year
     ├── year.txt             # StartDate, EndDate, Status
     ├── ver0001.txt          # Verification #1

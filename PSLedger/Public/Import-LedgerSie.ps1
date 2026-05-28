@@ -79,6 +79,8 @@ function Import-LedgerSie {
 
     $sieAccountOrder = New-Object System.Collections.Generic.List[string]
     $sieAccounts = @{}
+    $sieDimensions = @{}
+    $sieObjects = New-Object System.Collections.Generic.List[object]
     foreach ($rec in $records) {
         if ($rec.Tag -eq 'KONTO' -and $rec.Fields.Count -ge 1) {
             $name = if ($rec.Fields.Count -ge 2) { $rec.Fields[1] } else { '' }
@@ -86,6 +88,30 @@ function Import-LedgerSie {
                 $sieAccountOrder.Add($rec.Fields[0]) | Out-Null
             }
             $sieAccounts[$rec.Fields[0]] = $name
+        }
+        elseif ($rec.Tag -eq 'DIM' -and $rec.Fields.Count -ge 2) {
+            $sieDimensions[[int]$rec.Fields[0]] = $rec.Fields[1]
+        }
+        elseif ($rec.Tag -eq 'OBJEKT' -and $rec.Fields.Count -ge 3) {
+            $sieObjects.Add([PSCustomObject]@{
+                DimensionNumber = [int]$rec.Fields[0]
+                ObjectNumber    = $rec.Fields[1]
+                Name            = $rec.Fields[2]
+            }) | Out-Null
+        }
+    }
+
+    # Import dimensions and objects
+    foreach ($dimNum in ($sieDimensions.Keys | Sort-Object)) {
+        $existDim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum
+        if (-not $existDim) {
+            Add-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum -Name $sieDimensions[$dimNum]
+        }
+    }
+    foreach ($obj in $sieObjects) {
+        $existObj = Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $obj.DimensionNumber -ObjectNumber $obj.ObjectNumber
+        if (-not $existObj) {
+            Add-LedgerObject -JournalPath $JournalPath -DimensionNumber $obj.DimensionNumber -ObjectNumber $obj.ObjectNumber -Name $obj.Name
         }
     }
 
@@ -136,7 +162,18 @@ function Import-LedgerSie {
         $rows = foreach ($t in $rec.Transactions) {
             $amountText = $t.Fields[1] -replace ',', '.'
             $amount = [decimal]::Parse($amountText, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture)
-            @{ Account = $t.Fields[0]; Amount = $amount }
+            $rowHash = @{ Account = $t.Fields[0]; Amount = $amount }
+            # Parse object list from TRANS (pairs: dimNum objId)
+            if ($t.Objects -and $t.Objects.Count -ge 2) {
+                $objHash = @{}
+                for ($oi = 0; $oi -lt $t.Objects.Count; $oi += 2) {
+                    if ($oi + 1 -lt $t.Objects.Count) {
+                        $objHash[[int]$t.Objects[$oi]] = $t.Objects[$oi + 1]
+                    }
+                }
+                if ($objHash.Count -gt 0) { $rowHash['Objects'] = $objHash }
+            }
+            $rowHash
         }
 
         Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `

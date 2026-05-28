@@ -62,13 +62,20 @@ function Format-SieTransRecord {
 
         [string]$Date,
 
-        [string]$Description
+        [string]$Description,
+
+        [string]$ObjectList
     )
 
     $sb = New-Object System.Text.StringBuilder
     [void]$sb.Append('   #TRANS ')
     [void]$sb.Append((Format-SieField -Value $Account))
-    [void]$sb.Append(' {} ')
+    if ($ObjectList) {
+        [void]$sb.Append(" {$ObjectList} ")
+    }
+    else {
+        [void]$sb.Append(' {} ')
+    }
     [void]$sb.Append((Format-SieField -Value $Amount))
     if ($Date) {
         [void]$sb.Append(' ')

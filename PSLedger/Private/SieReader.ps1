@@ -130,6 +130,7 @@ function ConvertFrom-SieText {
 
         if ($tag -eq 'TRANS' -and $inVerBlock -and $null -ne $currentVer) {
             $transFields = New-Object System.Collections.Generic.List[string]
+            $objectFields = New-Object System.Collections.Generic.List[string]
             $skipObject = $false
             for ($k = 0; $k -lt $fields.Count; $k++) {
                 $f = $fields[$k]
@@ -139,13 +140,15 @@ function ConvertFrom-SieText {
                 }
                 if ($skipObject) {
                     if ($f -eq '}') { $skipObject = $false }
+                    else { [void]$objectFields.Add($f) }
                     continue
                 }
                 [void]$transFields.Add($f)
             }
             $currentVer.Transactions.Add([PSCustomObject]@{
-                Tag    = 'TRANS'
-                Fields = $transFields.ToArray()
+                Tag     = 'TRANS'
+                Fields  = $transFields.ToArray()
+                Objects = $objectFields.ToArray()
             }) | Out-Null
             continue
         }

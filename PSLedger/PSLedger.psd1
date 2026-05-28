@@ -12,7 +12,7 @@
 RootModule = 'PSLedger.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.2.0'
+ModuleVersion = '0.3.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -75,7 +75,13 @@ FunctionsToExport = 'New-LedgerJournal', 'Get-LedgerJournal', 'Add-LedgerAccount
                'Close-LedgerFiscalYear', 'Import-LedgerChart',
                'Get-LedgerIncomeStatement', 'Get-LedgerBalanceSheet',
                'Copy-LedgerOpeningBalance', 'Add-LedgerReversal',
-               'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie'
+               'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie',
+               'Get-LedgerLedger', 'Get-LedgerVatReport',
+               'Add-LedgerDimension', 'Get-LedgerDimension',
+               'Add-LedgerObject', 'Get-LedgerObject',
+               'Add-LedgerAccrual',
+               'New-LedgerRecurringEntry', 'Get-LedgerRecurringEntry',
+               'Remove-LedgerRecurringEntry', 'Invoke-LedgerRecurringEntry'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()

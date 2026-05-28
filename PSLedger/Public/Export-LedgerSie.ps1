@@ -94,6 +94,16 @@ function Export-LedgerSie {
     }
     & $append (Format-SieRecord -Tag 'RAR' -Fields @('0', $startDate, $endDate))
 
+    # Dimensions and objects
+    $dimensions = @(Get-LedgerDimension -JournalPath $JournalPath)
+    foreach ($dim in $dimensions) {
+        & $append (Format-SieRecord -Tag 'DIM' -Fields @([string]$dim.DimensionNumber, $dim.Name))
+    }
+    $objects = @(Get-LedgerObject -JournalPath $JournalPath)
+    foreach ($obj in $objects) {
+        & $append (Format-SieRecord -Tag 'OBJEKT' -Fields @([string]$obj.DimensionNumber, $obj.ObjectNumber, $obj.Name))
+    }
+
     foreach ($a in $accounts) {
         & $append (Format-SieRecord -Tag 'KONTO' -Fields @($a.AccountNumber, $a.AccountName))
     }
@@ -103,7 +113,14 @@ function Export-LedgerSie {
         & $append (Format-SieRecord -Tag 'VER' -Fields @('A', [string]$e.VerificationNumber, $entryDate, $e.Description))
         & $append '{'
         foreach ($row in $e.Rows) {
-            & $append (Format-SieTransRecord -Account $row.Account -Amount ([decimal]$row.Amount))
+            $objList = ''
+            if ($row.Objects -and $row.Objects.Count -gt 0) {
+                $objParts = foreach ($k in ($row.Objects.Keys | Sort-Object)) {
+                    "$k `"$($row.Objects[$k])`""
+                }
+                $objList = $objParts -join ' '
+            }
+            & $append (Format-SieTransRecord -Account $row.Account -Amount ([decimal]$row.Amount) -ObjectList $objList)
         }
         & $append '}'
     }
