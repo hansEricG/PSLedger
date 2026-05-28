@@ -25,6 +25,13 @@
   - `Get-LedgerLatestFiscalYear` — returns the most recent fiscal year
   - `Get-LedgerLatestOpenFiscalYear` — returns the most recent open fiscal year
   - `Get-LedgerNextFiscalYear` — returns the next fiscal year (pipeline input)
+- **Attachments** — associate files (invoices, receipts) with verifications:
+  - `Add-LedgerAttachment` — copies (or moves) a file into the verification's
+    attachment directory (`ver0001/`, created on demand)
+  - `Get-LedgerAttachment` — lists attachments per verification or all;
+    accepts pipeline input from `Get-LedgerEntry`
+  - `Remove-LedgerAttachment` — deletes an attachment; cleans up empty
+    directory; supports `-WhatIf`
 
 ### Changed
 - All 26 public commands that previously required `-JournalPath` now accept it

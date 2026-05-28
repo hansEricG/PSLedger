@@ -93,6 +93,9 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerLatestFiscalYear` | Get the most recent fiscal year |
 | `Get-LedgerLatestOpenFiscalYear` | Get the most recent open fiscal year |
 | `Get-LedgerNextFiscalYear` | Get the next fiscal year (pipeline-ready) |
+| `Add-LedgerAttachment` | Attach a file to a verification |
+| `Get-LedgerAttachment` | List attachments for a verification |
+| `Remove-LedgerAttachment` | Remove an attachment |
 
 ## SIE Import/Export
 
@@ -163,6 +166,39 @@ New-LedgerRecurringEntry -JournalPath .\MinFirma.ledger -Name 'Hyra' `
 
 # Generate all pending entries through today
 Invoke-LedgerRecurringEntry -JournalPath .\MinFirma.ledger
+```
+
+## Attachments
+
+Associate files (invoices, receipts, contracts) with verifications:
+
+```powershell
+# Attach a PDF invoice to verification 3
+Add-LedgerAttachment -VerificationNumber 3 -Path .\faktura-101.pdf
+
+# Attach and move (removes original)
+Add-LedgerAttachment -VerificationNumber 3 -Path .\kvitto.jpg -Move
+
+# List attachments
+Get-LedgerAttachment -VerificationNumber 3
+
+# List all attachments in the fiscal year
+Get-LedgerAttachment
+
+# Pipeline: get attachments for the latest entry
+Get-LedgerEntry | Select-Object -Last 1 | Get-LedgerAttachment
+
+# Remove an attachment
+Remove-LedgerAttachment -VerificationNumber 3 -FileName 'kvitto.jpg'
+```
+
+Files are stored in a subdirectory named after the verification:
+```
+2024-01_2024-12/
+├── ver0003.txt
+└── ver0003/
+    ├── faktura-101.pdf
+    └── kvitto.jpg
 ```
 
 ## Custom Extensions
