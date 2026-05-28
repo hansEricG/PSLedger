@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0] - 2026-05-28
 
 ### Added
 - **Custom extensions** — load user-defined `.ps1` functions into PSLedger:
