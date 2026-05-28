@@ -15,6 +15,9 @@ function Read-SieText {
         [string]$Path
     )
 
+    # Resolve relative paths against PowerShell's $PWD (not .NET's process CWD)
+    $Path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
+
     if (-not (Test-Path $Path -PathType Leaf)) {
         throw "SIE file not found: $Path"
     }
@@ -32,6 +35,9 @@ function Write-SieText {
         [AllowEmptyString()]
         [string]$Text
     )
+
+    # Resolve relative paths against PowerShell's $PWD (not .NET's process CWD)
+    $Path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
 
     [System.IO.File]::WriteAllText($Path, $Text, (Get-SieEncoding))
 }
