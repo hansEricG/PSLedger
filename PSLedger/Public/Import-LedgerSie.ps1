@@ -5,16 +5,21 @@ Imports verifications from a SIE 4 file into a journal.
 .DESCRIPTION
 Reads a SIE 4 file (typically a SIE 4E export from another system or a SIE 4I
 file from a supplier) and adds its verifications to the target journal. The
-target fiscal year must exist and be open. The file is validated with
-Test-LedgerSie first; any errors abort the import before any file is written.
-Accounts referenced in the SIE file must already exist in the chart of
-accounts unless -CreateMissingAccounts is specified.
+file is validated with Test-LedgerSie first; any errors abort the import before
+any file is written. Accounts referenced in the SIE file must already exist in
+the chart of accounts unless -CreateMissingAccounts is specified.
+
+If -FiscalYear is not specified, the fiscal year is determined from the #RAR 0
+record in the SIE file. If that fiscal year does not already exist in the
+journal it is created automatically.
 
 .PARAMETER JournalPath
 The path to an existing journal directory.
 
 .PARAMETER FiscalYear
 The fiscal year identifier (e.g. '2024-01_2024-12') to import into.
+If omitted, the fiscal year is derived from the SIE file's #RAR 0 record
+and created automatically if it does not exist.
 
 .PARAMETER Path
 Path to the SIE file to import.
@@ -52,10 +57,36 @@ function Import-LedgerSie {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
         if (-not (Test-Path $JournalPath -PathType Container)) {
             throw "Journal not found: $JournalPath"
+        }
+
+        $validation = Test-LedgerSie -Path $Path
+        if (-not $validation.IsValid) {
+            $msg = "SIE file is invalid: " + ($validation.Errors -join '; ')
+            throw $msg
+        }
+
+        $text = Read-SieText -Path $Path
+        $records = ConvertFrom-SieText -Text $text
+
+        # Resolve fiscal year: use parameter, fall back to #RAR 0, then latest existing
+        if (-not $FiscalYear) {
+            $rarRecord = $records | Where-Object { $_.Tag -eq 'RAR' -and $_.Fields.Count -ge 3 -and $_.Fields[0] -eq '0' } | Select-Object -First 1
+            if ($rarRecord) {
+                $rarStart = [datetime]::ParseExact($rarRecord.Fields[1], 'yyyyMMdd', [System.Globalization.CultureInfo]::InvariantCulture)
+                $rarEnd = [datetime]::ParseExact($rarRecord.Fields[2], 'yyyyMMdd', [System.Globalization.CultureInfo]::InvariantCulture)
+                $FiscalYear = '{0}_{1}' -f $rarStart.ToString('yyyy-MM'), $rarEnd.ToString('yyyy-MM')
+
+                # Create fiscal year if it does not exist
+                $YearDir = Join-Path $JournalPath $FiscalYear
+                if (-not (Test-Path $YearDir -PathType Container)) {
+                    New-LedgerFiscalYear -JournalPath $JournalPath -StartDate $rarStart -EndDate $rarEnd
+                }
+            } else {
+                $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear '' -JournalPath $JournalPath
+            }
         }
 
         $YearDir = Join-Path $JournalPath $FiscalYear
@@ -71,15 +102,6 @@ function Import-LedgerSie {
                 }
             }
         }
-
-        $validation = Test-LedgerSie -Path $Path
-        if (-not $validation.IsValid) {
-            $msg = "SIE file is invalid: " + ($validation.Errors -join '; ')
-            throw $msg
-        }
-
-        $text = Read-SieText -Path $Path
-        $records = ConvertFrom-SieText -Text $text
 
         $sieAccountOrder = New-Object System.Collections.Generic.List[string]
         $sieAccounts = @{}

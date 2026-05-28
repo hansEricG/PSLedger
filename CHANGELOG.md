@@ -41,6 +41,9 @@
   the latest fiscal year is used automatically. The parameter also accepts
   pipeline input via `ValueFromPipelineByPropertyName` (binds to the `Name`
   property of fiscal year objects).
+- `Import-LedgerSie` now auto-detects the fiscal year from the SIE file's
+  `#RAR 0` record when `-FiscalYear` is omitted, and creates the fiscal year
+  automatically if it does not exist in the journal.
 - Module manifest `FunctionsToExport` changed to `'*'` to support dynamic
   extension loading; actual export list is controlled by `Export-ModuleMember`
   in the `.psm1`.

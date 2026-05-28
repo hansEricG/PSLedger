@@ -146,5 +146,35 @@ Describe 'Import-LedgerSie' {
             { Import-LedgerSie -JournalPath $TargetJournal -FiscalYear '2099-01_2099-12' -Path $SieFile } |
                 Should -Throw '*Fiscal year not found*'
         }
+
+        It 'Should auto-detect fiscal year from #RAR 0 when FiscalYear not specified' {
+            $J4 = Join-Path $TestDrive 'autofy.ledger'
+            New-LedgerJournal -Path $J4 -Name 'AutoFY AB'
+            Add-LedgerAccount -JournalPath $J4 -AccountNumber '1910' -AccountName 'Kassa'
+            Add-LedgerAccount -JournalPath $J4 -AccountNumber '3010' -AccountName 'Försäljning'
+            New-LedgerFiscalYear -JournalPath $J4 -StartDate '2024-01-01' -EndDate '2024-12-31'
+
+            $result = Import-LedgerSie -JournalPath $J4 -Path $SieFile
+            $result.ImportedEntries | Should -Be 2
+            $entries = @(Get-LedgerEntry -JournalPath $J4 -FiscalYear '2024-01_2024-12')
+            $entries.Count | Should -Be 2
+        }
+
+        It 'Should create fiscal year automatically from #RAR 0 when it does not exist' {
+            $J5 = Join-Path $TestDrive 'createfy.ledger'
+            New-LedgerJournal -Path $J5 -Name 'CreateFY AB'
+            Add-LedgerAccount -JournalPath $J5 -AccountNumber '1910' -AccountName 'Kassa'
+            Add-LedgerAccount -JournalPath $J5 -AccountNumber '3010' -AccountName 'Försäljning'
+
+            # No fiscal year exists — should be created from SIE #RAR 0
+            $result = Import-LedgerSie -JournalPath $J5 -Path $SieFile
+            $result.ImportedEntries | Should -Be 2
+
+            $allYears = @(Get-LedgerFiscalYear -JournalPath $J5)
+            $fy = $allYears | Where-Object Name -eq '2024-01_2024-12'
+            $fy | Should -Not -BeNullOrEmpty
+            $fy.StartDate | Should -Be '2024-01-01'
+            $fy.EndDate | Should -Be '2024-12-31'
+        }
     }
 }
