@@ -26,11 +26,13 @@ Describe 'Copy-LedgerOpeningBalance' {
             $Param.Attributes.Mandatory | Should -Not -Contain $true
         }
 
-        It 'Should have a mandatory FromFiscalYear parameter of type String' {
+        It 'Should have an optional FromFiscalYear parameter of type String that binds from Name' {
             $Param = $Command.Parameters['FromFiscalYear']
             $Param | Should -Not -BeNullOrEmpty
             $Param.ParameterType.Name | Should -Be 'String'
-            $Param.Attributes.Mandatory | Should -Contain $true
+            $Param.Attributes.Mandatory | Should -Not -Contain $true
+            $Param.Attributes.ValueFromPipelineByPropertyName | Should -Contain $true
+            $Param.Aliases | Should -Contain 'Name'
         }
 
         It 'Should have a mandatory ToFiscalYear parameter of type String' {

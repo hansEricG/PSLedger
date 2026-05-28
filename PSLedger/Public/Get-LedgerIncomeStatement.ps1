@@ -31,38 +31,43 @@ function Get-LedgerIncomeStatement {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [Alias('Name')]
         [string]$FiscalYear
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-    $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
-    if (-not $Balance) {
-        return
+        $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+        if (-not $Balance) {
+            return
+        }
+
+        $Revenue = $Balance | Where-Object { $_.AccountNumber -like '3*' }
+        $CostOfGoods = $Balance | Where-Object { $_.AccountNumber -like '4*' }
+        $OperatingExpenses = $Balance | Where-Object { $_.AccountNumber -match '^[567]' }
+        $Financial = $Balance | Where-Object { $_.AccountNumber -like '8*' }
+
+        # Revenue is stored as negative balance (credit), so negate for display
+        $RevenueTotal = if ($Revenue) { -($Revenue | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
+        $CostOfGoodsTotal = if ($CostOfGoods) { ($CostOfGoods | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
+        $OperatingExpensesTotal = if ($OperatingExpenses) { ($OperatingExpenses | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
+        $FinancialTotal = if ($Financial) { -($Financial | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
+
+        $GrossProfit = $RevenueTotal - $CostOfGoodsTotal
+        $OperatingResult = $GrossProfit - $OperatingExpensesTotal
+        $NetResult = $OperatingResult + $FinancialTotal
+
+        @(
+            [PSCustomObject]@{ Group = 'Revenue'; Label = 'Nettoomsättning'; Amount = $RevenueTotal }
+            [PSCustomObject]@{ Group = 'CostOfGoods'; Label = 'Kostnad sålda varor'; Amount = -$CostOfGoodsTotal }
+            [PSCustomObject]@{ Group = 'GrossProfit'; Label = 'Bruttovinst'; Amount = $GrossProfit }
+            [PSCustomObject]@{ Group = 'OperatingExpenses'; Label = 'Rörelsekostnader'; Amount = -$OperatingExpensesTotal }
+            [PSCustomObject]@{ Group = 'OperatingResult'; Label = 'Rörelseresultat'; Amount = $OperatingResult }
+            [PSCustomObject]@{ Group = 'Financial'; Label = 'Finansiella poster'; Amount = $FinancialTotal }
+            [PSCustomObject]@{ Group = 'NetResult'; Label = 'Årets resultat'; Amount = $NetResult }
+        )
     }
-
-    $Revenue = $Balance | Where-Object { $_.AccountNumber -like '3*' }
-    $CostOfGoods = $Balance | Where-Object { $_.AccountNumber -like '4*' }
-    $OperatingExpenses = $Balance | Where-Object { $_.AccountNumber -match '^[567]' }
-    $Financial = $Balance | Where-Object { $_.AccountNumber -like '8*' }
-
-    # Revenue is stored as negative balance (credit), so negate for display
-    $RevenueTotal = if ($Revenue) { -($Revenue | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
-    $CostOfGoodsTotal = if ($CostOfGoods) { ($CostOfGoods | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
-    $OperatingExpensesTotal = if ($OperatingExpenses) { ($OperatingExpenses | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
-    $FinancialTotal = if ($Financial) { -($Financial | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
-
-    $GrossProfit = $RevenueTotal - $CostOfGoodsTotal
-    $OperatingResult = $GrossProfit - $OperatingExpensesTotal
-    $NetResult = $OperatingResult + $FinancialTotal
-
-    @(
-        [PSCustomObject]@{ Group = 'Revenue'; Label = 'Nettoomsättning'; Amount = $RevenueTotal }
-        [PSCustomObject]@{ Group = 'CostOfGoods'; Label = 'Kostnad sålda varor'; Amount = -$CostOfGoodsTotal }
-        [PSCustomObject]@{ Group = 'GrossProfit'; Label = 'Bruttovinst'; Amount = $GrossProfit }
-        [PSCustomObject]@{ Group = 'OperatingExpenses'; Label = 'Rörelsekostnader'; Amount = -$OperatingExpensesTotal }
-        [PSCustomObject]@{ Group = 'OperatingResult'; Label = 'Rörelseresultat'; Amount = $OperatingResult }
-        [PSCustomObject]@{ Group = 'Financial'; Label = 'Finansiella poster'; Amount = $FinancialTotal }
-        [PSCustomObject]@{ Group = 'NetResult'; Label = 'Årets resultat'; Amount = $NetResult }
-    )
 }
+

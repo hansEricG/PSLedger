@@ -19,11 +19,18 @@ Describe 'Get-LedgerVatReport' {
             Test-TDDCmdletBinding $Command | Should -BeTrue
         }
 
-        It 'Should have an optional JournalPath parameter and mandatory FiscalYear, FromDate and ToDate parameters' {
+        It 'Should have an optional JournalPath parameter, an optional FiscalYear parameter that binds from Name, and mandatory FromDate and ToDate parameters' {
             $journalPathParam = $Command.Parameters['JournalPath']
             $journalPathParam | Should -Not -BeNullOrEmpty
             $journalPathParam.Attributes.Mandatory | Should -Not -Contain $true
-            foreach ($p in 'FiscalYear', 'FromDate', 'ToDate') {
+
+            $fiscalYearParam = $Command.Parameters['FiscalYear']
+            $fiscalYearParam | Should -Not -BeNullOrEmpty
+            $fiscalYearParam.Attributes.Mandatory | Should -Not -Contain $true
+            $fiscalYearParam.Attributes.ValueFromPipelineByPropertyName | Should -Contain $true
+            $fiscalYearParam.Aliases | Should -Contain 'Name'
+
+            foreach ($p in 'FromDate', 'ToDate') {
                 $Param = $Command.Parameters[$p]
                 $Param | Should -Not -BeNullOrEmpty
                 $Param.Attributes.Mandatory | Should -Contain $true

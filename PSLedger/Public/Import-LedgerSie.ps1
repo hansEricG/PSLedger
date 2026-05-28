@@ -41,7 +41,8 @@ function Import-LedgerSie {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [Alias('Name')]
         [string]$FiscalYear,
 
         [Parameter(Mandatory)]
@@ -49,142 +50,146 @@ function Import-LedgerSie {
 
         [switch]$CreateMissingAccounts
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-    if (-not (Test-Path $JournalPath -PathType Container)) {
-        throw "Journal not found: $JournalPath"
-    }
-
-    $YearDir = Join-Path $JournalPath $FiscalYear
-    if (-not (Test-Path $YearDir -PathType Container)) {
-        throw "Fiscal year not found: $FiscalYear"
-    }
-
-    $YearFile = Join-Path $YearDir 'year.txt'
-    if (Test-Path $YearFile) {
-        foreach ($Line in (Get-Content $YearFile)) {
-            if ($Line -match '^Status:\s*Closed') {
-                throw "Fiscal year $FiscalYear is Closed. Cannot import entries."
-            }
+        if (-not (Test-Path $JournalPath -PathType Container)) {
+            throw "Journal not found: $JournalPath"
         }
-    }
 
-    $validation = Test-LedgerSie -Path $Path
-    if (-not $validation.IsValid) {
-        $msg = "SIE file is invalid: " + ($validation.Errors -join '; ')
-        throw $msg
-    }
-
-    $text = Read-SieText -Path $Path
-    $records = ConvertFrom-SieText -Text $text
-
-    $sieAccountOrder = New-Object System.Collections.Generic.List[string]
-    $sieAccounts = @{}
-    $sieDimensions = @{}
-    $sieObjects = New-Object System.Collections.Generic.List[object]
-    foreach ($rec in $records) {
-        if ($rec.Tag -eq 'KONTO' -and $rec.Fields.Count -ge 1) {
-            $name = if ($rec.Fields.Count -ge 2) { $rec.Fields[1] } else { '' }
-            if (-not $sieAccounts.ContainsKey($rec.Fields[0])) {
-                $sieAccountOrder.Add($rec.Fields[0]) | Out-Null
-            }
-            $sieAccounts[$rec.Fields[0]] = $name
+        $YearDir = Join-Path $JournalPath $FiscalYear
+        if (-not (Test-Path $YearDir -PathType Container)) {
+            throw "Fiscal year not found: $FiscalYear"
         }
-        elseif ($rec.Tag -eq 'DIM' -and $rec.Fields.Count -ge 2) {
-            $sieDimensions[[int]$rec.Fields[0]] = $rec.Fields[1]
-        }
-        elseif ($rec.Tag -eq 'OBJEKT' -and $rec.Fields.Count -ge 3) {
-            $sieObjects.Add([PSCustomObject]@{
-                DimensionNumber = [int]$rec.Fields[0]
-                ObjectNumber    = $rec.Fields[1]
-                Name            = $rec.Fields[2]
-            }) | Out-Null
-        }
-    }
 
-    # Import dimensions and objects
-    foreach ($dimNum in ($sieDimensions.Keys | Sort-Object)) {
-        $existDim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum
-        if (-not $existDim) {
-            Add-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum -Name $sieDimensions[$dimNum]
-        }
-    }
-    foreach ($obj in $sieObjects) {
-        $existObj = Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $obj.DimensionNumber -ObjectNumber $obj.ObjectNumber
-        if (-not $existObj) {
-            Add-LedgerObject -JournalPath $JournalPath -DimensionNumber $obj.DimensionNumber -ObjectNumber $obj.ObjectNumber -Name $obj.Name
-        }
-    }
-
-    $existing = @{}
-    foreach ($a in (Get-LedgerAccount -JournalPath $JournalPath)) {
-        $existing[$a.AccountNumber] = $true
-    }
-
-    $referenced = @{}
-    foreach ($rec in $records) {
-        if ($rec.Tag -ne 'VER') { continue }
-        foreach ($t in $rec.Transactions) {
-            if ($t.Fields.Count -ge 1) { $referenced[$t.Fields[0]] = $true }
-        }
-    }
-
-    # Walk accounts in SIE file order so the imported chart preserves order.
-    $orderedReferenced = New-Object System.Collections.Generic.List[string]
-    foreach ($acct in $sieAccountOrder) {
-        if ($referenced.ContainsKey($acct)) { $orderedReferenced.Add($acct) | Out-Null }
-    }
-    foreach ($acct in $referenced.Keys) {
-        if (-not $sieAccounts.ContainsKey($acct)) { $orderedReferenced.Add($acct) | Out-Null }
-    }
-
-    foreach ($acct in $orderedReferenced) {
-        if (-not $existing.ContainsKey($acct)) {
-            if ($CreateMissingAccounts) {
-                $name = if ($sieAccounts.ContainsKey($acct)) { $sieAccounts[$acct] } else { "Imported $acct" }
-                Add-LedgerAccount -JournalPath $JournalPath -AccountNumber $acct -AccountName $name
-                $existing[$acct] = $true
-            }
-            else {
-                throw "Account $acct in SIE file does not exist in chart of accounts. Use -CreateMissingAccounts to add it automatically."
-            }
-        }
-    }
-
-    $imported = 0
-    foreach ($rec in $records) {
-        if ($rec.Tag -ne 'VER') { continue }
-        if ($rec.Fields.Count -lt 3) { continue }
-
-        $verDate = $rec.Fields[2]
-        $verDesc = if ($rec.Fields.Count -ge 4) { $rec.Fields[3] } else { '' }
-        $date = [datetime]::ParseExact($verDate, 'yyyyMMdd', [System.Globalization.CultureInfo]::InvariantCulture)
-
-        $rows = foreach ($t in $rec.Transactions) {
-            $amountText = $t.Fields[1] -replace ',', '.'
-            $amount = [decimal]::Parse($amountText, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture)
-            $rowHash = @{ Account = $t.Fields[0]; Amount = $amount }
-            # Parse object list from TRANS (pairs: dimNum objId)
-            if ($t.Objects -and $t.Objects.Count -ge 2) {
-                $objHash = @{}
-                for ($oi = 0; $oi -lt $t.Objects.Count; $oi += 2) {
-                    if ($oi + 1 -lt $t.Objects.Count) {
-                        $objHash[[int]$t.Objects[$oi]] = $t.Objects[$oi + 1]
-                    }
+        $YearFile = Join-Path $YearDir 'year.txt'
+        if (Test-Path $YearFile) {
+            foreach ($Line in (Get-Content $YearFile)) {
+                if ($Line -match '^Status:\s*Closed') {
+                    throw "Fiscal year $FiscalYear is Closed. Cannot import entries."
                 }
-                if ($objHash.Count -gt 0) { $rowHash['Objects'] = $objHash }
             }
-            $rowHash
         }
 
-        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-            -Date $date -Description $verDesc -Rows @($rows)
-        $imported++
-    }
+        $validation = Test-LedgerSie -Path $Path
+        if (-not $validation.IsValid) {
+            $msg = "SIE file is invalid: " + ($validation.Errors -join '; ')
+            throw $msg
+        }
 
-    [PSCustomObject]@{
-        Path             = $Path
-        ImportedEntries  = $imported
-        ImportedAccounts = if ($CreateMissingAccounts) { ($referenced.Keys | Where-Object { $sieAccounts.ContainsKey($_) }).Count } else { 0 }
+        $text = Read-SieText -Path $Path
+        $records = ConvertFrom-SieText -Text $text
+
+        $sieAccountOrder = New-Object System.Collections.Generic.List[string]
+        $sieAccounts = @{}
+        $sieDimensions = @{}
+        $sieObjects = New-Object System.Collections.Generic.List[object]
+        foreach ($rec in $records) {
+            if ($rec.Tag -eq 'KONTO' -and $rec.Fields.Count -ge 1) {
+                $name = if ($rec.Fields.Count -ge 2) { $rec.Fields[1] } else { '' }
+                if (-not $sieAccounts.ContainsKey($rec.Fields[0])) {
+                    $sieAccountOrder.Add($rec.Fields[0]) | Out-Null
+                }
+                $sieAccounts[$rec.Fields[0]] = $name
+            }
+            elseif ($rec.Tag -eq 'DIM' -and $rec.Fields.Count -ge 2) {
+                $sieDimensions[[int]$rec.Fields[0]] = $rec.Fields[1]
+            }
+            elseif ($rec.Tag -eq 'OBJEKT' -and $rec.Fields.Count -ge 3) {
+                $sieObjects.Add([PSCustomObject]@{
+                    DimensionNumber = [int]$rec.Fields[0]
+                    ObjectNumber    = $rec.Fields[1]
+                    Name            = $rec.Fields[2]
+                }) | Out-Null
+            }
+        }
+
+        # Import dimensions and objects
+        foreach ($dimNum in ($sieDimensions.Keys | Sort-Object)) {
+            $existDim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum
+            if (-not $existDim) {
+                Add-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum -Name $sieDimensions[$dimNum]
+            }
+        }
+        foreach ($obj in $sieObjects) {
+            $existObj = Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $obj.DimensionNumber -ObjectNumber $obj.ObjectNumber
+            if (-not $existObj) {
+                Add-LedgerObject -JournalPath $JournalPath -DimensionNumber $obj.DimensionNumber -ObjectNumber $obj.ObjectNumber -Name $obj.Name
+            }
+        }
+
+        $existing = @{}
+        foreach ($a in (Get-LedgerAccount -JournalPath $JournalPath)) {
+            $existing[$a.AccountNumber] = $true
+        }
+
+        $referenced = @{}
+        foreach ($rec in $records) {
+            if ($rec.Tag -ne 'VER') { continue }
+            foreach ($t in $rec.Transactions) {
+                if ($t.Fields.Count -ge 1) { $referenced[$t.Fields[0]] = $true }
+            }
+        }
+
+        # Walk accounts in SIE file order so the imported chart preserves order.
+        $orderedReferenced = New-Object System.Collections.Generic.List[string]
+        foreach ($acct in $sieAccountOrder) {
+            if ($referenced.ContainsKey($acct)) { $orderedReferenced.Add($acct) | Out-Null }
+        }
+        foreach ($acct in $referenced.Keys) {
+            if (-not $sieAccounts.ContainsKey($acct)) { $orderedReferenced.Add($acct) | Out-Null }
+        }
+
+        foreach ($acct in $orderedReferenced) {
+            if (-not $existing.ContainsKey($acct)) {
+                if ($CreateMissingAccounts) {
+                    $name = if ($sieAccounts.ContainsKey($acct)) { $sieAccounts[$acct] } else { "Imported $acct" }
+                    Add-LedgerAccount -JournalPath $JournalPath -AccountNumber $acct -AccountName $name
+                    $existing[$acct] = $true
+                }
+                else {
+                    throw "Account $acct in SIE file does not exist in chart of accounts. Use -CreateMissingAccounts to add it automatically."
+                }
+            }
+        }
+
+        $imported = 0
+        foreach ($rec in $records) {
+            if ($rec.Tag -ne 'VER') { continue }
+            if ($rec.Fields.Count -lt 3) { continue }
+
+            $verDate = $rec.Fields[2]
+            $verDesc = if ($rec.Fields.Count -ge 4) { $rec.Fields[3] } else { '' }
+            $date = [datetime]::ParseExact($verDate, 'yyyyMMdd', [System.Globalization.CultureInfo]::InvariantCulture)
+
+            $rows = foreach ($t in $rec.Transactions) {
+                $amountText = $t.Fields[1] -replace ',', '.'
+                $amount = [decimal]::Parse($amountText, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture)
+                $rowHash = @{ Account = $t.Fields[0]; Amount = $amount }
+                # Parse object list from TRANS (pairs: dimNum objId)
+                if ($t.Objects -and $t.Objects.Count -ge 2) {
+                    $objHash = @{}
+                    for ($oi = 0; $oi -lt $t.Objects.Count; $oi += 2) {
+                        if ($oi + 1 -lt $t.Objects.Count) {
+                            $objHash[[int]$t.Objects[$oi]] = $t.Objects[$oi + 1]
+                        }
+                    }
+                    if ($objHash.Count -gt 0) { $rowHash['Objects'] = $objHash }
+                }
+                $rowHash
+            }
+
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date $date -Description $verDesc -Rows @($rows)
+            $imported++
+        }
+
+        [PSCustomObject]@{
+            Path             = $Path
+            ImportedEntries  = $imported
+            ImportedAccounts = if ($CreateMissingAccounts) { ($referenced.Keys | Where-Object { $sieAccounts.ContainsKey($_) }).Count } else { 0 }
+        }
     }
 }
+

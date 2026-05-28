@@ -47,7 +47,8 @@ function Get-LedgerVatReport {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [Alias('Name')]
         [string]$FiscalYear,
 
         [Parameter(Mandatory)]
@@ -56,77 +57,81 @@ function Get-LedgerVatReport {
         [Parameter(Mandatory)]
         [datetime]$ToDate
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-    $entries = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-        -FromDate $FromDate -ToDate $ToDate
+        $entries = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+            -FromDate $FromDate -ToDate $ToDate
 
-    $mapping = Get-VatBoxMapping
+        $mapping = Get-VatBoxMapping
 
-    # Accumulate amounts per account
-    $accountTotals = @{}
-    if ($entries) {
-        foreach ($entry in $entries) {
-            foreach ($row in $entry.Rows) {
-                $acct = $row.Account
-                if (-not $accountTotals.ContainsKey($acct)) {
-                    $accountTotals[$acct] = [decimal]0
+        # Accumulate amounts per account
+        $accountTotals = @{}
+        if ($entries) {
+            foreach ($entry in $entries) {
+                foreach ($row in $entry.Rows) {
+                    $acct = $row.Account
+                    if (-not $accountTotals.ContainsKey($acct)) {
+                        $accountTotals[$acct] = [decimal]0
+                    }
+                    $accountTotals[$acct] += [decimal]$row.Amount
                 }
-                $accountTotals[$acct] += [decimal]$row.Amount
             }
         }
-    }
 
-    # Map accounts to boxes
-    $boxTotals = @{}
-    foreach ($map in $mapping) {
-        $box = $map.Box
-        if (-not $boxTotals.ContainsKey($box)) {
-            $boxTotals[$box] = @{ Amount = [decimal]0; Name = $map.Name }
-        }
-        foreach ($acct in $accountTotals.Keys) {
-            if ($acct -match $map.AccountPattern) {
-                $boxTotals[$box].Amount += $accountTotals[$acct]
+        # Map accounts to boxes
+        $boxTotals = @{}
+        foreach ($map in $mapping) {
+            $box = $map.Box
+            if (-not $boxTotals.ContainsKey($box)) {
+                $boxTotals[$box] = @{ Amount = [decimal]0; Name = $map.Name }
+            }
+            foreach ($acct in $accountTotals.Keys) {
+                if ($acct -match $map.AccountPattern) {
+                    $boxTotals[$box].Amount += $accountTotals[$acct]
+                }
             }
         }
-    }
 
-    # Sales boxes (3xxx) are credit accounts — negate to show positive sales
-    if ($boxTotals.ContainsKey(5)) {
-        $boxTotals[5].Amount = [Math]::Abs($boxTotals[5].Amount)
-    }
-
-    # VAT accounts (26xx) — output VAT is credit (negate), input VAT is debit (negate for "to deduct")
-    foreach ($box in @(10, 11, 12)) {
-        if ($boxTotals.ContainsKey($box)) {
-            $boxTotals[$box].Amount = [Math]::Abs($boxTotals[$box].Amount)
+        # Sales boxes (3xxx) are credit accounts — negate to show positive sales
+        if ($boxTotals.ContainsKey(5)) {
+            $boxTotals[5].Amount = [Math]::Abs($boxTotals[5].Amount)
         }
-    }
-    if ($boxTotals.ContainsKey(48)) {
-        $boxTotals[48].Amount = [Math]::Abs($boxTotals[48].Amount)
-    }
 
-    # Box 49 — output VAT minus input VAT
-    $outputVat = [decimal]0
-    foreach ($box in @(10, 11, 12)) {
-        if ($boxTotals.ContainsKey($box)) { $outputVat += $boxTotals[$box].Amount }
-    }
-    $inputVat = if ($boxTotals.ContainsKey(48)) { $boxTotals[48].Amount } else { [decimal]0 }
-    $vatToPay = $outputVat - $inputVat
-
-    $results = foreach ($box in ($boxTotals.Keys | Sort-Object)) {
-        [PSCustomObject]@{
-            Box    = $box
-            Name   = $boxTotals[$box].Name
-            Amount = $boxTotals[$box].Amount
+        # VAT accounts (26xx) — output VAT is credit (negate), input VAT is debit (negate for "to deduct")
+        foreach ($box in @(10, 11, 12)) {
+            if ($boxTotals.ContainsKey($box)) {
+                $boxTotals[$box].Amount = [Math]::Abs($boxTotals[$box].Amount)
+            }
         }
-    }
+        if ($boxTotals.ContainsKey(48)) {
+            $boxTotals[48].Amount = [Math]::Abs($boxTotals[48].Amount)
+        }
 
-    $results += [PSCustomObject]@{
-        Box    = 49
-        Name   = 'Moms att betala eller få tillbaka'
-        Amount = $vatToPay
-    }
+        # Box 49 — output VAT minus input VAT
+        $outputVat = [decimal]0
+        foreach ($box in @(10, 11, 12)) {
+            if ($boxTotals.ContainsKey($box)) { $outputVat += $boxTotals[$box].Amount }
+        }
+        $inputVat = if ($boxTotals.ContainsKey(48)) { $boxTotals[48].Amount } else { [decimal]0 }
+        $vatToPay = $outputVat - $inputVat
 
-    $results
+        $results = foreach ($box in ($boxTotals.Keys | Sort-Object)) {
+            [PSCustomObject]@{
+                Box    = $box
+                Name   = $boxTotals[$box].Name
+                Amount = $boxTotals[$box].Amount
+            }
+        }
+
+        $results += [PSCustomObject]@{
+            Box    = 49
+            Name   = 'Moms att betala eller få tillbaka'
+            Amount = $vatToPay
+        }
+
+        $results
+    }
 }
+

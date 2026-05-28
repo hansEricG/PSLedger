@@ -36,7 +36,8 @@ function Add-LedgerReversal {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [Alias('Name')]
         [string]$FiscalYear,
 
         [Parameter(Mandatory)]
@@ -44,20 +45,24 @@ function Add-LedgerReversal {
 
         [datetime]$Date = (Get-Date)
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-    # Get the original entry
-    $Original = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber $VerificationNumber
-    if (-not $Original) {
-        throw "Verification $VerificationNumber not found in fiscal year $FiscalYear."
+        # Get the original entry
+        $Original = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber $VerificationNumber
+        if (-not $Original) {
+            throw "Verification $VerificationNumber not found in fiscal year $FiscalYear."
+        }
+
+        # Build reversed rows
+        $ReversedRows = $Original.Rows | ForEach-Object {
+            @{ Account = $_.Account; Amount = -$_.Amount }
+        }
+
+        $Description = "Rättelse ver $VerificationNumber - $($Original.Description)"
+
+        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description -Rows $ReversedRows
     }
-
-    # Build reversed rows
-    $ReversedRows = $Original.Rows | ForEach-Object {
-        @{ Account = $_.Account; Amount = -$_.Amount }
-    }
-
-    $Description = "Rättelse ver $VerificationNumber - $($Original.Description)"
-
-    Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description -Rows $ReversedRows
 }
+

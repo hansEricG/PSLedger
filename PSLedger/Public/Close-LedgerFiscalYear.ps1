@@ -31,39 +31,44 @@ function Close-LedgerFiscalYear {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [Alias('Name')]
         [string]$FiscalYear
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-    $YearDir = Join-Path $JournalPath $FiscalYear
-    if (-not (Test-Path $YearDir -PathType Container)) {
-        throw "Fiscal year not found: $FiscalYear"
-    }
-
-    $YearFile = Join-Path $YearDir 'year.txt'
-    if (-not (Test-Path $YearFile)) {
-        throw "Invalid fiscal year - year.txt not found in: $FiscalYear"
-    }
-
-    $Lines = Get-Content $YearFile
-
-    # Check current status
-    foreach ($Line in $Lines) {
-        if ($Line -match '^Status:\s*Closed') {
-            throw "Fiscal year $FiscalYear is already closed."
+        $YearDir = Join-Path $JournalPath $FiscalYear
+        if (-not (Test-Path $YearDir -PathType Container)) {
+            throw "Fiscal year not found: $FiscalYear"
         }
-    }
 
-    # Rewrite with updated status
-    $NewLines = foreach ($Line in $Lines) {
-        if ($Line -match '^Status:\s*') {
-            'Status: Closed'
+        $YearFile = Join-Path $YearDir 'year.txt'
+        if (-not (Test-Path $YearFile)) {
+            throw "Invalid fiscal year - year.txt not found in: $FiscalYear"
         }
-        else {
-            $Line
-        }
-    }
 
-    $NewLines | Set-Content -Path $YearFile -Encoding UTF8
+        $Lines = Get-Content $YearFile
+
+        # Check current status
+        foreach ($Line in $Lines) {
+            if ($Line -match '^Status:\s*Closed') {
+                throw "Fiscal year $FiscalYear is already closed."
+            }
+        }
+
+        # Rewrite with updated status
+        $NewLines = foreach ($Line in $Lines) {
+            if ($Line -match '^Status:\s*') {
+                'Status: Closed'
+            }
+            else {
+                $Line
+            }
+        }
+
+        $NewLines | Set-Content -Path $YearFile -Encoding UTF8
+    }
 }
+

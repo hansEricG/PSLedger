@@ -89,6 +89,10 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Set-LedgerJournal` | Set session default journal (skip `-JournalPath`) |
 | `Clear-LedgerJournal` | Clear session default journal |
 | `Get-LedgerExtension` | List loaded custom extensions |
+| `Get-LedgerFirstFiscalYear` | Get the oldest fiscal year |
+| `Get-LedgerLatestFiscalYear` | Get the most recent fiscal year |
+| `Get-LedgerLatestOpenFiscalYear` | Get the most recent open fiscal year |
+| `Get-LedgerNextFiscalYear` | Get the next fiscal year (pipeline-ready) |
 
 ## SIE Import/Export
 
@@ -210,6 +214,27 @@ Add-PreliminärskattEntry -Amount 12000 -Date '2024-02-12' -FiscalYear '2024-01_
 ```powershell
 Get-LedgerExtension                  # all loaded extensions
 Get-LedgerExtension -Source Journal  # only per-journal extensions
+```
+
+## Fiscal Year Navigation
+
+All commands that take `-FiscalYear` default to the **latest fiscal year** when
+omitted. They also accept pipeline input from fiscal year objects:
+
+```powershell
+Set-LedgerJournal -Path .\MinFirma.ledger
+
+# These are equivalent:
+Get-LedgerBalance
+Get-LedgerBalance -FiscalYear '2024-01_2024-12'
+Get-LedgerLatestFiscalYear | Get-LedgerBalance
+
+# Navigate through fiscal years
+Get-LedgerFirstFiscalYear | Get-LedgerNextFiscalYear | Get-LedgerBalance
+
+# Work with the latest open year specifically
+Get-LedgerLatestOpenFiscalYear | Add-LedgerEntry -Date '2024-06-15' `
+    -Description 'Försäljning' -Rows $rows
 ```
 
 ## Chart Templates

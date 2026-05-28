@@ -62,7 +62,8 @@ function Add-LedgerAccrual {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [Alias('Name')]
         [string]$FiscalYear,
 
         [Parameter(Mandatory)]
@@ -86,40 +87,44 @@ function Add-LedgerAccrual {
         [Parameter(Mandatory)]
         [datetime]$ReversalDate
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-    if ($Amount -le 0) {
-        throw "Amount must be positive. Got: $Amount"
-    }
+        if ($Amount -le 0) {
+            throw "Amount must be positive. Got: $Amount"
+        }
 
-    # Verify reversal fiscal year exists
-    $reversalYearDir = Join-Path $JournalPath $ReversalFiscalYear
-    if (-not (Test-Path $reversalYearDir)) {
-        throw "Reversal fiscal year '$ReversalFiscalYear' does not exist. Create it first with New-LedgerFiscalYear."
-    }
+        # Verify reversal fiscal year exists
+        $reversalYearDir = Join-Path $JournalPath $ReversalFiscalYear
+        if (-not (Test-Path $reversalYearDir)) {
+            throw "Reversal fiscal year '$ReversalFiscalYear' does not exist. Create it first with New-LedgerFiscalYear."
+        }
 
-    # Create accrual: debit balance sheet account, credit expense account
-    Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-        -Date $Date -Description "$Description (periodisering)" -Rows @(
-        @{ Account = $AccrualAccount; Amount = $Amount }
-        @{ Account = $ExpenseAccount; Amount = -$Amount }
-    )
+        # Create accrual: debit balance sheet account, credit expense account
+        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+            -Date $Date -Description "$Description (periodisering)" -Rows @(
+            @{ Account = $AccrualAccount; Amount = $Amount }
+            @{ Account = $ExpenseAccount; Amount = -$Amount }
+        )
 
-    # Create reversal: debit expense account, credit balance sheet account
-    Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $ReversalFiscalYear `
-        -Date $ReversalDate -Description "$Description (återföring)" -Rows @(
-        @{ Account = $ExpenseAccount; Amount = $Amount }
-        @{ Account = $AccrualAccount; Amount = -$Amount }
-    )
+        # Create reversal: debit expense account, credit balance sheet account
+        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $ReversalFiscalYear `
+            -Date $ReversalDate -Description "$Description (återföring)" -Rows @(
+            @{ Account = $ExpenseAccount; Amount = $Amount }
+            @{ Account = $AccrualAccount; Amount = -$Amount }
+        )
 
-    [PSCustomObject]@{
-        AccrualDate       = $Date
-        AccrualFiscalYear = $FiscalYear
-        ReversalDate      = $ReversalDate
-        ReversalFiscalYear = $ReversalFiscalYear
-        ExpenseAccount    = $ExpenseAccount
-        AccrualAccount    = $AccrualAccount
-        Amount            = $Amount
-        Description       = $Description
+        [PSCustomObject]@{
+            AccrualDate       = $Date
+            AccrualFiscalYear = $FiscalYear
+            ReversalDate      = $ReversalDate
+            ReversalFiscalYear = $ReversalFiscalYear
+            ExpenseAccount    = $ExpenseAccount
+            AccrualAccount    = $AccrualAccount
+            Amount            = $Amount
+            Description       = $Description
+        }
     }
 }
+

@@ -20,11 +20,20 @@
     validates it, and loads per-journal extensions
   - `Clear-LedgerJournal` — clears the default and unloads journal extensions
   - `Get-LedgerJournal -Current` — returns metadata for the current journal
+- **Fiscal year navigation** — pipeline-ready functions for iterating fiscal years:
+  - `Get-LedgerFirstFiscalYear` — returns the oldest fiscal year
+  - `Get-LedgerLatestFiscalYear` — returns the most recent fiscal year
+  - `Get-LedgerLatestOpenFiscalYear` — returns the most recent open fiscal year
+  - `Get-LedgerNextFiscalYear` — returns the next fiscal year (pipeline input)
 
 ### Changed
 - All 26 public commands that previously required `-JournalPath` now accept it
   as optional — when omitted, the current journal set via `Set-LedgerJournal`
   is used. If neither is provided, a clear error message guides the user.
+- All 13 commands with `-FiscalYear` now accept it as optional — when omitted,
+  the latest fiscal year is used automatically. The parameter also accepts
+  pipeline input via `ValueFromPipelineByPropertyName` (binds to the `Name`
+  property of fiscal year objects).
 - Module manifest `FunctionsToExport` changed to `'*'` to support dynamic
   extension loading; actual export list is controlled by `Export-ModuleMember`
   in the `.psm1`.

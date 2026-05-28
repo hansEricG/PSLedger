@@ -36,95 +36,100 @@ function Copy-LedgerOpeningBalance {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [Alias('Name')]
         [string]$FromFiscalYear,
 
         [Parameter(Mandatory)]
         [string]$ToFiscalYear
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $FromFiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FromFiscalYear -JournalPath $JournalPath
 
-    # Validate source fiscal year
-    $FromDir = Join-Path $JournalPath $FromFiscalYear
-    if (-not (Test-Path $FromDir -PathType Container)) {
-        throw "Source fiscal year not found: $FromFiscalYear"
-    }
-
-    # Validate target fiscal year
-    $ToDir = Join-Path $JournalPath $ToFiscalYear
-    if (-not (Test-Path $ToDir -PathType Container)) {
-        throw "Target fiscal year not found: $ToFiscalYear"
-    }
-
-    # Check target has no entries
-    $ExistingFiles = Get-ChildItem -Path $ToDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
-    if ($ExistingFiles) {
-        throw "Target fiscal year $ToFiscalYear already has verifications. Cannot create opening balance."
-    }
-
-    # Get balance accounts from source year
-    $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FromFiscalYear
-    if (-not $Balance) {
-        throw "No entries found in source fiscal year $FromFiscalYear."
-    }
-
-    # Filter to balance sheet accounts (1xxx and 2xxx)
-    $BalanceAccounts = $Balance | Where-Object { $_.AccountNumber -match '^[12]' -and $_.Balance -ne 0 }
-
-    # Calculate year's result from P&L accounts (3xxx-8xxx) and add to 2099
-    $PLAccounts = $Balance | Where-Object { $_.AccountNumber -match '^[3-8]' }
-    $YearResult = if ($PLAccounts) { ($PLAccounts | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
-
-    if (-not $BalanceAccounts -and $YearResult -eq 0) {
-        throw "No balance sheet accounts with non-zero balances in $FromFiscalYear."
-    }
-
-    # Merge year's result into account 2099
-    if ($YearResult -ne 0) {
-        $Existing2099 = $BalanceAccounts | Where-Object { $_.AccountNumber -eq '2099' }
-        if ($Existing2099) {
-            $BalanceAccounts = $BalanceAccounts | Where-Object { $_.AccountNumber -ne '2099' }
-            $YearResult += $Existing2099.Balance
+        # Validate source fiscal year
+        $FromDir = Join-Path $JournalPath $FromFiscalYear
+        if (-not (Test-Path $FromDir -PathType Container)) {
+            throw "Source fiscal year not found: $FromFiscalYear"
         }
-        $BalanceAccounts = @($BalanceAccounts) + @([PSCustomObject]@{
-            AccountNumber = '2099'
-            AccountName   = 'Årets resultat'
-            Debit         = [decimal]0
-            Credit        = [decimal]0
-            Balance       = $YearResult
-        })
-    }
 
-    if (-not $BalanceAccounts) {
-        throw "No balance sheet accounts with non-zero balances in $FromFiscalYear."
-    }
+        # Validate target fiscal year
+        $ToDir = Join-Path $JournalPath $ToFiscalYear
+        if (-not (Test-Path $ToDir -PathType Container)) {
+            throw "Target fiscal year not found: $ToFiscalYear"
+        }
 
-    # Get target year start date
-    $YearFile = Join-Path $ToDir 'year.txt'
-    $StartDate = $null
-    if (Test-Path $YearFile) {
-        foreach ($Line in (Get-Content $YearFile)) {
-            if ($Line -match '^StartDate:\s*(.+)$') {
-                $StartDate = $Matches[1]
-                break
+        # Check target has no entries
+        $ExistingFiles = Get-ChildItem -Path $ToDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
+        if ($ExistingFiles) {
+            throw "Target fiscal year $ToFiscalYear already has verifications. Cannot create opening balance."
+        }
+
+        # Get balance accounts from source year
+        $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FromFiscalYear
+        if (-not $Balance) {
+            throw "No entries found in source fiscal year $FromFiscalYear."
+        }
+
+        # Filter to balance sheet accounts (1xxx and 2xxx)
+        $BalanceAccounts = $Balance | Where-Object { $_.AccountNumber -match '^[12]' -and $_.Balance -ne 0 }
+
+        # Calculate year's result from P&L accounts (3xxx-8xxx) and add to 2099
+        $PLAccounts = $Balance | Where-Object { $_.AccountNumber -match '^[3-8]' }
+        $YearResult = if ($PLAccounts) { ($PLAccounts | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
+
+        if (-not $BalanceAccounts -and $YearResult -eq 0) {
+            throw "No balance sheet accounts with non-zero balances in $FromFiscalYear."
+        }
+
+        # Merge year's result into account 2099
+        if ($YearResult -ne 0) {
+            $Existing2099 = $BalanceAccounts | Where-Object { $_.AccountNumber -eq '2099' }
+            if ($Existing2099) {
+                $BalanceAccounts = $BalanceAccounts | Where-Object { $_.AccountNumber -ne '2099' }
+                $YearResult += $Existing2099.Balance
+            }
+            $BalanceAccounts = @($BalanceAccounts) + @([PSCustomObject]@{
+                AccountNumber = '2099'
+                AccountName   = 'Årets resultat'
+                Debit         = [decimal]0
+                Credit        = [decimal]0
+                Balance       = $YearResult
+            })
+        }
+
+        if (-not $BalanceAccounts) {
+            throw "No balance sheet accounts with non-zero balances in $FromFiscalYear."
+        }
+
+        # Get target year start date
+        $YearFile = Join-Path $ToDir 'year.txt'
+        $StartDate = $null
+        if (Test-Path $YearFile) {
+            foreach ($Line in (Get-Content $YearFile)) {
+                if ($Line -match '^StartDate:\s*(.+)$') {
+                    $StartDate = $Matches[1]
+                    break
+                }
             }
         }
-    }
-    if (-not $StartDate) {
-        throw "Cannot determine start date for target fiscal year $ToFiscalYear."
-    }
+        if (-not $StartDate) {
+            throw "Cannot determine start date for target fiscal year $ToFiscalYear."
+        }
 
-    # Build verification content
-    $Lines = @(
-        "Date: $StartDate"
-        "Description: Ingående balans"
-        ""
-    )
+        # Build verification content
+        $Lines = @(
+            "Date: $StartDate"
+            "Description: Ingående balans"
+            ""
+        )
 
-    foreach ($Acc in $BalanceAccounts) {
-        $Lines += "$($Acc.AccountNumber)`t$($Acc.Balance)"
+        foreach ($Acc in $BalanceAccounts) {
+            $Lines += "$($Acc.AccountNumber)`t$($Acc.Balance)"
+        }
+
+        $FilePath = Join-Path $ToDir 'ver0001.txt'
+        $Lines | Set-Content -Path $FilePath -Encoding UTF8
     }
-
-    $FilePath = Join-Path $ToDir 'ver0001.txt'
-    $Lines | Set-Content -Path $FilePath -Encoding UTF8
 }
+

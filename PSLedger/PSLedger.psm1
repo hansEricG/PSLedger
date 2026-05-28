@@ -6,6 +6,7 @@
 . $PSScriptRoot\Private\ObjectTagFormat.ps1
 . $PSScriptRoot\Private\ExtensionLoader.ps1
 . $PSScriptRoot\Private\ResolveJournalPath.ps1
+. $PSScriptRoot\Private\ResolveFiscalYear.ps1
 
 # Module-level state
 $script:CurrentJournalPath = $null
@@ -43,6 +44,10 @@ $script:CurrentJournalPath = $null
 . $PSScriptRoot\Public\Get-LedgerExtension.ps1
 . $PSScriptRoot\Public\Set-LedgerJournal.ps1
 . $PSScriptRoot\Public\Clear-LedgerJournal.ps1
+. $PSScriptRoot\Public\Get-LedgerFirstFiscalYear.ps1
+. $PSScriptRoot\Public\Get-LedgerLatestFiscalYear.ps1
+. $PSScriptRoot\Public\Get-LedgerLatestOpenFiscalYear.ps1
+. $PSScriptRoot\Public\Get-LedgerNextFiscalYear.ps1
 
 # Export built-in public functions
 $script:BuiltInFunctions = @(
@@ -55,7 +60,9 @@ $script:BuiltInFunctions = @(
     'Add-LedgerObject', 'Get-LedgerObject', 'Add-LedgerAccrual',
     'New-LedgerRecurringEntry', 'Get-LedgerRecurringEntry',
     'Remove-LedgerRecurringEntry', 'Invoke-LedgerRecurringEntry',
-    'Get-LedgerExtension', 'Set-LedgerJournal', 'Clear-LedgerJournal'
+    'Get-LedgerExtension', 'Set-LedgerJournal', 'Clear-LedgerJournal',
+    'Get-LedgerFirstFiscalYear', 'Get-LedgerLatestFiscalYear',
+    'Get-LedgerLatestOpenFiscalYear', 'Get-LedgerNextFiscalYear'
 )
 
 # Load extensions at module scope (env variable — semicolon-separated paths)

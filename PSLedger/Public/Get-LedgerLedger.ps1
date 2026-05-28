@@ -40,7 +40,8 @@ function Get-LedgerLedger {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [Alias('Name')]
         [string]$FiscalYear,
 
         [Parameter(Mandatory)]
@@ -50,37 +51,41 @@ function Get-LedgerLedger {
 
         [datetime]$ToDate
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-    $entries = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Account $Account
+        $entries = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Account $Account
 
-    if (-not $entries) { return }
+        if (-not $entries) { return }
 
-    $sorted = $entries | Sort-Object { [datetime]$_.Date }, VerificationNumber
+        $sorted = $entries | Sort-Object { [datetime]$_.Date }, VerificationNumber
 
-    $balance = [decimal]0
+        $balance = [decimal]0
 
-    foreach ($entry in $sorted) {
-        $entryDate = [datetime]$entry.Date
-        if ($FromDate -and $entryDate -lt $FromDate) { continue }
-        if ($ToDate -and $entryDate -gt $ToDate) { continue }
+        foreach ($entry in $sorted) {
+            $entryDate = [datetime]$entry.Date
+            if ($FromDate -and $entryDate -lt $FromDate) { continue }
+            if ($ToDate -and $entryDate -gt $ToDate) { continue }
 
-        foreach ($row in $entry.Rows) {
-            if ($row.Account -ne $Account) { continue }
+            foreach ($row in $entry.Rows) {
+                if ($row.Account -ne $Account) { continue }
 
-            $amount = [decimal]$row.Amount
-            $debit = if ($amount -gt 0) { $amount } else { [decimal]0 }
-            $credit = if ($amount -lt 0) { [Math]::Abs($amount) } else { [decimal]0 }
-            $balance += $amount
+                $amount = [decimal]$row.Amount
+                $debit = if ($amount -gt 0) { $amount } else { [decimal]0 }
+                $credit = if ($amount -lt 0) { [Math]::Abs($amount) } else { [decimal]0 }
+                $balance += $amount
 
-            [PSCustomObject]@{
-                VerificationNumber = $entry.VerificationNumber
-                Date               = $entry.Date
-                Description        = $entry.Description
-                Debit              = $debit
-                Credit             = $credit
-                Balance            = $balance
+                [PSCustomObject]@{
+                    VerificationNumber = $entry.VerificationNumber
+                    Date               = $entry.Date
+                    Description        = $entry.Description
+                    Debit              = $debit
+                    Credit             = $credit
+                    Balance            = $balance
+                }
             }
         }
     }
 }
+

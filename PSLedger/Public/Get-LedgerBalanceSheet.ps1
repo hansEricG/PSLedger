@@ -31,25 +31,30 @@ function Get-LedgerBalanceSheet {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [Alias('Name')]
         [string]$FiscalYear
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-    $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
-    if (-not $Balance) {
-        return
+        $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+        if (-not $Balance) {
+            return
+        }
+
+        $Assets = $Balance | Where-Object { $_.AccountNumber -like '1*' }
+        $EquityAndLiabilities = $Balance | Where-Object { $_.AccountNumber -like '2*' }
+
+        $AssetsTotal = if ($Assets) { ($Assets | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
+        # Equity/liabilities have negative balance (credit side), negate for display
+        $EquityTotal = if ($EquityAndLiabilities) { -($EquityAndLiabilities | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
+
+        @(
+            [PSCustomObject]@{ Group = 'Assets'; Label = 'Tillgångar'; Amount = $AssetsTotal }
+            [PSCustomObject]@{ Group = 'EquityAndLiabilities'; Label = 'Eget kapital och skulder'; Amount = $EquityTotal }
+        )
     }
-
-    $Assets = $Balance | Where-Object { $_.AccountNumber -like '1*' }
-    $EquityAndLiabilities = $Balance | Where-Object { $_.AccountNumber -like '2*' }
-
-    $AssetsTotal = if ($Assets) { ($Assets | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
-    # Equity/liabilities have negative balance (credit side), negate for display
-    $EquityTotal = if ($EquityAndLiabilities) { -($EquityAndLiabilities | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
-
-    @(
-        [PSCustomObject]@{ Group = 'Assets'; Label = 'Tillgångar'; Amount = $AssetsTotal }
-        [PSCustomObject]@{ Group = 'EquityAndLiabilities'; Label = 'Eget kapital och skulder'; Amount = $EquityTotal }
-    )
 }
+

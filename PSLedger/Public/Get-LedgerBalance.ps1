@@ -30,68 +30,73 @@ function Get-LedgerBalance {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [Alias('Name')]
         [string]$FiscalYear
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-    $YearDir = Join-Path $JournalPath $FiscalYear
-    if (-not (Test-Path $YearDir -PathType Container)) {
-        throw "Fiscal year not found: $FiscalYear"
-    }
-
-    # Load chart of accounts for name lookup
-    $AccountNames = @{}
-    $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
-    if (Test-Path $KontoplanFile) {
-        foreach ($Line in (Get-Content $KontoplanFile)) {
-            if ($Line -match '^(\d+)\t(.+)$') {
-                $AccountNames[$Matches[1]] = $Matches[2]
-            }
+        $YearDir = Join-Path $JournalPath $FiscalYear
+        if (-not (Test-Path $YearDir -PathType Container)) {
+            throw "Fiscal year not found: $FiscalYear"
         }
-    }
 
-    # Read all verification files
-    $Files = Get-ChildItem -Path $YearDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
-    if (-not $Files) {
-        return
-    }
-
-    # Aggregate amounts per account
-    $Totals = @{}
-
-    foreach ($File in $Files) {
-        foreach ($Line in (Get-Content $File.FullName)) {
-            if ($Line -match '^(\d+)\t(.+)$') {
-                $AccNum = $Matches[1]
-                $Amount = [decimal]$Matches[2]
-
-                if (-not $Totals.ContainsKey($AccNum)) {
-                    $Totals[$AccNum] = @{ Debit = [decimal]0; Credit = [decimal]0 }
-                }
-
-                if ($Amount -gt 0) {
-                    $Totals[$AccNum].Debit += $Amount
-                }
-                elseif ($Amount -lt 0) {
-                    $Totals[$AccNum].Credit += [Math]::Abs($Amount)
+        # Load chart of accounts for name lookup
+        $AccountNames = @{}
+        $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
+        if (Test-Path $KontoplanFile) {
+            foreach ($Line in (Get-Content $KontoplanFile)) {
+                if ($Line -match '^(\d+)\t(.+)$') {
+                    $AccountNames[$Matches[1]] = $Matches[2]
                 }
             }
         }
-    }
 
-    # Build sorted result
-    $Totals.GetEnumerator() | Sort-Object Key | ForEach-Object {
-        $AccNum = $_.Key
-        $Debit = $_.Value.Debit
-        $Credit = $_.Value.Credit
+        # Read all verification files
+        $Files = Get-ChildItem -Path $YearDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
+        if (-not $Files) {
+            return
+        }
 
-        [PSCustomObject]@{
-            AccountNumber = $AccNum
-            AccountName   = if ($AccountNames.ContainsKey($AccNum)) { $AccountNames[$AccNum] } else { '' }
-            Debit         = $Debit
-            Credit        = $Credit
-            Balance       = $Debit - $Credit
+        # Aggregate amounts per account
+        $Totals = @{}
+
+        foreach ($File in $Files) {
+            foreach ($Line in (Get-Content $File.FullName)) {
+                if ($Line -match '^(\d+)\t(.+)$') {
+                    $AccNum = $Matches[1]
+                    $Amount = [decimal]$Matches[2]
+
+                    if (-not $Totals.ContainsKey($AccNum)) {
+                        $Totals[$AccNum] = @{ Debit = [decimal]0; Credit = [decimal]0 }
+                    }
+
+                    if ($Amount -gt 0) {
+                        $Totals[$AccNum].Debit += $Amount
+                    }
+                    elseif ($Amount -lt 0) {
+                        $Totals[$AccNum].Credit += [Math]::Abs($Amount)
+                    }
+                }
+            }
+        }
+
+        # Build sorted result
+        $Totals.GetEnumerator() | Sort-Object Key | ForEach-Object {
+            $AccNum = $_.Key
+            $Debit = $_.Value.Debit
+            $Credit = $_.Value.Credit
+
+            [PSCustomObject]@{
+                AccountNumber = $AccNum
+                AccountName   = if ($AccountNames.ContainsKey($AccNum)) { $AccountNames[$AccNum] } else { '' }
+                Debit         = $Debit
+                Credit        = $Credit
+                Balance       = $Debit - $Credit
+            }
         }
     }
 }
+
