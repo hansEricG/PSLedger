@@ -59,7 +59,7 @@ in January.
 function Add-LedgerAccrual {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -86,6 +86,7 @@ function Add-LedgerAccrual {
         [Parameter(Mandatory)]
         [datetime]$ReversalDate
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     if ($Amount -le 0) {
         throw "Amount must be positive. Got: $Amount"

@@ -33,7 +33,7 @@ Typical year-end workflow: close old year, create new, copy balances.
 function Copy-LedgerOpeningBalance {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -42,6 +42,7 @@ function Copy-LedgerOpeningBalance {
         [Parameter(Mandatory)]
         [string]$ToFiscalYear
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     # Validate source fiscal year
     $FromDir = Join-Path $JournalPath $FromFiscalYear

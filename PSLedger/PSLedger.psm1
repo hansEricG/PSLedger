@@ -4,6 +4,11 @@
 . $PSScriptRoot\Private\SieWriter.ps1
 . $PSScriptRoot\Private\VatBasMapping.ps1
 . $PSScriptRoot\Private\ObjectTagFormat.ps1
+. $PSScriptRoot\Private\ExtensionLoader.ps1
+. $PSScriptRoot\Private\ResolveJournalPath.ps1
+
+# Module-level state
+$script:CurrentJournalPath = $null
 
 # Public functions
 . $PSScriptRoot\Public\New-LedgerJournal.ps1
@@ -35,5 +40,72 @@
 . $PSScriptRoot\Public\Get-LedgerRecurringEntry.ps1
 . $PSScriptRoot\Public\Remove-LedgerRecurringEntry.ps1
 . $PSScriptRoot\Public\Invoke-LedgerRecurringEntry.ps1
+. $PSScriptRoot\Public\Get-LedgerExtension.ps1
+. $PSScriptRoot\Public\Set-LedgerJournal.ps1
+. $PSScriptRoot\Public\Clear-LedgerJournal.ps1
 
-Export-ModuleMember -Function New-LedgerJournal, Get-LedgerJournal, Add-LedgerAccount, Get-LedgerAccount, New-LedgerFiscalYear, Add-LedgerEntry, Get-LedgerEntry, Get-LedgerBalance, Get-LedgerFiscalYear, Close-LedgerFiscalYear, Import-LedgerChart, Get-LedgerIncomeStatement, Get-LedgerBalanceSheet, Copy-LedgerOpeningBalance, Add-LedgerReversal, Test-LedgerSie, Export-LedgerSie, Import-LedgerSie, Get-LedgerLedger, Get-LedgerVatReport, Add-LedgerDimension, Get-LedgerDimension, Add-LedgerObject, Get-LedgerObject, Add-LedgerAccrual, New-LedgerRecurringEntry, Get-LedgerRecurringEntry, Remove-LedgerRecurringEntry, Invoke-LedgerRecurringEntry
+# Export built-in public functions
+$script:BuiltInFunctions = @(
+    'New-LedgerJournal', 'Get-LedgerJournal', 'Add-LedgerAccount', 'Get-LedgerAccount',
+    'New-LedgerFiscalYear', 'Add-LedgerEntry', 'Get-LedgerEntry', 'Get-LedgerBalance',
+    'Get-LedgerFiscalYear', 'Close-LedgerFiscalYear', 'Import-LedgerChart',
+    'Get-LedgerIncomeStatement', 'Get-LedgerBalanceSheet', 'Copy-LedgerOpeningBalance',
+    'Add-LedgerReversal', 'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie',
+    'Get-LedgerLedger', 'Get-LedgerVatReport', 'Add-LedgerDimension', 'Get-LedgerDimension',
+    'Add-LedgerObject', 'Get-LedgerObject', 'Add-LedgerAccrual',
+    'New-LedgerRecurringEntry', 'Get-LedgerRecurringEntry',
+    'Remove-LedgerRecurringEntry', 'Invoke-LedgerRecurringEntry',
+    'Get-LedgerExtension', 'Set-LedgerJournal', 'Clear-LedgerJournal'
+)
+
+# Load extensions at module scope (env variable — semicolon-separated paths)
+$script:ExtensionFunctions = @()
+
+if ($env:PSLEDGER_EXTENSIONS) {
+    foreach ($extPath in $env:PSLEDGER_EXTENSIONS -split ';') {
+        $extPath = $extPath.Trim()
+        if ($extPath -and (Test-Path $extPath -PathType Container)) {
+            $files = Get-ChildItem -Path $extPath -Filter '*.ps1' -File | Sort-Object Name
+            foreach ($file in $files) {
+                $funcsBefore = (Get-ChildItem function:).Name
+                try {
+                    . $file.FullName
+                }
+                catch {
+                    Write-Warning "PSLedger extension failed to load: $($file.FullName) — $($_.Exception.Message)"
+                    continue
+                }
+                $funcsAfter = (Get-ChildItem function:).Name
+                $newFuncs = @($funcsAfter | Where-Object { $_ -notin $funcsBefore })
+                $script:ExtensionFunctions += $newFuncs
+                Register-LedgerExtension -Name $file.BaseName -Path $file.FullName -Source 'Env' -Functions $newFuncs
+            }
+        }
+    }
+}
+
+# Load extensions from user-level directory
+$userExtPath = if ($env:PSLEDGER_USER_EXTENSIONS) {
+    $env:PSLEDGER_USER_EXTENSIONS
+} else {
+    Join-Path $HOME '.psledger' 'Extensions'
+}
+if (Test-Path $userExtPath -PathType Container) {
+    $files = Get-ChildItem -Path $userExtPath -Filter '*.ps1' -File | Sort-Object Name
+    foreach ($file in $files) {
+        $funcsBefore = (Get-ChildItem function:).Name
+        try {
+            . $file.FullName
+        }
+        catch {
+            Write-Warning "PSLedger extension failed to load: $($file.FullName) — $($_.Exception.Message)"
+            continue
+        }
+        $funcsAfter = (Get-ChildItem function:).Name
+        $newFuncs = @($funcsAfter | Where-Object { $_ -notin $funcsBefore })
+        $script:ExtensionFunctions += $newFuncs
+        Register-LedgerExtension -Name $file.BaseName -Path $file.FullName -Source 'User' -Functions $newFuncs
+    }
+}
+
+Export-ModuleMember -Function ($script:BuiltInFunctions + $script:ExtensionFunctions)

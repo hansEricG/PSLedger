@@ -35,7 +35,7 @@ Exports a broken fiscal year, overwriting any existing destination file.
 function Export-LedgerSie {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -46,6 +46,7 @@ function Export-LedgerSie {
 
         [switch]$Force
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     if (-not (Test-Path $JournalPath -PathType Container)) {
         throw "Journal not found: $JournalPath"

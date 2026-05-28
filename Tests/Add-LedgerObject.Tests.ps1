@@ -19,8 +19,9 @@ Describe 'Add-LedgerObject' {
             Test-TDDCmdletBinding $Command | Should -BeTrue
         }
 
-        It 'Should have mandatory JournalPath, DimensionNumber, ObjectNumber and Name' {
-            foreach ($p in 'JournalPath', 'DimensionNumber', 'ObjectNumber', 'Name') {
+        It 'Should have an optional JournalPath parameter and mandatory DimensionNumber, ObjectNumber and Name' {
+            $Command.Parameters['JournalPath'].Attributes.Mandatory | Should -Not -Contain $true
+            foreach ($p in 'DimensionNumber', 'ObjectNumber', 'Name') {
                 $Command.Parameters[$p].Attributes.Mandatory | Should -Contain $true
             }
         }

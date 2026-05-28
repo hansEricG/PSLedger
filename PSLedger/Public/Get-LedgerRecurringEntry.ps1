@@ -25,11 +25,12 @@ Returns the specific recurring entry template named 'Hyra'.
 function Get-LedgerRecurringEntry {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [string]$Name
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $recurringDir = Join-Path $JournalPath 'recurring'
     if (-not (Test-Path $recurringDir)) { return }

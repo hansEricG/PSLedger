@@ -46,7 +46,7 @@ Records an office rent invoice with VAT split across multiple accounts.
 function Add-LedgerEntry {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -61,6 +61,7 @@ function Add-LedgerEntry {
         [Parameter(Mandatory)]
         [hashtable[]]$Rows
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $YearDir = Join-Path $JournalPath $FiscalYear
     if (-not (Test-Path $YearDir -PathType Container)) {

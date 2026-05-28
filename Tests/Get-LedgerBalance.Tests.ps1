@@ -19,11 +19,11 @@ Describe 'Get-LedgerBalance' {
             Test-TDDCmdletBinding $Command | Should -BeTrue
         }
 
-        It 'Should have a mandatory JournalPath parameter of type String' {
+        It 'Should have a JournalPath parameter of type String' {
             $Param = $Command.Parameters['JournalPath']
             $Param | Should -Not -BeNullOrEmpty
             $Param.ParameterType.Name | Should -Be 'String'
-            $Param.Attributes.Mandatory | Should -Contain $true
+            $Param.Attributes.Mandatory | Should -Not -Contain $true
         }
 
         It 'Should have a mandatory FiscalYear parameter of type String' {

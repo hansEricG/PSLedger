@@ -69,19 +69,9 @@ PowerShellVersion = '5.1'
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = 'New-LedgerJournal', 'Get-LedgerJournal', 'Add-LedgerAccount', 
-               'Get-LedgerAccount', 'New-LedgerFiscalYear', 'Add-LedgerEntry', 
-               'Get-LedgerEntry', 'Get-LedgerBalance', 'Get-LedgerFiscalYear',
-               'Close-LedgerFiscalYear', 'Import-LedgerChart',
-               'Get-LedgerIncomeStatement', 'Get-LedgerBalanceSheet',
-               'Copy-LedgerOpeningBalance', 'Add-LedgerReversal',
-               'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie',
-               'Get-LedgerLedger', 'Get-LedgerVatReport',
-               'Add-LedgerDimension', 'Get-LedgerDimension',
-               'Add-LedgerObject', 'Get-LedgerObject',
-               'Add-LedgerAccrual',
-               'New-LedgerRecurringEntry', 'Get-LedgerRecurringEntry',
-               'Remove-LedgerRecurringEntry', 'Invoke-LedgerRecurringEntry'
+# Functions to export from this module — '*' allows dynamic extension loading.
+# Built-in functions are controlled by Export-ModuleMember in PSLedger.psm1.
+FunctionsToExport = '*'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()

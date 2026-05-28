@@ -29,7 +29,7 @@ Add-LedgerAccount -JournalPath .\MinFirma.ledger -AccountNumber '5010' -AccountN
 function Add-LedgerAccount {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -38,6 +38,7 @@ function Add-LedgerAccount {
         [Parameter(Mandatory)]
         [string]$AccountName
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     if (-not (Test-Path $JournalPath -PathType Container)) {
         throw "Journal not found: $JournalPath"

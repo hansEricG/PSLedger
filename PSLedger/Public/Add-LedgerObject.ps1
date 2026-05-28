@@ -32,7 +32,7 @@ Adds project 'proj-a' to dimension 2 (Projekt).
 function Add-LedgerObject {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -44,6 +44,7 @@ function Add-LedgerObject {
         [Parameter(Mandatory)]
         [string]$Name
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     if (-not (Test-Path $JournalPath -PathType Container)) {
         throw "Journal not found: $JournalPath"

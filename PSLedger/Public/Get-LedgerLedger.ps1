@@ -37,7 +37,7 @@ Displays Q2 activity for the sales account as a formatted table.
 function Get-LedgerLedger {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -50,6 +50,7 @@ function Get-LedgerLedger {
 
         [datetime]$ToDate
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $entries = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Account $Account
 

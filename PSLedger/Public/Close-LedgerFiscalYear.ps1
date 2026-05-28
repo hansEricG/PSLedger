@@ -28,12 +28,13 @@ Closes all open fiscal years.
 function Close-LedgerFiscalYear {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
         [string]$FiscalYear
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $YearDir = Join-Path $JournalPath $FiscalYear
     if (-not (Test-Path $YearDir -PathType Container)) {

@@ -19,8 +19,9 @@ Describe 'Add-LedgerDimension' {
             Test-TDDCmdletBinding $Command | Should -BeTrue
         }
 
-        It 'Should have mandatory JournalPath, DimensionNumber and Name parameters' {
-            foreach ($p in 'JournalPath', 'DimensionNumber', 'Name') {
+        It 'Should have an optional JournalPath parameter and mandatory DimensionNumber and Name parameters' {
+            $Command.Parameters['JournalPath'].Attributes.Mandatory | Should -Not -Contain $true
+            foreach ($p in 'DimensionNumber', 'Name') {
                 $Command.Parameters[$p].Attributes.Mandatory | Should -Contain $true
             }
         }

@@ -9,9 +9,9 @@ Describe 'Add-LedgerAccrual' {
             $cmd.CmdletBinding | Should -BeTrue
         }
 
-        It 'Should have mandatory JournalPath parameter' {
+        It 'Should have an optional JournalPath parameter' {
             $param = (Get-Command Add-LedgerAccrual).Parameters['JournalPath']
-            $param.Attributes.Where({ $_ -is [System.Management.Automation.ParameterAttribute] }).Mandatory | Should -BeTrue
+            $param.Attributes.Where({ $_ -is [System.Management.Automation.ParameterAttribute] }).Mandatory | Should -BeFalse
         }
 
         It 'Should have mandatory Amount parameter of type decimal' {

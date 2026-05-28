@@ -28,12 +28,13 @@ Displays the income statement as a formatted table.
 function Get-LedgerIncomeStatement {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
         [string]$FiscalYear
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
     if (-not $Balance) {

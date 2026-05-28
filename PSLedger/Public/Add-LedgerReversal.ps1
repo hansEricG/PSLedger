@@ -33,7 +33,7 @@ Creates a reversal of entry #5 dated 2024-06-30.
 function Add-LedgerReversal {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -44,6 +44,7 @@ function Add-LedgerReversal {
 
         [datetime]$Date = (Get-Date)
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     # Get the original entry
     $Original = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber $VerificationNumber

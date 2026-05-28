@@ -29,7 +29,7 @@ Adds dimension 2 named 'Projekt' for project-based tracking.
 function Add-LedgerDimension {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -38,6 +38,7 @@ function Add-LedgerDimension {
         [Parameter(Mandatory)]
         [string]$Name
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     if (-not (Test-Path $JournalPath -PathType Container)) {
         throw "Journal not found: $JournalPath"

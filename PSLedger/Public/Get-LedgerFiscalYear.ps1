@@ -24,9 +24,10 @@ Returns only open (unlocked) fiscal years.
 function Get-LedgerFiscalYear {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     if (-not (Test-Path $JournalPath -PathType Container)) {
         throw "Journal not found: $JournalPath"

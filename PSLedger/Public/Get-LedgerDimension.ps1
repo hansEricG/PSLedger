@@ -25,11 +25,12 @@ Returns only dimension 1 (e.g. Kostnadsställe).
 function Get-LedgerDimension {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [int]$DimensionNumber
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     if (-not (Test-Path $JournalPath -PathType Container)) {
         throw "Journal not found: $JournalPath"

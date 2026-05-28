@@ -33,13 +33,14 @@ Generates pending entries for the 'Hyra' template through June 30, 2024.
 function Invoke-LedgerRecurringEntry {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [datetime]$Through = (Get-Date).Date,
 
         [string]$Name
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $templates = if ($Name) {
         @(Get-LedgerRecurringEntry -JournalPath $JournalPath -Name $Name)

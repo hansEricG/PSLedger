@@ -29,13 +29,14 @@ Returns all cost centres (dimension 1 objects).
 function Get-LedgerObject {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [int]$DimensionNumber,
 
         [string]$ObjectNumber
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     if (-not (Test-Path $JournalPath -PathType Container)) {
         throw "Journal not found: $JournalPath"

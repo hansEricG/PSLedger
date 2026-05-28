@@ -26,12 +26,13 @@ Removes all expired recurring entry templates.
 function Remove-LedgerRecurringEntry {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
         [string]$Name
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $recurringDir = Join-Path $JournalPath 'recurring'
     $filePath = Join-Path $recurringDir "$Name.txt"

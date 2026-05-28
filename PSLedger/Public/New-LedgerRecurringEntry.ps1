@@ -57,7 +57,7 @@ Creates a monthly recurring entry for a phone subscription with VAT.
 function New-LedgerRecurringEntry {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -83,6 +83,7 @@ function New-LedgerRecurringEntry {
         [Parameter(Mandatory)]
         [hashtable[]]$Rows
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $recurringDir = Join-Path $JournalPath 'recurring'
     if (-not (Test-Path $recurringDir)) {

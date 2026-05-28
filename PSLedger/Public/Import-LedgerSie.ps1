@@ -38,7 +38,7 @@ referenced accounts on the fly.
 function Import-LedgerSie {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -49,6 +49,7 @@ function Import-LedgerSie {
 
         [switch]$CreateMissingAccounts
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     if (-not (Test-Path $JournalPath -PathType Container)) {
         throw "Journal not found: $JournalPath"

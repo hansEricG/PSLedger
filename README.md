@@ -15,6 +15,8 @@ A simple command-line double-entry bookkeeping system built as a PowerShell modu
 - **Dimensions & objects** — cost centres, projects with SIE round-trip support
 - **Accruals** — automated accrual + reversal across fiscal years
 - **Recurring entries** — monthly templates with idempotent auto-generation
+- **Custom extensions** — load your own functions from `$HOME\.psledger\Extensions\` or per-journal
+- **Current journal** — set a session default to skip `-JournalPath` on every call
 
 ## Quick Start
 
@@ -24,32 +26,31 @@ Import-Module PSLedger
 # 1. Create a journal
 New-LedgerJournal -Path .\MinFirma.ledger -Name 'MinFirma AB' -OrgNumber '556677-8899'
 
-# 2. Import a chart of accounts
-Import-LedgerChart -JournalPath .\MinFirma.ledger -Template 'BAS-Smaforetag'
+# 2. Set it as current (optional — saves typing -JournalPath on every command)
+Set-LedgerJournal -Path .\MinFirma.ledger
 
-# 3. Create a fiscal year
-New-LedgerFiscalYear -JournalPath .\MinFirma.ledger -StartDate '2024-01-01' -EndDate '2024-12-31'
+# 3. Import a chart of accounts
+Import-LedgerChart -Template 'BAS-Smaforetag'
 
-# 4. Add entries
+# 4. Create a fiscal year
+New-LedgerFiscalYear -StartDate '2024-01-01' -EndDate '2024-12-31'
+
+# 5. Add entries
 $rows = @(
     @{ Account = '1910'; Amount = 50000 }
     @{ Account = '3040'; Amount = -50000 }
 )
-Add-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' `
+Add-LedgerEntry -FiscalYear '2024-01_2024-12' `
     -Date '2024-03-15' -Description 'Konsultarvode faktura #101' -Rows $rows
 
-# 5. View reports
-Get-LedgerBalance -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' |
+# 6. View reports
+Get-LedgerBalance -FiscalYear '2024-01_2024-12' |
     Format-Table AccountNumber, AccountName, Debit, Credit, Balance
 
-Get-LedgerIncomeStatement -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' |
-    Format-Table Group, Label, @{N='Amount';E={'{0:N0} kr' -f $_.Amount};A='Right'}
-
-# 6. Year-end
-Close-LedgerFiscalYear -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
-New-LedgerFiscalYear -JournalPath .\MinFirma.ledger -StartDate '2025-01-01' -EndDate '2025-12-31'
-Copy-LedgerOpeningBalance -JournalPath .\MinFirma.ledger `
-    -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
+# 7. Year-end
+Close-LedgerFiscalYear -FiscalYear '2024-01_2024-12'
+New-LedgerFiscalYear -StartDate '2025-01-01' -EndDate '2025-12-31'
+Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
 ```
 
 ## Commands
@@ -85,6 +86,9 @@ Copy-LedgerOpeningBalance -JournalPath .\MinFirma.ledger `
 | `Get-LedgerRecurringEntry` | List recurring entry templates |
 | `Remove-LedgerRecurringEntry` | Remove a recurring entry template |
 | `Invoke-LedgerRecurringEntry` | Generate entries from templates |
+| `Set-LedgerJournal` | Set session default journal (skip `-JournalPath`) |
+| `Clear-LedgerJournal` | Clear session default journal |
+| `Get-LedgerExtension` | List loaded custom extensions |
 
 ## SIE Import/Export
 
@@ -157,6 +161,57 @@ New-LedgerRecurringEntry -JournalPath .\MinFirma.ledger -Name 'Hyra' `
 Invoke-LedgerRecurringEntry -JournalPath .\MinFirma.ledger
 ```
 
+## Custom Extensions
+
+Extend PSLedger with your own PowerShell functions. Extensions are `.ps1` files
+loaded from configurable directories:
+
+| Source | Path | Loaded when |
+|--------|------|-------------|
+| Environment | `$env:PSLEDGER_EXTENSIONS` (semicolon-separated) | Module import |
+| User | `$HOME\.psledger\Extensions\` (or `$env:PSLEDGER_USER_EXTENSIONS`) | Module import |
+| Journal | `<journal>\Extensions\` | `Set-LedgerJournal` is called |
+
+**Env/User extensions** are dot-sourced into the module scope and can use internal
+helpers. **Journal extensions** are loaded at runtime into global scope and can
+call all public PSLedger commands.
+
+### Example: Custom quick-entry function
+
+Create `$HOME\.psledger\Extensions\Add-PreliminärskattEntry.ps1`:
+
+```powershell
+function Add-PreliminärskattEntry {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)][decimal]$Amount,
+        [Parameter(Mandatory)][datetime]$Date,
+        [Parameter(Mandatory)][string]$FiscalYear
+    )
+
+    $rows = @(
+        @{ Account = '2518'; Amount = -$Amount }
+        @{ Account = '1630'; Amount = $Amount }
+    )
+    Add-LedgerEntry -FiscalYear $FiscalYear -Date $Date `
+        -Description "Preliminärskatt $($Date.ToString('yyyy-MM'))" -Rows $rows
+}
+```
+
+Then use it:
+
+```powershell
+Set-LedgerJournal -Path .\MinFirma.ledger
+Add-PreliminärskattEntry -Amount 12000 -Date '2024-02-12' -FiscalYear '2024-01_2024-12'
+```
+
+### Listing loaded extensions
+
+```powershell
+Get-LedgerExtension                  # all loaded extensions
+Get-LedgerExtension -Source Journal  # only per-journal extensions
+```
+
 ## Chart Templates
 
 List available templates:
@@ -187,6 +242,8 @@ MinFirma.ledger/
 ├── objects.txt              # Tab-separated: 1\tsthlm\tStockholm
 ├── recurring/               # Recurring entry templates
 │   └── Hyra.txt
+├── Extensions/              # Per-journal custom extensions (.ps1)
+│   └── Add-PreliminärskattEntry.ps1
 └── 2024-01_2024-12/         # Fiscal year
     ├── year.txt             # StartDate, EndDate, Status
     ├── ver0001.txt          # Verification #1

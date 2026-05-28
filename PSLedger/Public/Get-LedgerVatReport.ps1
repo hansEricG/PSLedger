@@ -44,7 +44,7 @@ Displays January's VAT report as a formatted table.
 function Get-LedgerVatReport {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -56,6 +56,7 @@ function Get-LedgerVatReport {
         [Parameter(Mandatory)]
         [datetime]$ToDate
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $entries = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
         -FromDate $FromDate -ToDate $ToDate

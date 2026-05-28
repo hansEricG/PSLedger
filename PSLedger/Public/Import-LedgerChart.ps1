@@ -44,8 +44,8 @@ Imports a custom chart file, replacing any existing accounts.
 function Import-LedgerChart {
     [CmdletBinding(DefaultParameterSetName = 'Template')]
     param (
-        [Parameter(Mandatory, ParameterSetName = 'Template')]
-        [Parameter(Mandatory, ParameterSetName = 'File')]
+        [Parameter(ParameterSetName = 'Template')]
+        [Parameter(ParameterSetName = 'File')]
         [string]$JournalPath,
 
         [Parameter(Mandatory, ParameterSetName = 'Template')]
@@ -61,6 +61,7 @@ function Import-LedgerChart {
         [Parameter(ParameterSetName = 'File')]
         [switch]$Force
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $TemplateDir = Join-Path $PSScriptRoot '..' 'Data' 'ChartTemplates'
 

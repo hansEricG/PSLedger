@@ -45,7 +45,7 @@ Returns all verifications from March 2024.
 function Get-LedgerEntry {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory)]
+        [Parameter()]
         [string]$JournalPath,
 
         [Parameter(Mandatory)]
@@ -59,6 +59,7 @@ function Get-LedgerEntry {
 
         [datetime]$ToDate
     )
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $YearDir = Join-Path $JournalPath $FiscalYear
     if (-not (Test-Path $YearDir -PathType Container)) {

@@ -52,11 +52,20 @@ Describe 'Import-LedgerChart' {
 
     Context 'ListAvailable' {
         It 'Should return available template names' {
-            $Result = Import-LedgerChart -ListAvailable
+            $JournalPath = Join-Path $TestDrive 'listavailable.ledger'
+            New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB'
+            Set-LedgerJournal -Path $JournalPath
 
-            $Result | Should -Contain 'BAS-Mini'
-            $Result | Should -Contain 'BAS-Smaforetag'
-            $Result | Should -Contain 'BAS-Komplett'
+            try {
+                $Result = Import-LedgerChart -ListAvailable
+
+                $Result | Should -Contain 'BAS-Mini'
+                $Result | Should -Contain 'BAS-Smaforetag'
+                $Result | Should -Contain 'BAS-Komplett'
+            }
+            finally {
+                Clear-LedgerJournal
+            }
         }
     }
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Custom extensions** — load user-defined `.ps1` functions into PSLedger:
+  - Extensions loaded from `$env:PSLEDGER_EXTENSIONS` (semicolon-separated paths)
+  - Extensions loaded from `$HOME\.psledger\Extensions\` (or
+    `$env:PSLEDGER_USER_EXTENSIONS`)
+  - Per-journal extensions loaded from `<journal>\Extensions\` when
+    `Set-LedgerJournal` is called
+  - Env/User extensions are dot-sourced into the module scope (access to
+    internal helpers); journal extensions run in global scope
+  - Broken extensions emit a warning and don't prevent the module from loading
+  - `Get-LedgerExtension` — lists all loaded extensions with source and
+    function names; optional `-Source` filter
+- **Current journal session state** — optional complement to stateless
+  `-JournalPath`:
+  - `Set-LedgerJournal -Path <path>` — sets the session default journal,
+    validates it, and loads per-journal extensions
+  - `Clear-LedgerJournal` — clears the default and unloads journal extensions
+  - `Get-LedgerJournal -Current` — returns metadata for the current journal
+
+### Changed
+- All 26 public commands that previously required `-JournalPath` now accept it
+  as optional — when omitted, the current journal set via `Set-LedgerJournal`
+  is used. If neither is provided, a clear error message guides the user.
+- Module manifest `FunctionsToExport` changed to `'*'` to support dynamic
+  extension loading; actual export list is controlled by `Export-ModuleMember`
+  in the `.psm1`.
+
 ## [0.3.0] - 2026-05-28
 
 ### Added
