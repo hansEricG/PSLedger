@@ -96,9 +96,9 @@ function Add-LedgerEntry {
             }
         }
 
-        # Validate balance
+        # Validate balance (round to avoid floating-point accumulation errors)
         $Sum = ($Rows | ForEach-Object { $_.Amount }) | Measure-Object -Sum | Select-Object -ExpandProperty Sum
-        if ($Sum -ne 0) {
+        if ([Math]::Round($Sum, 2) -ne 0) {
             throw "Entry does not balance. Sum of rows: $Sum (must be 0)."
         }
 
