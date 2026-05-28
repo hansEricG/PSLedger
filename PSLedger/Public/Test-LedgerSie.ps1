@@ -9,7 +9,7 @@ the same file, and verification numbers within a series must be unique.
 Returns a result object with IsValid, Errors, Warnings and Summary properties.
 
 .PARAMETER Path
-Path to the SIE file to validate.
+Path to the SIE file to validate. The file is read as CP437 (PC-8).
 
 .EXAMPLE
 Test-LedgerSie -Path .\export.se

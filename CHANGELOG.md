@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-05-28
 
 ### Added
 - `Export-LedgerSie` — export a fiscal year to a SIE 4E file (CP437/PC-8 encoded)
