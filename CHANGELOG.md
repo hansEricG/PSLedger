@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.1] - 2026-05-28
+
+### Changed
+- `Import-LedgerSie` now auto-detects the fiscal year from the SIE file's
+  `#RAR 0` record when `-FiscalYear` is omitted, and creates the fiscal year
+  automatically if it does not exist in the journal.
+
+### Fixed
+- Relative file paths (e.g. `2007-2008.SE`) now resolve correctly against
+  PowerShell's `$PWD` instead of the .NET process working directory.
+- Balance check no longer fails on floating-point rounding residuals when
+  importing verifications with many rows.
+
 ## [0.4.0] - 2026-05-28
 
 ### Added
