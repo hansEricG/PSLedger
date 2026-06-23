@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.5.0] - 2026-06-23
+
+### Changed
+- `Import-LedgerSie` now refuses to auto-create a fiscal year (from `#RAR 0`)
+  that would leave a gap in the journal's fiscal year series, i.e. a year that
+  is not contiguous with the existing years. The error reports the missing date
+  range. `-Force` bypasses the guard for intentional out-of-order imports.
+- `Import-LedgerSie` now refuses to import into a fiscal year that already
+  contains verifications, preventing accidental double-imports that would
+  duplicate all entries. A new `-Force` switch overrides the guard for
+  intentional re-imports.
+- `Get-LedgerLedger` now shows the opening balance (from the 'Ingående balans'
+  verification) as a leading row (ingående saldo) and starts the running balance
+  from it, instead of listing it as an ordinary transaction. The opening balance
+  is excluded from the period Debit/Credit columns. When `-FromDate` is set, the
+  opening row reflects the carried-forward balance at that date (opening balance
+  plus transactions dated before `-FromDate`).
+- `Get-LedgerBalance` now reports the opening balance separately. Each account
+  object gains an `OpeningBalance` field (from the 'Ingående balans' verification),
+  while `Debit`/`Credit` now reflect period transactions only. `Balance` remains
+  the closing balance (`OpeningBalance + Debit - Credit`), so it matches the
+  ingående saldo / debet / kredit / utgående saldo layout used by accounting
+  software.
+
+### Fixed
+- `Import-LedgerSie` now tolerates a small rounding difference (öresdifferens) in
+  the opening balances (`#IB`): if the rows do not sum to zero but the difference
+  is within `-RoundingTolerance` (default 1.00), it is posted to `-RoundingAccount`
+  (default BAS 3740, Öres- och kronutjämning) so the opening balance entry
+  balances. Larger differences still abort the import. The result object reports
+  the adjustment as `OpeningBalanceRounding`. Also fixes the floating-point noise
+  previously shown in the imbalance error (the sum is now computed in decimal).
+- `Import-LedgerSie` now imports opening balances (`#IB` records for the current
+  year, year index `0`) as the first verification (`ver0001.txt`) with the
+  description `Ingående balans`. Previously only `#VER` records were imported, so
+  balance-sheet accounts lost their opening balance and `Get-LedgerBalance`
+  showed only the current year's transactions. The result object gains an
+  `ImportedOpeningBalance` flag.
+
 ## [0.4.1] - 2026-05-28
 
 ### Changed

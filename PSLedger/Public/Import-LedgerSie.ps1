@@ -13,6 +13,22 @@ If -FiscalYear is not specified, the fiscal year is determined from the #RAR 0
 record in the SIE file. If that fiscal year does not already exist in the
 journal it is created automatically.
 
+To avoid duplicating entries, the import is refused if the target fiscal year
+already contains verifications; import into a new or empty fiscal year, or use
+-Force to override.
+
+When the fiscal year is auto-created from #RAR 0, the import is also refused if
+it would leave a gap in the journal's fiscal year series (i.e. it is not
+contiguous with the existing years). Import the missing year(s) first, or use
+-Force to override.
+
+Opening balances (#IB records for the current year, year index 0) are imported
+as the first verification (ver0001.txt) with the description 'Ingående balans',
+so balance-sheet accounts carry their opening balance into the fiscal year. If
+the opening balances do not sum to zero by a small rounding difference (within
+-RoundingTolerance), the difference is posted to -RoundingAccount; a larger
+difference aborts the import.
+
 .PARAMETER JournalPath
 The path to an existing journal directory.
 
@@ -27,7 +43,23 @@ Path to the SIE file to import.
 .PARAMETER CreateMissingAccounts
 If specified, accounts referenced in #TRANS rows that are not yet in the
 chart of accounts are added automatically using the names from the SIE file's
-#KONTO records.
+#KONTO records. This also allows the rounding account to be created if needed.
+
+.PARAMETER RoundingAccount
+The account used to absorb a small rounding difference (öresdifferens) in the
+opening balances (#IB) so the opening balance entry balances. Defaults to BAS
+account '3740' (Öres- och kronutjämning).
+
+.PARAMETER RoundingTolerance
+The maximum absolute opening-balance difference (in the journal's currency) that
+is treated as rounding and posted to -RoundingAccount. Differences larger than
+this abort the import. Defaults to 1.00.
+
+.PARAMETER Force
+By default the import is refused if the target fiscal year already contains
+verifications (to prevent accidentally importing the same SIE file twice) or if
+auto-creating the fiscal year would leave a gap in the fiscal year series.
+Specify -Force to bypass these guards and import anyway.
 
 .EXAMPLE
 Import-LedgerSie -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Path .\fromfortnox.se
@@ -53,7 +85,13 @@ function Import-LedgerSie {
         [Alias('FullName')]
         [string]$Path,
 
-        [switch]$CreateMissingAccounts
+        [switch]$CreateMissingAccounts,
+
+        [string]$RoundingAccount = '3740',
+
+        [decimal]$RoundingTolerance = 1.00,
+
+        [switch]$Force
     )
     begin {
         $ExplicitFiscalYear = $FiscalYear
@@ -86,6 +124,33 @@ function Import-LedgerSie {
                 # Create fiscal year if it does not exist
                 $YearDir = Join-Path $JournalPath $FiscalYear
                 if (-not (Test-Path $YearDir -PathType Container)) {
+                    # Guard against creating a gap in the fiscal year series.
+                    if (-not $Force) {
+                        $existingYears = @(Get-LedgerFiscalYear -JournalPath $JournalPath)
+                        if ($existingYears.Count -gt 0) {
+                            $gapStart = $null
+                            $gapEnd = $null
+                            $closestBefore = $existingYears |
+                                Where-Object { [datetime]$_.EndDate -lt $rarStart } |
+                                Sort-Object { [datetime]$_.EndDate } | Select-Object -Last 1
+                            $closestAfter = $existingYears |
+                                Where-Object { [datetime]$_.StartDate -gt $rarEnd } |
+                                Sort-Object { [datetime]$_.StartDate } | Select-Object -First 1
+
+                            if ($closestBefore -and ([datetime]$closestBefore.EndDate).AddDays(1) -lt $rarStart) {
+                                $gapStart = ([datetime]$closestBefore.EndDate).AddDays(1)
+                                $gapEnd = $rarStart.AddDays(-1)
+                            }
+                            elseif ($closestAfter -and $rarEnd.AddDays(1) -lt [datetime]$closestAfter.StartDate) {
+                                $gapStart = $rarEnd.AddDays(1)
+                                $gapEnd = ([datetime]$closestAfter.StartDate).AddDays(-1)
+                            }
+
+                            if ($gapStart) {
+                                throw "Importing fiscal year $FiscalYear would create a gap in the fiscal year series (missing $($gapStart.ToString('yyyy-MM-dd')) to $($gapEnd.ToString('yyyy-MM-dd'))). Import the missing fiscal year(s) first, or use -Force to import anyway."
+                            }
+                        }
+                    }
                     New-LedgerFiscalYear -JournalPath $JournalPath -StartDate $rarStart -EndDate $rarEnd
                 }
             } else {
@@ -104,6 +169,14 @@ function Import-LedgerSie {
                 if ($Line -match '^Status:\s*Closed') {
                     throw "Fiscal year $FiscalYear is Closed. Cannot import entries."
                 }
+            }
+        }
+
+        # Guard against duplicate imports: only import into an empty fiscal year.
+        if (-not $Force) {
+            $ExistingVer = Get-ChildItem -Path $YearDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
+            if ($ExistingVer) {
+                throw "Fiscal year $FiscalYear already contains verifications. Import only into an empty fiscal year to avoid duplicating entries. Use -Force to import anyway."
             }
         }
 
@@ -150,6 +223,19 @@ function Import-LedgerSie {
             $existing[$a.AccountNumber] = $true
         }
 
+        # Collect opening balances (#IB for year index 0) so they can be imported
+        # as an opening balance verification (ingående balans).
+        $ibRows = New-Object System.Collections.Generic.List[object]
+        foreach ($rec in $records) {
+            if ($rec.Tag -ne 'IB') { continue }
+            if ($rec.Fields.Count -lt 3) { continue }
+            if ($rec.Fields[0] -ne '0') { continue }
+            $ibAmountText = $rec.Fields[2] -replace ',', '.'
+            $ibAmount = [decimal]::Parse($ibAmountText, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture)
+            if ($ibAmount -eq 0) { continue }
+            $ibRows.Add([PSCustomObject]@{ Account = $rec.Fields[1]; Amount = $ibAmount }) | Out-Null
+        }
+
         $referenced = @{}
         foreach ($rec in $records) {
             if ($rec.Tag -ne 'VER') { continue }
@@ -157,6 +243,7 @@ function Import-LedgerSie {
                 if ($t.Fields.Count -ge 1) { $referenced[$t.Fields[0]] = $true }
             }
         }
+        foreach ($r in $ibRows) { $referenced[$r.Account] = $true }
 
         # Walk accounts in SIE file order so the imported chart preserves order.
         $orderedReferenced = New-Object System.Collections.Generic.List[string]
@@ -178,6 +265,52 @@ function Import-LedgerSie {
                     throw "Account $acct in SIE file does not exist in chart of accounts. Use -CreateMissingAccounts to add it automatically."
                 }
             }
+        }
+
+        # Import opening balances first so the entry becomes ver0001 (Ingående balans).
+        $ibRounding = [decimal]0
+        if ($ibRows.Count -gt 0) {
+            # Sum as decimal (Measure-Object -Sum returns a double and introduces
+            # floating-point noise on otherwise exact 2-decimal amounts).
+            $ibSum = [decimal]0
+            foreach ($r in $ibRows) { $ibSum += $r.Amount }
+            $ibDiff = [Math]::Round($ibSum, 2)
+
+            if ($ibDiff -ne 0) {
+                if ([Math]::Abs($ibDiff) -gt $RoundingTolerance) {
+                    throw "Opening balances (#IB) do not balance. Sum of rows: $ibDiff (must be 0, tolerance ±$RoundingTolerance). Correct the source file or raise -RoundingTolerance."
+                }
+
+                # Small rounding difference (öresdifferens): post it to the rounding account.
+                if (-not $existing.ContainsKey($RoundingAccount)) {
+                    if ($CreateMissingAccounts) {
+                        $roundingName = if ($sieAccounts.ContainsKey($RoundingAccount)) { $sieAccounts[$RoundingAccount] } else { 'Öres- och kronutjämning' }
+                        Add-LedgerAccount -JournalPath $JournalPath -AccountNumber $RoundingAccount -AccountName $roundingName
+                        $existing[$RoundingAccount] = $true
+                    }
+                    else {
+                        throw "Opening balances (#IB) differ by $ibDiff and rounding account $RoundingAccount does not exist in the chart of accounts. Add it, choose another -RoundingAccount, or use -CreateMissingAccounts."
+                    }
+                }
+
+                $ibRounding = -$ibDiff
+                $ibRows.Add([PSCustomObject]@{ Account = $RoundingAccount; Amount = $ibRounding }) | Out-Null
+            }
+
+            $ibStartText = $null
+            if (Test-Path $YearFile) {
+                foreach ($Line in (Get-Content $YearFile)) {
+                    if ($Line -match '^StartDate:\s*(.+)$') { $ibStartText = $Matches[1]; break }
+                }
+            }
+            if (-not $ibStartText) {
+                throw "Cannot determine start date for fiscal year $FiscalYear."
+            }
+            $ibDate = [datetime]$ibStartText
+
+            $ibEntryRows = foreach ($r in $ibRows) { @{ Account = $r.Account; Amount = $r.Amount } }
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date $ibDate -Description 'Ingående balans' -Rows @($ibEntryRows)
         }
 
         $imported = 0
@@ -212,9 +345,11 @@ function Import-LedgerSie {
         }
 
         [PSCustomObject]@{
-            Path             = $Path
-            ImportedEntries  = $imported
-            ImportedAccounts = if ($CreateMissingAccounts) { ($referenced.Keys | Where-Object { $sieAccounts.ContainsKey($_) }).Count } else { 0 }
+            Path                   = $Path
+            ImportedEntries        = $imported
+            ImportedOpeningBalance = ($ibRows.Count -gt 0)
+            OpeningBalanceRounding = $ibRounding
+            ImportedAccounts       = if ($CreateMissingAccounts) { ($referenced.Keys | Where-Object { $sieAccounts.ContainsKey($_) }).Count } else { 0 }
         }
     }
 }

@@ -133,5 +133,62 @@ Describe 'Get-LedgerLedger' {
             $result = Get-LedgerLedger -JournalPath $JournalPath -FiscalYear '2025-01_2025-12' -Account '1910'
             $result | Should -BeNullOrEmpty
         }
+
+        Context 'Opening balance (ingående saldo)' {
+            BeforeEach {
+                Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2010' -AccountName 'Eget kapital'
+                # Account 1910 starts the year with an opening balance of 4000 (debit).
+                $IbFile = Join-Path $JournalPath $FiscalYear 'ver0000.txt'
+                @(
+                    'Date: 2024-01-01'
+                    'Description: Ingående balans'
+                    ''
+                    "1910`t4000"
+                    "2010`t-4000"
+                ) | Set-Content -Path $IbFile -Encoding UTF8
+            }
+
+            It 'Should show the opening balance as the first row' {
+                $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+                $result[0].Description | Should -Be 'Ingående balans'
+                $result[0].Debit | Should -Be 0
+                $result[0].Credit | Should -Be 0
+                $result[0].Balance | Should -Be 4000
+            }
+
+            It 'Should continue the running balance from the opening balance' {
+                $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+                # IB 4000, +5000 sale, -8000 rent, +3000 sale
+                $result[1].Balance | Should -Be 9000
+                $result[2].Balance | Should -Be 1000
+                $result[3].Balance | Should -Be 4000
+            }
+
+            It 'Should not list the opening balance as a regular transaction row' {
+                $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+                # 1 opening row + 3 transaction rows
+                $result.Count | Should -Be 4
+                $transactionRows = $result | Select-Object -Skip 1
+                ($transactionRows | Where-Object Description -eq 'Ingående balans') | Should -BeNullOrEmpty
+            }
+
+            It 'Should carry pre-FromDate transactions into the opening row balance' {
+                # IB 4000 + 5000 (2024-01-15, before FromDate) = 9000 brought forward.
+                $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -FromDate '2024-02-01')
+                $result[0].Description | Should -Be 'Ingående balans'
+                $result[0].Balance | Should -Be 9000
+                $result[0].Date | Should -Be '2024-02-01'
+                # First in-range transaction: -8000 -> 1000, then +3000 -> 4000.
+                $result[1].Balance | Should -Be 1000
+                $result[2].Balance | Should -Be 4000
+                $result.Count | Should -Be 3
+            }
+
+            It 'Should keep the closing balance correct regardless of FromDate' {
+                $full = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+                $filtered = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -FromDate '2024-02-01')
+                $filtered[-1].Balance | Should -Be $full[-1].Balance
+            }
+        }
     }
 }

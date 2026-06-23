@@ -146,5 +146,49 @@ Describe 'Get-LedgerBalance' {
             $TotalCredit = ($Result | Measure-Object -Property Credit -Sum).Sum
             $TotalDebit | Should -Be $TotalCredit
         }
+
+        Context 'Opening balance (ingående saldo)' {
+            BeforeEach {
+                # Account 1910 starts with an opening balance of 4000 (debit),
+                # offset by equity account 2010 (credit).
+                Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2010' -AccountName 'Eget kapital'
+                $IbFile = Join-Path $JournalPath $FiscalYear 'ver0000.txt'
+                @(
+                    'Date: 2024-01-01'
+                    'Description: Ingående balans'
+                    ''
+                    "1910`t4000"
+                    "2010`t-4000"
+                ) | Set-Content -Path $IbFile -Encoding UTF8
+            }
+
+            It 'Should report the opening balance separately from transactions' {
+                $Result = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+                $Kassa = $Result | Where-Object { $_.AccountNumber -eq '1910' }
+
+                $Kassa.OpeningBalance | Should -Be 4000
+                # Transactions only: 5000 + 3000 + 2000 = 10000 debit, no credit
+                $Kassa.Debit | Should -Be 10000
+                $Kassa.Credit | Should -Be 0
+            }
+
+            It 'Should compute Balance as OpeningBalance + Debit - Credit (utgående saldo)' {
+                $Result = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+                $Kassa = $Result | Where-Object { $_.AccountNumber -eq '1910' }
+
+                # 4000 opening + 10000 debit - 0 credit = 14000
+                $Kassa.Balance | Should -Be 14000
+            }
+
+            It 'Should not count opening balance amounts in Debit or Credit' {
+                $Result = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+                $Equity = $Result | Where-Object { $_.AccountNumber -eq '2010' }
+
+                $Equity.OpeningBalance | Should -Be -4000
+                $Equity.Debit | Should -Be 0
+                $Equity.Credit | Should -Be 0
+                $Equity.Balance | Should -Be -4000
+            }
+        }
     }
 }
