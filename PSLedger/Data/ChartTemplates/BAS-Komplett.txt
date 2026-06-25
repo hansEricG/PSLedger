@@ -354,15 +354,15 @@
 8440	Räntekostnader leverantörsskulder
 8460	Valutakursförluster finansiella poster
 8490	Övriga finansiella kostnader
-8500	Bokslutsdispositioner
-8510	Förändring av periodiseringsfonder
-8520	Mottagna koncernbidrag
-8530	Lämnade koncernbidrag
-8540	Förändring av överavskrivningar
-8580	Förändring av ersättningsfond
-8590	Övriga bokslutsdispositioner
-8810	Extraordinära intäkter
-8820	Extraordinära kostnader
+8710	Extraordinära intäkter
+8750	Extraordinära kostnader
+8800	Bokslutsdispositioner
+8810	Förändring av periodiseringsfonder
+8820	Mottagna koncernbidrag
+8830	Lämnade koncernbidrag
+8850	Förändring av överavskrivningar
+8860	Förändring av ersättningsfond
+8890	Övriga bokslutsdispositioner
 8910	Skatt på årets resultat
 8920	Skatt föregående år
 8980	Övriga skatter

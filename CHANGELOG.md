@@ -20,6 +20,11 @@
   negative) and each object gains a `Section` property.
 
 ### Fixed
+- The bundled `BAS-Komplett` chart template used non-standard BAS numbering for
+  year-end appropriations and extraordinary items: bokslutsdispositioner were at
+  8500-8590 and extraordinära poster at 8810-8820. They are now corrected to
+  standard BAS (bokslutsdispositioner 8800-8890, extraordinära 8710-8750) so they
+  are classified correctly under Övriga poster in `Get-LedgerIncomeStatement`.
 - `Get-LedgerIncomeStatement` now excludes account 8999 (Årets resultat) from the
   Skatt line and Årets resultat total. Previously, if a year-end result
   appropriation had been booked to 8999 (e.g. imported from another system), it
