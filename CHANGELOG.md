@@ -1,5 +1,30 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- `Get-LedgerIncomeStatement` now returns a detailed resultaträkning instead of
+  seven summary rows. Revenue is split into Nettoomsättning and Övriga
+  rörelseintäkter; costs into Material- och varukostnader, Övriga rörelsekostnader
+  m.m, Personalkostnader and Avskrivningar, with running subtotals for
+  Rörelseresultat efter avskrivningar, Finansiella intäkter och kostnader,
+  Resultat efter finansiella poster, Övriga poster, Skatt and Årets resultat.
+  Each object gains a `Section` property.
+- `Get-LedgerBalanceSheet` now returns a detailed balansräkning instead of two
+  summary rows. Assets are split into Anläggningstillgångar, Lager och pågående
+  arbeten, Kundfordringar, Övriga kortfristiga fordringar and Likvida medel;
+  equity and liabilities into Eget kapital, Resultat (the unclosed result for the
+  year from account classes 3-8), Obeskattade reserver och avsättningar,
+  Långfristiga skulder and Kortfristiga skulder. Each section ends with a total
+  row. Amounts now carry their natural sign (assets positive, equity/liabilities
+  negative) and each object gains a `Section` property.
+
+### Fixed
+- `Get-LedgerIncomeStatement` now excludes account 8999 (Årets resultat) from the
+  Skatt line and Årets resultat total. Previously, if a year-end result
+  appropriation had been booked to 8999 (e.g. imported from another system), it
+  was counted as tax and zeroed out the reported result.
+
 ## [0.5.0] - 2026-06-23
 
 ### Changed

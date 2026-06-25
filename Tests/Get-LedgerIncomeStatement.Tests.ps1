@@ -72,59 +72,80 @@ Describe 'Get-LedgerIncomeStatement' {
             Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-03-15' -Description 'Ränteintäkt' -Rows $Rows4
         }
 
-        It 'Should return 7 result rows' {
+        It 'Should return 12 detailed result rows' {
             $Result = Get-LedgerIncomeStatement -JournalPath $JournalPath -FiscalYear $FiscalYear
 
-            $Result.Count | Should -Be 7
+            $Result.Count | Should -Be 12
         }
 
-        It 'Should show revenue as positive amount' {
+        It 'Should show net sales as positive amount' {
             $Result = Get-LedgerIncomeStatement -JournalPath $JournalPath -FiscalYear $FiscalYear
-            $Revenue = $Result | Where-Object { $_.Group -eq 'Revenue' }
+            $NetSales = $Result | Where-Object { $_.Group -eq 'NetSales' }
 
-            $Revenue.Amount | Should -Be 50000
+            $NetSales.Label | Should -Be 'Nettoomsättning'
+            $NetSales.Amount | Should -Be 50000
         }
 
-        It 'Should show cost of goods as negative amount' {
+        It 'Should show material costs as negative amount' {
             $Result = Get-LedgerIncomeStatement -JournalPath $JournalPath -FiscalYear $FiscalYear
-            $CoG = $Result | Where-Object { $_.Group -eq 'CostOfGoods' }
+            $Material = $Result | Where-Object { $_.Group -eq 'MaterialCosts' }
 
-            $CoG.Amount | Should -Be -20000
+            $Material.Amount | Should -Be -20000
         }
 
-        It 'Should calculate gross profit correctly' {
+        It 'Should show other operating expenses as negative amount' {
             $Result = Get-LedgerIncomeStatement -JournalPath $JournalPath -FiscalYear $FiscalYear
-            $GP = $Result | Where-Object { $_.Group -eq 'GrossProfit' }
+            $OtherEx = $Result | Where-Object { $_.Group -eq 'OtherOperatingExpenses' }
 
-            $GP.Amount | Should -Be 30000
+            $OtherEx.Label | Should -Be 'Övriga rörelsekostnader m.m'
+            $OtherEx.Amount | Should -Be -10000
         }
 
-        It 'Should show operating expenses as negative' {
-            $Result = Get-LedgerIncomeStatement -JournalPath $JournalPath -FiscalYear $FiscalYear
-            $OpEx = $Result | Where-Object { $_.Group -eq 'OperatingExpenses' }
-
-            $OpEx.Amount | Should -Be -10000
-        }
-
-        It 'Should calculate operating result correctly' {
+        It 'Should calculate operating result after depreciation correctly' {
             $Result = Get-LedgerIncomeStatement -JournalPath $JournalPath -FiscalYear $FiscalYear
             $OpRes = $Result | Where-Object { $_.Group -eq 'OperatingResult' }
 
+            $OpRes.Label | Should -Be 'Rörelseresultat efter avskrivningar'
             $OpRes.Amount | Should -Be 20000
         }
 
         It 'Should show financial items' {
             $Result = Get-LedgerIncomeStatement -JournalPath $JournalPath -FiscalYear $FiscalYear
-            $Fin = $Result | Where-Object { $_.Group -eq 'Financial' }
+            $Fin = $Result | Where-Object { $_.Group -eq 'FinancialItems' }
 
             $Fin.Amount | Should -Be 500
+        }
+
+        It 'Should calculate result after financial items correctly' {
+            $Result = Get-LedgerIncomeStatement -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $ResFin = $Result | Where-Object { $_.Group -eq 'ResultAfterFinancialItems' }
+
+            $ResFin.Amount | Should -Be 20500
         }
 
         It 'Should calculate net result correctly' {
             $Result = Get-LedgerIncomeStatement -JournalPath $JournalPath -FiscalYear $FiscalYear
             $Net = $Result | Where-Object { $_.Group -eq 'NetResult' }
 
+            $Net.Label | Should -Be 'Årets resultat'
             $Net.Amount | Should -Be 20500
+        }
+
+        It 'Should exclude account 8999 (Årets resultat) from the result' {
+            # Simulate a year-end result appropriation: Debit 8999 / Credit 2099.
+            # Without excluding 8999 this would zero out the net result.
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '8999' -AccountName 'Årets resultat'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-08-31' -Description 'Årets resultat' -Rows @(
+                @{ Account = '8999'; Amount = 20500 }
+                @{ Account = '2099'; Amount = -20500 }
+            )
+
+            $Result = Get-LedgerIncomeStatement -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $Net = $Result | Where-Object { $_.Group -eq 'NetResult' }
+            $Tax = $Result | Where-Object { $_.Group -eq 'Tax' }
+
+            $Net.Amount | Should -Be 20500
+            $Tax.Amount | Should -Be 0
         }
 
         It 'Should return empty if no entries exist' {

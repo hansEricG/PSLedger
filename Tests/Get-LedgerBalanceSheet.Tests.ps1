@@ -60,24 +60,51 @@ Describe 'Get-LedgerBalanceSheet' {
             Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-02-01' -Description 'Inköp på kredit' -Rows $Rows2
         }
 
-        It 'Should return 2 result rows (Assets and EquityAndLiabilities)' {
+        It 'Should return detailed line items with section totals' {
             $Result = Get-LedgerBalanceSheet -JournalPath $JournalPath -FiscalYear $FiscalYear
 
-            $Result.Count | Should -Be 2
+            $Result.Count | Should -Be 12
+            ($Result | Where-Object { $_.Group -eq 'TotalAssets' }) | Should -Not -BeNullOrEmpty
+            ($Result | Where-Object { $_.Group -eq 'TotalEquityAndLiabilities' }) | Should -Not -BeNullOrEmpty
+        }
+
+        It 'Should report cash and bank under likvida medel' {
+            $Result = Get-LedgerBalanceSheet -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $Cash = $Result | Where-Object { $_.Group -eq 'CashAndBank' }
+
+            $Cash.Label | Should -Be 'Likvida medel'
+            $Cash.Amount | Should -Be 30000
         }
 
         It 'Should show total assets' {
             $Result = Get-LedgerBalanceSheet -JournalPath $JournalPath -FiscalYear $FiscalYear
-            $Assets = $Result | Where-Object { $_.Group -eq 'Assets' }
+            $Assets = $Result | Where-Object { $_.Group -eq 'TotalAssets' }
 
             $Assets.Amount | Should -Be 30000
         }
 
-        It 'Should show equity and liabilities' {
+        It 'Should report short-term liabilities with their natural credit sign' {
             $Result = Get-LedgerBalanceSheet -JournalPath $JournalPath -FiscalYear $FiscalYear
-            $EqLiab = $Result | Where-Object { $_.Group -eq 'EquityAndLiabilities' }
+            $ShortTerm = $Result | Where-Object { $_.Group -eq 'ShortTermLiabilities' }
 
-            $EqLiab.Amount | Should -Be 10000
+            $ShortTerm.Label | Should -Be 'Kortfristiga skulder'
+            $ShortTerm.Amount | Should -Be -10000
+        }
+
+        It 'Should report the unclosed year result on a separate line' {
+            $Result = Get-LedgerBalanceSheet -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $Res = $Result | Where-Object { $_.Group -eq 'Result' }
+
+            # Revenue 3010 (-30000) and expense 4010 (10000) net to -20000 (credit/profit)
+            $Res.Amount | Should -Be -20000
+        }
+
+        It 'Should balance so total assets equal negated total equity and liabilities' {
+            $Result = Get-LedgerBalanceSheet -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $Assets = ($Result | Where-Object { $_.Group -eq 'TotalAssets' }).Amount
+            $EqLiab = ($Result | Where-Object { $_.Group -eq 'TotalEquityAndLiabilities' }).Amount
+
+            ($Assets + $EqLiab) | Should -Be 0
         }
 
         It 'Should return empty if no entries exist' {
