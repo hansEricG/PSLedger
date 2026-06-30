@@ -12,7 +12,10 @@ several entries.
 The path to an existing journal directory. If omitted, uses the current journal.
 
 .PARAMETER FiscalYear
-The fiscal year identifier. If omitted, uses the latest fiscal year.
+The fiscal year identifier. If omitted, only the latest fiscal year is searched
+(not all years). Documents stored in earlier fiscal years are therefore not
+returned unless you pass their identifier explicitly, so an empty result may
+simply mean the latest fiscal year has no documents yet.
 Accepts pipeline input from fiscal year objects.
 
 .PARAMETER FileName
@@ -22,7 +25,8 @@ wildcard pattern.
 .EXAMPLE
 Get-LedgerDocument
 
-Lists all shared documents in the latest fiscal year.
+Lists all shared documents in the latest fiscal year. Returns nothing if the
+latest fiscal year has no documents, even when earlier years do.
 
 .EXAMPLE
 Get-LedgerDocument -FiscalYear '2024-01_2024-12' -FileName 'kontoutdrag-*'
@@ -53,12 +57,18 @@ function Get-LedgerDocument {
 
         $docDir = Join-Path $YearDir 'documents'
         if (-not (Test-Path $docDir -PathType Container)) {
+            Write-Verbose "Fiscal year '$FiscalYear' has no documents directory; no documents to list."
             return
         }
 
         $items = Get-ChildItem -Path $docDir -File
         if ($FileName) {
             $items = $items | Where-Object { $_.Name -like $FileName }
+        }
+
+        if (-not $items) {
+            Write-Verbose "No documents found in fiscal year '$FiscalYear'. If you did not specify -FiscalYear, only the latest fiscal year is searched."
+            return
         }
 
         $items | ForEach-Object {
