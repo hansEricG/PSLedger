@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.0] - 2026-06-30
 
 ### Added
 - **Fiscal-year documents** — store general supporting material (underlag) that
@@ -51,7 +51,9 @@
   year-end appropriations and extraordinary items: bokslutsdispositioner were at
   8500-8590 and extraordinära poster at 8810-8820. They are now corrected to
   standard BAS (bokslutsdispositioner 8800-8890, extraordinära 8710-8750) so they
-  are classified correctly under Övriga poster in `Get-LedgerIncomeStatement`.
+  are classified correctly in `Get-LedgerIncomeStatement` — bokslutsdispositioner
+  under Övriga poster (account group 88) and extraordinära poster under
+  Finansiella intäkter och kostnader (account groups 80-87).
 - `Get-LedgerIncomeStatement` now excludes account 8999 (Årets resultat) from the
   Skatt line and Årets resultat total. Previously, if a year-end result
   appropriation had been booked to 8999 (e.g. imported from another system), it
