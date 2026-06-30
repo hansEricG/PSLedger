@@ -32,6 +32,15 @@ latest fiscal year has no documents, even when earlier years do.
 Get-LedgerDocument -FiscalYear '2024-01_2024-12' -FileName 'kontoutdrag-*'
 
 Lists all bank statement documents in the 2024 fiscal year of Bokforing Nord AB.
+
+.EXAMPLE
+Get-ChildItem .\underlag -File -Recurse | Add-LedgerDocument
+Get-LedgerDocument
+
+First adds every file from the underlag folder and all its subdirectories to the
+latest fiscal year (Add-LedgerDocument stores them flat in the documents/
+directory), then lists the result so you can verify what was imported. Add -Force
+to Add-LedgerDocument to overwrite documents whose name already exists.
 #>
 function Get-LedgerDocument {
     [CmdletBinding()]

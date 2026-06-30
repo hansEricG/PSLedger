@@ -19,15 +19,28 @@ Describe 'Add-LedgerDocument' {
             Test-TDDCmdletBinding $Command | Should -BeTrue
         }
 
-        It 'Should have a mandatory Path parameter of type String' {
+        It 'Should have a mandatory Path parameter of type String array' {
             $Param = $Command.Parameters['Path']
             $Param | Should -Not -BeNullOrEmpty
-            $Param.ParameterType.Name | Should -Be 'String'
+            $Param.ParameterType.Name | Should -Be 'String[]'
             $Param.Attributes.Mandatory | Should -Contain $true
+        }
+
+        It 'Should have Path accept pipeline input' {
+            $Param = $Command.Parameters['Path']
+            $attrs = $Param.Attributes | Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] }
+            $attrs.ValueFromPipeline | Should -Contain $true
+            $attrs.ValueFromPipelineByPropertyName | Should -Contain $true
         }
 
         It 'Should have an optional Move switch' {
             $Param = $Command.Parameters['Move']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'SwitchParameter'
+        }
+
+        It 'Should have an optional Force switch' {
+            $Param = $Command.Parameters['Force']
             $Param | Should -Not -BeNullOrEmpty
             $Param.ParameterType.Name | Should -Be 'SwitchParameter'
         }
@@ -101,6 +114,109 @@ Describe 'Add-LedgerDocument' {
             $result.FileName | Should -Be 'rapport.xlsx'
             $result.DestinationPath | Should -Not -BeNullOrEmpty
             $result.Size | Should -BeGreaterThan 0
+        }
+
+        It 'Should add multiple files passed as an array' {
+            $a = Join-Path $TestDrive 'multi-a.pdf'
+            $b = Join-Path $TestDrive 'multi-b.pdf'
+            'a' | Set-Content $a -Encoding UTF8
+            'b' | Set-Content $b -Encoding UTF8
+
+            $result = Add-LedgerDocument -Path $a, $b
+            $result.Count | Should -Be 2
+
+            $destDir = Join-Path $journalDir '2024-01_2024-12' 'documents'
+            Test-Path (Join-Path $destDir 'multi-a.pdf') | Should -BeTrue
+            Test-Path (Join-Path $destDir 'multi-b.pdf') | Should -BeTrue
+        }
+
+        It 'Should expand wildcard patterns' {
+            $dir = Join-Path $TestDrive 'wild'
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            'x' | Set-Content (Join-Path $dir 'wild-1.pdf') -Encoding UTF8
+            'y' | Set-Content (Join-Path $dir 'wild-2.pdf') -Encoding UTF8
+            'z' | Set-Content (Join-Path $dir 'other.txt') -Encoding UTF8
+
+            $result = Add-LedgerDocument -Path (Join-Path $dir '*.pdf')
+            $result.Count | Should -Be 2
+            ($result.FileName | Sort-Object) | Should -Be @('wild-1.pdf', 'wild-2.pdf')
+        }
+
+        It 'Should add all files piped from Get-ChildItem' {
+            $dir = Join-Path $TestDrive 'piped-folder'
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            '1' | Set-Content (Join-Path $dir 'p1.pdf') -Encoding UTF8
+            '2' | Set-Content (Join-Path $dir 'p2.pdf') -Encoding UTF8
+
+            $result = Get-ChildItem -Path $dir -File | Add-LedgerDocument
+            $result.Count | Should -Be 2
+
+            $destDir = Join-Path $journalDir '2024-01_2024-12' 'documents'
+            Test-Path (Join-Path $destDir 'p1.pdf') | Should -BeTrue
+            Test-Path (Join-Path $destDir 'p2.pdf') | Should -BeTrue
+        }
+
+        It 'Should throw a helpful error when given a directory' {
+            $dir = Join-Path $TestDrive 'a-folder'
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+
+            { Add-LedgerDocument -Path $dir } | Should -Throw '*directory*'
+        }
+
+        It 'Should not overwrite an existing document by default' {
+            $first = Join-Path $TestDrive 'clobber.pdf'
+            'original' | Set-Content $first -Encoding UTF8
+            Add-LedgerDocument -Path $first
+
+            $secondDir = Join-Path $TestDrive 'other'
+            New-Item -ItemType Directory -Path $secondDir -Force | Out-Null
+            $second = Join-Path $secondDir 'clobber.pdf'
+            'replacement' | Set-Content $second -Encoding UTF8
+
+            $err = $null
+            $result = Add-LedgerDocument -Path $second -ErrorVariable err -ErrorAction SilentlyContinue
+            $result | Should -BeNullOrEmpty
+            $err | Should -Not -BeNullOrEmpty
+
+            $destPath = Join-Path $journalDir '2024-01_2024-12' 'documents' 'clobber.pdf'
+            (Get-Content $destPath -Raw).Trim() | Should -Be 'original'
+        }
+
+        It 'Should overwrite an existing document when -Force is specified' {
+            $first = Join-Path $TestDrive 'forced.pdf'
+            'original' | Set-Content $first -Encoding UTF8
+            Add-LedgerDocument -Path $first
+
+            $secondDir = Join-Path $TestDrive 'force-other'
+            New-Item -ItemType Directory -Path $secondDir -Force | Out-Null
+            $second = Join-Path $secondDir 'forced.pdf'
+            'replacement' | Set-Content $second -Encoding UTF8
+
+            $result = Add-LedgerDocument -Path $second -Force
+            $result.FileName | Should -Be 'forced.pdf'
+
+            $destPath = Join-Path $journalDir '2024-01_2024-12' 'documents' 'forced.pdf'
+            (Get-Content $destPath -Raw).Trim() | Should -Be 'replacement'
+        }
+
+        It 'Should skip a colliding file but still add the rest of the batch' {
+            $existingSrc = Join-Path $TestDrive 'batch-existing.pdf'
+            'orig' | Set-Content $existingSrc -Encoding UTF8
+            Add-LedgerDocument -Path $existingSrc
+
+            $dir = Join-Path $TestDrive 'batch'
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            $collide = Join-Path $dir 'batch-existing.pdf'
+            $fresh = Join-Path $dir 'batch-new.pdf'
+            'dup' | Set-Content $collide -Encoding UTF8
+            'fresh' | Set-Content $fresh -Encoding UTF8
+
+            $result = Add-LedgerDocument -Path $collide, $fresh -ErrorAction SilentlyContinue
+            $result.FileName | Should -Be 'batch-new.pdf'
+
+            $destDir = Join-Path $journalDir '2024-01_2024-12' 'documents'
+            Test-Path (Join-Path $destDir 'batch-new.pdf') | Should -BeTrue
+            (Get-Content (Join-Path $destDir 'batch-existing.pdf') -Raw).Trim() | Should -Be 'orig'
         }
     }
 }
