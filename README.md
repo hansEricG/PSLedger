@@ -27,7 +27,7 @@ Import-Module PSLedger
 New-LedgerJournal -Path .\MinFirma.ledger -Name 'MinFirma AB' -OrgNumber '556677-8899'
 
 # 2. Set it as current (optional — saves typing -JournalPath on every command)
-Set-LedgerJournal -Path .\MinFirma.ledger
+Set-LedgerCurrentJournal -Path .\MinFirma.ledger
 
 # 3. Import a chart of accounts
 Import-LedgerChart -Template 'BAS-Smaforetag'
@@ -86,8 +86,9 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerRecurringEntry` | List recurring entry templates |
 | `Remove-LedgerRecurringEntry` | Remove a recurring entry template |
 | `Invoke-LedgerRecurringEntry` | Generate entries from templates |
-| `Set-LedgerJournal` | Set session default journal (skip `-JournalPath`) |
-| `Clear-LedgerJournal` | Clear session default journal |
+| `Set-LedgerCurrentJournal` | Set session default journal (skip `-JournalPath`) |
+| `Clear-LedgerCurrentJournal` | Clear session default journal |
+| `Get-LedgerCurrentJournal` | Read metadata for the current session journal |
 | `Get-LedgerExtension` | List loaded custom extensions |
 | `Get-LedgerFirstFiscalYear` | Get the oldest fiscal year |
 | `Get-LedgerLatestFiscalYear` | Get the most recent fiscal year |
@@ -210,7 +211,7 @@ loaded from configurable directories:
 |--------|------|-------------|
 | Environment | `$env:PSLEDGER_EXTENSIONS` (semicolon-separated) | Module import |
 | User | `$HOME\.psledger\Extensions\` (or `$env:PSLEDGER_USER_EXTENSIONS`) | Module import |
-| Journal | `<journal>\Extensions\` | `Set-LedgerJournal` is called |
+| Journal | `<journal>\Extensions\` | `Set-LedgerCurrentJournal` is called |
 
 **Env/User extensions** are dot-sourced into the module scope and can use internal
 helpers. **Journal extensions** are loaded at runtime into global scope and can
@@ -241,7 +242,7 @@ function Add-PreliminärskattEntry {
 Then use it:
 
 ```powershell
-Set-LedgerJournal -Path .\MinFirma.ledger
+Set-LedgerCurrentJournal -Path .\MinFirma.ledger
 Add-PreliminärskattEntry -Amount 12000 -Date '2024-02-12' -FiscalYear '2024-01_2024-12'
 ```
 
@@ -258,7 +259,7 @@ All commands that take `-FiscalYear` default to the **latest fiscal year** when
 omitted. They also accept pipeline input from fiscal year objects:
 
 ```powershell
-Set-LedgerJournal -Path .\MinFirma.ledger
+Set-LedgerCurrentJournal -Path .\MinFirma.ledger
 
 # These are equivalent:
 Get-LedgerBalance

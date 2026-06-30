@@ -24,7 +24,7 @@ function Register-LedgerExtension {
 function Import-LedgerExtensionRuntime {
     <#
     .SYNOPSIS
-    Loads a single extension at runtime (from Set-LedgerJournal).
+    Loads a single extension at runtime (from Set-LedgerCurrentJournal).
     Creates global functions so they are immediately callable.
     #>
     [CmdletBinding()]

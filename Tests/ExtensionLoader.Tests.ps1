@@ -199,7 +199,7 @@ function Get-UserExt {
         }
     }
 
-    Context 'Per-journal extensions via Set-LedgerJournal' {
+    Context 'Per-journal extensions via Set-LedgerCurrentJournal' {
         BeforeAll {
             $journalDir = Join-Path $TestDrive 'TestFirma.ledger'
             New-Item -Path $journalDir -ItemType Directory -Force | Out-Null
@@ -222,14 +222,14 @@ function Get-JournalSpecific {
         }
 
         AfterAll {
-            Clear-LedgerJournal
+            Clear-LedgerCurrentJournal
             if (Test-Path function:global:Get-JournalSpecific) {
                 Remove-Item function:global:Get-JournalSpecific -Force
             }
         }
 
-        It 'Should load journal extensions when Set-LedgerJournal is called' {
-            Set-LedgerJournal -Path (Join-Path $TestDrive 'TestFirma.ledger')
+        It 'Should load journal extensions when Set-LedgerCurrentJournal is called' {
+            Set-LedgerCurrentJournal -Path (Join-Path $TestDrive 'TestFirma.ledger')
             $ext = Get-LedgerExtension -Source 'Journal'
             $ext | Should -Not -BeNullOrEmpty
             $ext[0].Functions | Should -Contain 'Get-JournalSpecific'
@@ -241,8 +241,8 @@ function Get-JournalSpecific {
             Get-JournalSpecific | Should -Be 'journal-specific'
         }
 
-        It 'Should remove journal extensions when Clear-LedgerJournal is called' {
-            Clear-LedgerJournal
+        It 'Should remove journal extensions when Clear-LedgerCurrentJournal is called' {
+            Clear-LedgerCurrentJournal
             Get-LedgerExtension -Source 'Journal' | Should -BeNullOrEmpty
             { Get-JournalSpecific } | Should -Throw
         }

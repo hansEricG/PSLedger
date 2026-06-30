@@ -4,9 +4,9 @@ BeforeAll {
     Import-Module TDDUtils -Force
 }
 
-Describe 'Set-LedgerJournal' {
+Describe 'Set-LedgerCurrentJournal' {
     BeforeAll {
-        $CommandName = 'Set-LedgerJournal'
+        $CommandName = 'Set-LedgerCurrentJournal'
         $Command = Get-Command -Name $CommandName
     }
 
@@ -38,37 +38,37 @@ Describe 'Set-LedgerJournal' {
         }
 
         AfterEach {
-            Clear-LedgerJournal
+            Clear-LedgerCurrentJournal
         }
 
         It 'Should set the current journal' {
-            Set-LedgerJournal -Path $journalDir
-            $journal = Get-LedgerJournal -Current
+            Set-LedgerCurrentJournal -Path $journalDir
+            $journal = Get-LedgerCurrentJournal
             $journal.Name | Should -Be 'MinFirma AB'
         }
 
         It 'Should throw when path does not exist' {
-            { Set-LedgerJournal -Path (Join-Path $TestDrive 'NoSuch.ledger') } |
+            { Set-LedgerCurrentJournal -Path (Join-Path $TestDrive 'NoSuch.ledger') } |
                 Should -Throw '*not found*'
         }
 
         It 'Should throw when path is not a valid journal' {
             $badDir = Join-Path $TestDrive 'NotAJournal'
             New-Item -Path $badDir -ItemType Directory -Force | Out-Null
-            { Set-LedgerJournal -Path $badDir } |
+            { Set-LedgerCurrentJournal -Path $badDir } |
                 Should -Throw '*journal.txt*'
         }
 
-        It 'Should allow Get-LedgerJournal -Current after set' {
-            Set-LedgerJournal -Path $journalDir
-            { Get-LedgerJournal -Current } | Should -Not -Throw
+        It 'Should allow Get-LedgerCurrentJournal after set' {
+            Set-LedgerCurrentJournal -Path $journalDir
+            { Get-LedgerCurrentJournal } | Should -Not -Throw
         }
     }
 }
 
-Describe 'Clear-LedgerJournal' {
+Describe 'Clear-LedgerCurrentJournal' {
     BeforeAll {
-        $CommandName = 'Clear-LedgerJournal'
+        $CommandName = 'Clear-LedgerCurrentJournal'
         $Command = Get-Command -Name $CommandName
     }
 
@@ -93,49 +93,13 @@ Describe 'Clear-LedgerJournal' {
         }
 
         It 'Should clear current journal' {
-            Set-LedgerJournal -Path $journalDir
-            Clear-LedgerJournal
-            { Get-LedgerJournal -Current } | Should -Throw '*No current journal*'
+            Set-LedgerCurrentJournal -Path $journalDir
+            Clear-LedgerCurrentJournal
+            { Get-LedgerCurrentJournal } | Should -Throw '*No current journal*'
         }
 
         It 'Should not throw when no journal is set' {
-            { Clear-LedgerJournal } | Should -Not -Throw
-        }
-    }
-}
-
-Describe 'Get-LedgerJournal -Current' {
-    BeforeAll {
-        $env:PSLEDGER_EXTENSIONS = $null
-        Import-Module $ModulePath -Force
-    }
-
-    Context 'Behavior' {
-        BeforeAll {
-            $journalDir = Join-Path $TestDrive 'Firma.ledger'
-            New-Item -Path $journalDir -ItemType Directory -Force | Out-Null
-            "Name: Firma AB`nOrgNumber: 559988-7766" |
-                Set-Content (Join-Path $journalDir 'journal.txt') -Encoding UTF8
-        }
-
-        AfterEach {
-            Clear-LedgerJournal
-        }
-
-        It 'Should throw when no current journal is set' {
-            { Get-LedgerJournal -Current } | Should -Throw '*No current journal*'
-        }
-
-        It 'Should return journal info when current is set' {
-            Set-LedgerJournal -Path $journalDir
-            $result = Get-LedgerJournal -Current
-            $result.Name | Should -Be 'Firma AB'
-            $result.OrgNumber | Should -Be '559988-7766'
-        }
-
-        It 'Path parameter set still works as before' {
-            $result = Get-LedgerJournal -Path $journalDir
-            $result.Name | Should -Be 'Firma AB'
+            { Clear-LedgerCurrentJournal } | Should -Not -Throw
         }
     }
 }

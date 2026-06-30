@@ -14,11 +14,11 @@ Describe 'Fiscal Year Navigation' {
         New-LedgerFiscalYear -JournalPath $journalDir -StartDate '2024-01-01' -EndDate '2024-12-31'
         Close-LedgerFiscalYear -JournalPath $journalDir -FiscalYear '2022-01_2022-12'
         Close-LedgerFiscalYear -JournalPath $journalDir -FiscalYear '2023-01_2023-12'
-        Set-LedgerJournal -Path $journalDir
+        Set-LedgerCurrentJournal -Path $journalDir
     }
 
     AfterAll {
-        Clear-LedgerJournal
+        Clear-LedgerCurrentJournal
     }
 
     Context 'Get-LedgerFirstFiscalYear' {
@@ -145,11 +145,11 @@ Describe 'Fiscal Year Auto-Resolution' {
         Add-LedgerEntry -JournalPath $journalDir -FiscalYear '2024-01_2024-12' `
             -Date '2024-06-15' -Description 'Test' -Rows $rows
 
-        Set-LedgerJournal -Path $journalDir
+        Set-LedgerCurrentJournal -Path $journalDir
     }
 
     AfterAll {
-        Clear-LedgerJournal
+        Clear-LedgerCurrentJournal
     }
 
     It 'Get-LedgerEntry defaults to latest fiscal year when omitted' {

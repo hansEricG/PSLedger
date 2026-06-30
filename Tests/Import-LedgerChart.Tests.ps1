@@ -54,7 +54,7 @@ Describe 'Import-LedgerChart' {
         It 'Should return available template names' {
             $JournalPath = Join-Path $TestDrive 'listavailable.ledger'
             New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB'
-            Set-LedgerJournal -Path $JournalPath
+            Set-LedgerCurrentJournal -Path $JournalPath
 
             try {
                 $Result = Import-LedgerChart -ListAvailable
@@ -64,7 +64,7 @@ Describe 'Import-LedgerChart' {
                 $Result | Should -Contain 'BAS-Komplett'
             }
             finally {
-                Clear-LedgerJournal
+                Clear-LedgerCurrentJournal
             }
         }
     }

@@ -11,18 +11,18 @@ found in the journal's Extensions directory.
 The path to an existing journal directory (must contain journal.txt).
 
 .EXAMPLE
-Set-LedgerJournal -Path .\MinFirma.ledger
+Set-LedgerCurrentJournal -Path .\MinFirma.ledger
 
 Sets MinFirma as the current journal. Subsequent commands like Add-LedgerEntry
 can be called without -JournalPath.
 
 .EXAMPLE
-Set-LedgerJournal -Path C:\Bokföring\AB-Konsult.ledger
+Set-LedgerCurrentJournal -Path C:\Bokföring\AB-Konsult.ledger
 Get-LedgerBalance -FiscalYear '2024-01_2024-12'
 
 Sets the journal and runs a balance query without specifying the path again.
 #>
-function Set-LedgerJournal {
+function Set-LedgerCurrentJournal {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]

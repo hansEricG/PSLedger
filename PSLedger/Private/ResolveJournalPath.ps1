@@ -17,5 +17,5 @@ function Resolve-LedgerJournalPath {
         return $script:CurrentJournalPath
     }
 
-    throw "No journal specified. Use -JournalPath or set a current journal with Set-LedgerJournal."
+    throw "No journal specified. Use -JournalPath or set a current journal with Set-LedgerCurrentJournal."
 }

@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Changed
+- Renamed the session-state journal commands so they no longer look like a
+  getter/setter pair with the disk-reading `Get-LedgerJournal`. The session
+  "current journal" trio now uses a dedicated `CurrentJournal` noun:
+  - `Set-LedgerJournal` → `Set-LedgerCurrentJournal`
+  - `Clear-LedgerJournal` → `Clear-LedgerCurrentJournal`
+  - `Get-LedgerJournal -Current` → `Get-LedgerCurrentJournal`
+  `Get-LedgerJournal` is now a pure metadata reader and only accepts `-Path`.
+  This is a breaking change; update scripts to the new command names.
 - `Get-LedgerIncomeStatement` now returns a detailed resultaträkning instead of
   seven summary rows. Revenue is split into Nettoomsättning and Övriga
   rörelseintäkter; costs into Material- och varukostnader, Övriga rörelsekostnader

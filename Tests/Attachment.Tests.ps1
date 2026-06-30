@@ -52,11 +52,11 @@ Describe 'Add-LedgerAttachment' {
             )
             Add-LedgerEntry -JournalPath $journalDir -FiscalYear '2024-01_2024-12' `
                 -Date '2024-03-15' -Description 'Test entry' -Rows $rows
-            Set-LedgerJournal -Path $journalDir
+            Set-LedgerCurrentJournal -Path $journalDir
         }
 
         AfterAll {
-            Clear-LedgerJournal
+            Clear-LedgerCurrentJournal
         }
 
         It 'Should copy a file to the verification attachment directory' {
@@ -145,7 +145,7 @@ Describe 'Get-LedgerAttachment' {
                 -Date '2024-01-15' -Description 'Entry 1' -Rows $rows
             Add-LedgerEntry -JournalPath $journalDir -FiscalYear '2024-01_2024-12' `
                 -Date '2024-02-15' -Description 'Entry 2' -Rows $rows
-            Set-LedgerJournal -Path $journalDir
+            Set-LedgerCurrentJournal -Path $journalDir
 
             # Attach files
             $file1 = Join-Path $TestDrive 'doc1.pdf'
@@ -160,7 +160,7 @@ Describe 'Get-LedgerAttachment' {
         }
 
         AfterAll {
-            Clear-LedgerJournal
+            Clear-LedgerCurrentJournal
         }
 
         It 'Should list attachments for a specific verification' {
@@ -247,11 +247,11 @@ Describe 'Remove-LedgerAttachment' {
             )
             Add-LedgerEntry -JournalPath $journalDir -FiscalYear '2024-01_2024-12' `
                 -Date '2024-01-15' -Description 'Entry' -Rows $rows
-            Set-LedgerJournal -Path $journalDir
+            Set-LedgerCurrentJournal -Path $journalDir
         }
 
         AfterAll {
-            Clear-LedgerJournal
+            Clear-LedgerCurrentJournal
         }
 
         It 'Should remove an attachment file' {
