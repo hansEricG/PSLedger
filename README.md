@@ -97,6 +97,9 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Add-LedgerAttachment` | Attach a file to a verification |
 | `Get-LedgerAttachment` | List attachments for a verification |
 | `Remove-LedgerAttachment` | Remove an attachment |
+| `Add-LedgerDocument` | Add a shared supporting document to a fiscal year |
+| `Get-LedgerDocument` | List a fiscal year's shared documents |
+| `Remove-LedgerDocument` | Remove a fiscal year document |
 
 ## SIE Import/Export
 
@@ -200,6 +203,40 @@ Files are stored in a subdirectory named after the verification:
 └── ver0003/
     ├── faktura-101.pdf
     └── kvitto.jpg
+```
+
+## Documents (shared supporting material)
+
+Attachments belong to a single verification. For supporting material (underlag)
+that backs *several* verifications — such as a bank statement (kontoutdrag)
+covering many entries — use fiscal-year documents instead:
+
+```powershell
+# Add a bank statement as supporting material for the whole year
+Add-LedgerDocument -Path .\kontoutdrag-jan.pdf
+
+# Add and move (removes original)
+Add-LedgerDocument -Path .\kontoutdrag-feb.pdf -Move
+
+# List all documents in the latest fiscal year
+Get-LedgerDocument
+
+# Filter by file name
+Get-LedgerDocument -FileName 'kontoutdrag-*'
+
+# Remove a document
+Remove-LedgerDocument -FileName 'kontoutdrag-jan.pdf'
+```
+
+Documents are stored in a `documents/` subdirectory of the fiscal year,
+independent of any verification:
+```
+2024-01_2024-12/
+├── year.txt
+├── ver0001.txt
+└── documents/
+    ├── kontoutdrag-jan.pdf
+    └── kontoutdrag-feb.pdf
 ```
 
 ## Custom Extensions

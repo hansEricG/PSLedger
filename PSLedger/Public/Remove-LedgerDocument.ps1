@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-Removes an attachment from a verification.
+Removes a general supporting document from a fiscal year.
 
 .DESCRIPTION
-Deletes the specified file from a verification's attachment directory.
+Deletes the specified file from a fiscal year's shared document directory.
 If the directory becomes empty after removal, it is also deleted.
 
 .PARAMETER JournalPath
@@ -13,24 +13,21 @@ The path to an existing journal directory. If omitted, uses the current journal.
 The fiscal year identifier. If omitted, uses the latest fiscal year.
 Accepts pipeline input from fiscal year objects.
 
-.PARAMETER VerificationNumber
-The verification number to remove the attachment from.
-
 .PARAMETER FileName
 The name of the file to remove.
 
 .EXAMPLE
-Remove-LedgerAttachment -VerificationNumber 3 -FileName 'faktura-101.pdf'
+Remove-LedgerDocument -FileName 'kontoutdrag-jan.pdf'
 
-Removes faktura-101.pdf from verification 3.
+Removes kontoutdrag-jan.pdf from the latest fiscal year's documents.
 
 .EXAMPLE
-Get-LedgerAttachment -VerificationNumber 1 | Where-Object FileName -like '*.tmp' |
-    Remove-LedgerAttachment
+Get-LedgerDocument | Where-Object FileName -like '*.tmp' |
+    ForEach-Object { Remove-LedgerDocument -FiscalYear $_.FiscalYear -FileName $_.FileName }
 
-Removes all .tmp attachments from verification 1.
+Removes all temporary documents from the latest fiscal year.
 #>
-function Remove-LedgerAttachment {
+function Remove-LedgerDocument {
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
@@ -38,9 +35,6 @@ function Remove-LedgerAttachment {
 
         [Parameter(ValueFromPipelineByPropertyName)]
         [string]$FiscalYear,
-
-        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
-        [int]$VerificationNumber,
 
         [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
         [string]$FileName
@@ -55,23 +49,23 @@ function Remove-LedgerAttachment {
             throw "Fiscal year not found: $FiscalYear"
         }
 
-        $attachDir = Join-Path $YearDir ('ver' + $VerificationNumber.ToString('0000'))
-        if (-not (Test-Path $attachDir -PathType Container)) {
-            throw "No attachments found for verification $VerificationNumber."
+        $docDir = Join-Path $YearDir 'documents'
+        if (-not (Test-Path $docDir -PathType Container)) {
+            throw "No documents found for fiscal year $FiscalYear."
         }
 
-        $filePath = Join-Path $attachDir $FileName
+        $filePath = Join-Path $docDir $FileName
         if (-not (Test-Path $filePath -PathType Leaf)) {
-            throw "Attachment not found: $FileName"
+            throw "Document not found: $FileName"
         }
 
-        if ($PSCmdlet.ShouldProcess($filePath, 'Remove attachment')) {
+        if ($PSCmdlet.ShouldProcess($filePath, 'Remove document')) {
             Remove-Item -Path $filePath -Force
 
             # Remove directory if empty
-            $remaining = Get-ChildItem -Path $attachDir -File
+            $remaining = Get-ChildItem -Path $docDir -File
             if (-not $remaining) {
-                Remove-Item -Path $attachDir -Force
+                Remove-Item -Path $docDir -Force
             }
         }
     }

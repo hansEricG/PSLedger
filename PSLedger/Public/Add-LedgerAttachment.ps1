@@ -40,7 +40,6 @@ function Add-LedgerAttachment {
         [string]$JournalPath,
 
         [Parameter(ValueFromPipelineByPropertyName)]
-        [Alias('Name')]
         [string]$FiscalYear,
 
         [Parameter(Mandatory)]

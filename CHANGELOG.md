@@ -2,7 +2,26 @@
 
 ## [Unreleased]
 
+### Added
+- **Fiscal-year documents** — store general supporting material (underlag) that
+  is scoped to a whole fiscal year rather than a single verification, e.g. a bank
+  statement (kontoutdrag) backing several entries. Files live in a `documents/`
+  subdirectory of the fiscal year:
+  - `Add-LedgerDocument` — copies (or moves) a file into the fiscal year's
+    `documents/` directory (created on demand)
+  - `Get-LedgerDocument` — lists documents for a fiscal year; supports a
+    `-FileName` wildcard filter and accepts fiscal year pipeline input
+  - `Remove-LedgerDocument` — deletes a document; cleans up the empty
+    directory; supports `-WhatIf`
+
 ### Changed
+- Removed the `Name` alias from the `-FiscalYear` parameter of the attachment
+  commands (`Add-/Get-/Remove-LedgerAttachment`). The alias shadowed `-Name` so
+  it could no longer be mistaken for a file-name filter and conflict with an
+  explicit `-FiscalYear`. Pipeline binding still works via the `FiscalYear`
+  property. `Remove-LedgerAttachment` now also binds `-VerificationNumber` and
+  `-FileName` from the pipeline, so `Get-LedgerAttachment | Remove-LedgerAttachment`
+  works directly.
 - Renamed the session-state journal commands so they no longer look like a
   getter/setter pair with the disk-reading `Get-LedgerJournal`. The session
   "current journal" trio now uses a dedicated `CurrentJournal` noun:

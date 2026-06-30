@@ -297,5 +297,19 @@ Describe 'Remove-LedgerAttachment' {
             { Remove-LedgerAttachment -VerificationNumber 2 -FileName 'any.pdf' -Confirm:$false } |
                 Should -Throw '*No attachments*'
         }
+
+        It 'Should accept pipeline input from Get-LedgerAttachment' {
+            $file = Join-Path $TestDrive 'piped.pdf'
+            'content' | Set-Content $file -Encoding UTF8
+            Add-LedgerAttachment -VerificationNumber 1 -Path $file
+
+            Get-LedgerAttachment -VerificationNumber 1 |
+                Where-Object FileName -eq 'piped.pdf' |
+                Remove-LedgerAttachment -Confirm:$false
+
+            $remaining = Get-LedgerAttachment -VerificationNumber 1 |
+                Where-Object { $_.FileName -eq 'piped.pdf' }
+            $remaining | Should -BeNullOrEmpty
+        }
     }
 }
