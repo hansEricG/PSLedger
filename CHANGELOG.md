@@ -29,16 +29,16 @@
   emit a one-time warning per journal. Journals from newer module versions are
   likewise flagged with a prompt to upgrade. `Get-LedgerJournal` now exposes the
   `SchemaVersion` property (legacy journals without the field report version 1).
-- `Convert-LedgerOpeningBalance` — migrates existing journals to the new format.
-  For every fiscal year whose `ver0001.txt` is an `Ingående balans` verification,
-  it extracts the rows into `ib.txt`, deletes that verification, and renumbers
-  the remaining verifications (and their attachment directories) down by one.
-  It also stamps the journal with the current `SchemaVersion`. Idempotent and
-  supports `-WhatIf`.
+- `Update-LedgerJournal` — evergreen migration command that brings a journal up
+  to the schema version this module supports by applying every pending migration
+  step, then stamping the journal with the current `SchemaVersion`. The first
+  step (v1 → v2) extracts each `Ingående balans` verification into `ib.txt`,
+  deletes it, and renumbers the remaining verifications (and their attachment
+  directories) down by one. Idempotent and supports `-WhatIf`.
 
 ### Breaking
 - Journals created with earlier versions must be migrated with
-  `Convert-LedgerOpeningBalance` before writing commands will operate on them.
+  `Update-LedgerJournal` before writing commands will operate on them.
   Writing to an un-migrated journal now fails with a message naming the
   migration command; reading still works but warns. This also fixes the previous
   behaviour where opening balances were no longer detected from a verification.

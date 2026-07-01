@@ -2,11 +2,20 @@ BeforeAll {
     $ModulePath = Join-Path $PSScriptRoot '..' 'PSLedger' 'PSLedger.psd1'
     Import-Module $ModulePath -Force
     Import-Module TDDUtils -Force
+
+    # Rewrites journal.txt to look like a pre-schema-versioning (v1) journal by
+    # dropping the SchemaVersion field, so migrations actually run.
+    function Set-LegacyJournal {
+        param([string]$Path)
+        $jf = Join-Path $Path 'journal.txt'
+        $kept = Get-Content $jf | Where-Object { $_ -notmatch '^SchemaVersion:' }
+        Set-Content -Path $jf -Value $kept -Encoding UTF8
+    }
 }
 
-Describe 'Convert-LedgerOpeningBalance' {
+Describe 'Update-LedgerJournal' {
     BeforeAll {
-        $CommandName = 'Convert-LedgerOpeningBalance'
+        $CommandName = 'Update-LedgerJournal'
         $Command = Get-Command -Name $CommandName
     }
 
@@ -67,10 +76,13 @@ Describe 'Convert-LedgerOpeningBalance' {
                 "4010`t200"
                 "1910`t-200"
             ) | Set-Content -Path (Join-Path $YearDir 'ver0003.txt') -Encoding UTF8
+
+            # Make it a genuine pre-schema-versioning (v1) journal.
+            Set-LegacyJournal -Path $JournalPath
         }
 
         It 'Should create ib.txt from the opening balance verification' {
-            Convert-LedgerOpeningBalance -JournalPath $JournalPath | Out-Null
+            Update-LedgerJournal -JournalPath $JournalPath | Out-Null
 
             $IbFile = Join-Path $YearDir 'ib.txt'
             Test-Path $IbFile | Should -BeTrue
@@ -81,7 +93,7 @@ Describe 'Convert-LedgerOpeningBalance' {
         }
 
         It 'Should remove the opening balance verification and renumber the rest' {
-            Convert-LedgerOpeningBalance -JournalPath $JournalPath | Out-Null
+            Update-LedgerJournal -JournalPath $JournalPath | Out-Null
 
             $entries = @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear | Sort-Object VerificationNumber)
             $entries.Count | Should -Be 2
@@ -95,15 +107,21 @@ Describe 'Convert-LedgerOpeningBalance' {
         }
 
         It 'Should report the number of migrated rows and renumbered verifications' {
-            $result = Convert-LedgerOpeningBalance -JournalPath $JournalPath
+            $result = Update-LedgerJournal -JournalPath $JournalPath
             $result.FiscalYear | Should -Be $FiscalYear
             $result.OpeningBalanceRows | Should -Be 2
             $result.RenumberedVerifications | Should -Be 2
         }
 
+        It 'Should stamp the journal with the current schema version' {
+            Update-LedgerJournal -JournalPath $JournalPath | Out-Null
+
+            (Get-LedgerJournal -Path $JournalPath).SchemaVersion | Should -Be 2
+        }
+
         It 'Should be idempotent when run twice' {
-            Convert-LedgerOpeningBalance -JournalPath $JournalPath | Out-Null
-            $second = Convert-LedgerOpeningBalance -JournalPath $JournalPath
+            Update-LedgerJournal -JournalPath $JournalPath | Out-Null
+            $second = Update-LedgerJournal -JournalPath $JournalPath
 
             $second | Should -BeNullOrEmpty
             $entries = @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear)
@@ -111,19 +129,18 @@ Describe 'Convert-LedgerOpeningBalance' {
         }
 
         It 'Should not change anything when -WhatIf is used' {
-            Convert-LedgerOpeningBalance -JournalPath $JournalPath -WhatIf | Out-Null
+            Update-LedgerJournal -JournalPath $JournalPath -WhatIf | Out-Null
 
             Test-Path (Join-Path $YearDir 'ib.txt') | Should -BeFalse
-            $entries = @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear | Sort-Object VerificationNumber)
-            ($entries | Where-Object Description -eq 'Ingående balans') | Should -Not -BeNullOrEmpty
+            (Get-LedgerJournal -Path $JournalPath).SchemaVersion | Should -Be 1
         }
 
         It 'Should skip a fiscal year that already has ib.txt' {
             "1910`t100" | Set-Content -Path (Join-Path $YearDir 'ib.txt') -Encoding UTF8
-            $result = Convert-LedgerOpeningBalance -JournalPath $JournalPath
+            $result = Update-LedgerJournal -JournalPath $JournalPath
 
             $result | Should -BeNullOrEmpty
-            # ver0001 (legacy opening balance) is left untouched.
+            # ver0003 (legacy layout) is left untouched.
             Test-Path (Join-Path $YearDir 'ver0003.txt') | Should -BeTrue
         }
 
@@ -138,8 +155,9 @@ Describe 'Convert-LedgerOpeningBalance' {
                 @{ Account = '1910'; Amount = 100 }
                 @{ Account = '3010'; Amount = -100 }
             )
+            Set-LegacyJournal -Path $OtherJournal
 
-            $result = Convert-LedgerOpeningBalance -JournalPath $OtherJournal
+            $result = Update-LedgerJournal -JournalPath $OtherJournal
             $result | Should -BeNullOrEmpty
             Test-Path (Join-Path $OtherJournal '2024-01_2024-12' 'ib.txt') | Should -BeFalse
         }
@@ -149,7 +167,7 @@ Describe 'Convert-LedgerOpeningBalance' {
             New-Item -ItemType Directory -Path $attachDir | Out-Null
             'kvitto' | Set-Content -Path (Join-Path $attachDir 'faktura.txt') -Encoding UTF8
 
-            Convert-LedgerOpeningBalance -JournalPath $JournalPath | Out-Null
+            Update-LedgerJournal -JournalPath $JournalPath | Out-Null
 
             # ver0002 (Försäljning) became ver0001, so its attachment dir moved too.
             Test-Path (Join-Path $YearDir 'ver0001' 'faktura.txt') | Should -BeTrue

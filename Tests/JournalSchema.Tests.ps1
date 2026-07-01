@@ -42,7 +42,7 @@ Describe 'Journal schema versioning' {
 
             $err | Should -Not -BeNullOrEmpty
             $err | Should -Match 'schema version 1'
-            $err | Should -Match 'Convert-LedgerOpeningBalance'
+            $err | Should -Match 'Update-LedgerJournal'
         }
 
         It 'Should only warn (not throw) from a reading command' {
@@ -54,7 +54,7 @@ Describe 'Journal schema versioning' {
             Get-LedgerBalance -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' `
                 -WarningVariable warnings -WarningAction SilentlyContinue | Out-Null
 
-            ($warnings -join "`n") | Should -Match 'Convert-LedgerOpeningBalance'
+            ($warnings -join "`n") | Should -Match 'Update-LedgerJournal'
         }
     }
 
@@ -63,7 +63,7 @@ Describe 'Journal schema versioning' {
             New-Item -ItemType Directory -Path $JournalPath | Out-Null
             Set-Content -Path (Join-Path $JournalPath 'journal.txt') -Value @('Name: Gammal AB') -Encoding UTF8
 
-            Convert-LedgerOpeningBalance -JournalPath $JournalPath | Out-Null
+            Update-LedgerJournal -JournalPath $JournalPath | Out-Null
 
             (Get-LedgerJournal -Path $JournalPath).SchemaVersion | Should -Be 2
             { Add-LedgerAccount -JournalPath $JournalPath -AccountNumber 1910 -AccountName 'Kassa' } |
@@ -74,7 +74,7 @@ Describe 'Journal schema versioning' {
             New-Item -ItemType Directory -Path $JournalPath | Out-Null
             Set-Content -Path (Join-Path $JournalPath 'journal.txt') -Value @('Name: Gammal AB') -Encoding UTF8
 
-            Convert-LedgerOpeningBalance -JournalPath $JournalPath -WhatIf | Out-Null
+            Update-LedgerJournal -JournalPath $JournalPath -WhatIf | Out-Null
 
             (Get-LedgerJournal -Path $JournalPath).SchemaVersion | Should -Be 1
         }

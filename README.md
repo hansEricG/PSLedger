@@ -72,7 +72,7 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerIncomeStatement` | Income statement (resultaträkning) |
 | `Get-LedgerBalanceSheet` | Balance sheet (balansräkning) |
 | `Copy-LedgerOpeningBalance` | Roll over balances to a new year |
-| `Convert-LedgerOpeningBalance` | Migrate legacy opening balances to `ib.txt` |
+| `Update-LedgerJournal` | Migrate a journal to the current on-disk format |
 | `Export-LedgerSie` | Export a fiscal year to a SIE 4E file |
 | `Import-LedgerSie` | Import verifications from a SIE 4 file |
 | `Test-LedgerSie` | Validate a SIE file without importing |

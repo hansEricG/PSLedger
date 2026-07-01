@@ -42,7 +42,7 @@ Key domain concepts:
 - **Fiscal year** — a date range; directory named `{StartYYYY-MM}_{EndYYYY-MM}`
 - **Verification** — a balanced ledger entry; auto-numbered `ver0001.txt`, `ver0002.txt`, etc.
 - **Opening balance** (`ib.txt`) — ingående balans stored as metadata (like SIE `#IB`), **not** as a verification, so verification numbers match the source system
-- **Schema version** — `journal.txt` records a `SchemaVersion`; writing commands throw on out-of-date journals (naming the migration command), reading commands warn. Bump `$script:CurrentSchemaVersion` and register a migration in `Private/JournalSchema.ps1` when the on-disk format changes
+- **Schema version** — `journal.txt` records a `SchemaVersion`; writing commands throw on out-of-date journals (pointing to `Update-LedgerJournal`), reading commands warn. When the on-disk format changes, bump `$script:CurrentSchemaVersion`, add an `Invoke-Ledger*Migration` step in `Private/Migrations.ps1`, and register it in the `$script:LedgerSchemaMigrations` map in `Private/JournalSchema.ps1`
 - **Chart of accounts** (`accounts.txt`) — flat file of account numbers and names
 
 All entries enforce **double-entry balance** — the sum of all row amounts must equal zero.

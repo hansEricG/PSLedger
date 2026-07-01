@@ -3,13 +3,17 @@
 # on-disk format changes in a way that requires migrating existing journals.
 $script:CurrentSchemaVersion = 2
 
-# Maps the schema version a journal is *currently* at to the command that
-# migrates it one step forward. The '{0}' placeholder is the journal path.
+# Maps the schema version a journal is *currently* at to the migration that
+# brings it one step forward. 'Description' is shown in -WhatIf/progress output;
+# 'Action' is the name of the internal migration function (see Migrations.ps1).
 # A regular hashtable is used (not [ordered]) so integer indexing does a key
-# lookup rather than positional access; migrations are applied in version order
-# by Get-LedgerSchemaMigrationCommands regardless of storage order.
+# lookup rather than positional access; Update-LedgerJournal applies steps in
+# ascending version order regardless of storage order.
 $script:LedgerSchemaMigrations = @{
-    1 = "Convert-LedgerOpeningBalance -JournalPath '{0}'"
+    1 = @{
+        Description = 'Store opening balance as ib.txt metadata'
+        Action      = 'Invoke-LedgerOpeningBalanceMigration'
+    }
 }
 
 # Tracks paths a schema warning has already been shown for, so read commands
@@ -83,26 +87,25 @@ function Set-LedgerJournalSchemaVersion {
     $lines | Set-Content -Path $journalFile -Encoding UTF8
 }
 
-function Get-LedgerSchemaMigrationCommands {
+function Get-LedgerSchemaMigrationDescriptions {
     <#
     .SYNOPSIS
-    Returns the migration command(s) needed to bring a journal from one schema
-    version up to another, with the journal path substituted in.
+    Returns the descriptions of the migration steps needed to bring a journal
+    from one schema version up to another.
     #>
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)][int]$From,
-        [Parameter(Mandatory)][int]$To,
-        [Parameter(Mandatory)][string]$Path
+        [Parameter(Mandatory)][int]$To
     )
 
-    $commands = @()
+    $descriptions = @()
     for ($v = $From; $v -lt $To; $v++) {
         if ($script:LedgerSchemaMigrations.Contains($v)) {
-            $commands += ($script:LedgerSchemaMigrations[$v] -f $Path)
+            $descriptions += $script:LedgerSchemaMigrations[$v].Description
         }
     }
-    return $commands
+    return $descriptions
 }
 
 function Assert-LedgerJournalSchema {
@@ -139,20 +142,10 @@ function Assert-LedgerJournalSchema {
     }
 
     if ($version -lt $current) {
-        $commands = Get-LedgerSchemaMigrationCommands -From $version -To $current -Path $Path
-        $stepList = ($commands | ForEach-Object { "  $_" }) -join [Environment]::NewLine
-        $plural = if ($commands.Count -gt 1) { 's' } else { '' }
-        $message = @(
-            "Journal '$Path' uses schema version $version but this PSLedger supports version $current."
-            "Run the following migration command$plural before continuing:"
-            $stepList
-        ) -join [Environment]::NewLine
+        $message = "Journal '$Path' uses schema version $version but this PSLedger supports version $current. Migrate it with: Update-LedgerJournal -JournalPath '$Path'"
     }
     else {
-        $message = @(
-            "Journal '$Path' uses schema version $version which is newer than this PSLedger supports (version $current)."
-            "Upgrade the PSLedger module to work with this journal."
-        ) -join [Environment]::NewLine
+        $message = "Journal '$Path' uses schema version $version which is newer than this PSLedger supports (version $current). Upgrade the PSLedger module to work with this journal."
     }
 
     if ($Write) {
