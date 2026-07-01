@@ -88,7 +88,7 @@ function Add-LedgerAccrual {
         [datetime]$ReversalDate
     )
     process {
-        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
         $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
         if ($Amount -le 0) {

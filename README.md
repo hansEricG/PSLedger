@@ -336,7 +336,7 @@ Import-LedgerChart -JournalPath .\MinFirma.ledger -Path .\min-kontoplan.tsv
 
 ```
 MinFirma.ledger/
-├── journal.txt              # Name, OrgNumber
+├── journal.txt              # Name, OrgNumber, SchemaVersion
 ├── accounts.txt             # Tab-separated: 1910\tKassa och bank
 ├── dimensions.txt           # Tab-separated: 1\tKostnadsställe
 ├── objects.txt              # Tab-separated: 1\tsthlm\tStockholm

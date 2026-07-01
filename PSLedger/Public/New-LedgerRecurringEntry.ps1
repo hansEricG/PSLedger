@@ -83,7 +83,7 @@ function New-LedgerRecurringEntry {
         [Parameter(Mandatory)]
         [hashtable[]]$Rows
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
     $recurringDir = Join-Path $JournalPath 'recurring'
     if (-not (Test-Path $recurringDir)) {

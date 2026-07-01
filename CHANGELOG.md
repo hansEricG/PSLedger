@@ -22,16 +22,26 @@
   as a `#VER`.
 
 ### Added
+- **Journal schema versioning** — each journal now records a `SchemaVersion`
+  field in `journal.txt`, and the module knows which on-disk format version it
+  supports. Writing commands refuse to operate on an out-of-date journal and
+  point to the exact migration command to run; reading commands still work but
+  emit a one-time warning per journal. Journals from newer module versions are
+  likewise flagged with a prompt to upgrade. `Get-LedgerJournal` now exposes the
+  `SchemaVersion` property (legacy journals without the field report version 1).
 - `Convert-LedgerOpeningBalance` — migrates existing journals to the new format.
   For every fiscal year whose `ver0001.txt` is an `Ingående balans` verification,
   it extracts the rows into `ib.txt`, deletes that verification, and renumbers
   the remaining verifications (and their attachment directories) down by one.
-  Idempotent and supports `-WhatIf`.
+  It also stamps the journal with the current `SchemaVersion`. Idempotent and
+  supports `-WhatIf`.
 
 ### Breaking
 - Journals created with earlier versions must be migrated with
-  `Convert-LedgerOpeningBalance` before their balances read correctly, because
-  the opening balance is no longer detected from a verification.
+  `Convert-LedgerOpeningBalance` before writing commands will operate on them.
+  Writing to an un-migrated journal now fails with a message naming the
+  migration command; reading still works but warns. This also fixes the previous
+  behaviour where opening balances were no longer detected from a verification.
 
 ## [0.6.0] - 2026-06-30
 

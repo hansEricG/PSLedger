@@ -61,7 +61,7 @@ function Import-LedgerChart {
         [Parameter(ParameterSetName = 'File')]
         [switch]$Force
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
     $TemplateDir = Join-Path $PSScriptRoot '..' 'Data' 'ChartTemplates'
 

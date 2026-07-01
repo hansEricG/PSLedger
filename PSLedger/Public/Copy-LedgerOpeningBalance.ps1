@@ -45,7 +45,7 @@ function Copy-LedgerOpeningBalance {
         [string]$ToFiscalYear
     )
     process {
-        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
         $FromFiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FromFiscalYear -JournalPath $JournalPath
 
         # Validate source fiscal year

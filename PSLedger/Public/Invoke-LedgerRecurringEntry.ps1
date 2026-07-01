@@ -40,7 +40,7 @@ function Invoke-LedgerRecurringEntry {
 
         [string]$Name
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
     $templates = if ($Name) {
         @(Get-LedgerRecurringEntry -JournalPath $JournalPath -Name $Name)

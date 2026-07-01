@@ -52,6 +52,22 @@ Describe 'Get-LedgerJournal' {
             $Result.Path | Should -Be $JournalPath
         }
 
+        It 'Should return the current SchemaVersion for a new journal' {
+            $Result = Get-LedgerJournal -Path $JournalPath
+
+            $Result.SchemaVersion | Should -Be 2
+        }
+
+        It 'Should report SchemaVersion 1 for a legacy journal without the field' {
+            $LegacyPath = Join-Path $TestDrive 'legacy.ledger'
+            New-Item -ItemType Directory -Path $LegacyPath | Out-Null
+            Set-Content -Path (Join-Path $LegacyPath 'journal.txt') -Value @('Name: Gammal AB') -Encoding UTF8
+
+            $Result = Get-LedgerJournal -Path $LegacyPath
+
+            $Result.SchemaVersion | Should -Be 1
+        }
+
         It 'Should throw if the path does not exist' {
             { Get-LedgerJournal -Path 'C:\nonexistent\path.ledger' } | Should -Throw
         }

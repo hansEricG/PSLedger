@@ -6,16 +6,25 @@ function Resolve-LedgerJournalPath {
     [CmdletBinding()]
     param (
         [Parameter()]
-        [string]$JournalPath
+        [string]$JournalPath,
+
+        [ValidateSet('None', 'Read', 'Write')]
+        [string]$SchemaCheck = 'Read'
     )
 
-    if ($JournalPath) {
-        return $JournalPath
+    $resolved = if ($JournalPath) {
+        $JournalPath
+    }
+    elseif ($script:CurrentJournalPath) {
+        $script:CurrentJournalPath
+    }
+    else {
+        throw "No journal specified. Use -JournalPath or set a current journal with Set-LedgerCurrentJournal."
     }
 
-    if ($script:CurrentJournalPath) {
-        return $script:CurrentJournalPath
+    if ($SchemaCheck -ne 'None') {
+        Assert-LedgerJournalSchema -Path $resolved -Write:($SchemaCheck -eq 'Write')
     }
 
-    throw "No journal specified. Use -JournalPath or set a current journal with Set-LedgerCurrentJournal."
+    return $resolved
 }

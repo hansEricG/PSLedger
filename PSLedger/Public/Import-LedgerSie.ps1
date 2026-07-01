@@ -98,7 +98,7 @@ function Import-LedgerSie {
     }
     process {
         $FiscalYear = $ExplicitFiscalYear
-        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
         if (-not (Test-Path $JournalPath -PathType Container)) {
             throw "Journal not found: $JournalPath"

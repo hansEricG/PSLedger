@@ -8,6 +8,7 @@
 . $PSScriptRoot\Private\ResolveJournalPath.ps1
 . $PSScriptRoot\Private\ResolveFiscalYear.ps1
 . $PSScriptRoot\Private\OpeningBalance.ps1
+. $PSScriptRoot\Private\JournalSchema.ps1
 
 # Module-level state
 $script:CurrentJournalPath = $null

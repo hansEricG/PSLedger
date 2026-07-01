@@ -49,6 +49,7 @@ function New-LedgerJournal {
         "; PSLedger Journal"
         "; Created: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
         ""
+        "SchemaVersion: $script:CurrentSchemaVersion"
         "Name: $Name"
     )
 

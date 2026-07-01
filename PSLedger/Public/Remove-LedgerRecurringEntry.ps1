@@ -32,7 +32,7 @@ function Remove-LedgerRecurringEntry {
         [Parameter(Mandatory)]
         [string]$Name
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
     $recurringDir = Join-Path $JournalPath 'recurring'
     $filePath = Join-Path $recurringDir "$Name.txt"

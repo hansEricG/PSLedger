@@ -13,7 +13,9 @@ This cmdlet converts every fiscal year in a journal in place: it extracts the
 renumbers the remaining verifications (and any attachment directories) down by
 one so they become ver0001..ver(N-1). Fiscal years that already have an ib.txt,
 or whose ver0001 is a normal verification, are left untouched, so the operation
-is safe to run repeatedly (idempotent).
+is safe to run repeatedly (idempotent). After processing, the journal is
+stamped with the current on-disk schema version, which also clears the
+"journal must be migrated" error raised by writing commands.
 
 Supports -WhatIf and -Confirm.
 
@@ -37,7 +39,7 @@ function Convert-LedgerOpeningBalance {
         [string]$JournalPath
     )
     process {
-        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck None
 
         if (-not (Test-Path $JournalPath -PathType Container)) {
             throw "Journal not found: $JournalPath"
@@ -116,6 +118,15 @@ function Convert-LedgerOpeningBalance {
                 FiscalYear                = $fyName
                 OpeningBalanceRows        = $ibRows.Count
                 RenumberedVerifications   = $renumbered
+            }
+        }
+
+        # Mark the journal as migrated to the current on-disk schema version so
+        # writing commands stop refusing to operate on it.
+        $journalVersion = Get-LedgerJournalSchemaVersion -Path $JournalPath
+        if ($null -ne $journalVersion -and $journalVersion -lt $script:CurrentSchemaVersion) {
+            if ($PSCmdlet.ShouldProcess($JournalPath, "Update journal schema version to $script:CurrentSchemaVersion")) {
+                Set-LedgerJournalSchemaVersion -Path $JournalPath -Version $script:CurrentSchemaVersion
             }
         }
     }

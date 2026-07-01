@@ -42,9 +42,10 @@ function Get-LedgerJournal {
     $Content = Get-Content $JournalFile
 
     $Journal = [PSCustomObject]@{
-        Path      = $Path
-        Name      = $null
-        OrgNumber = $null
+        Path          = $Path
+        Name          = $null
+        OrgNumber     = $null
+        SchemaVersion = 1
     }
 
     foreach ($Line in $Content) {
@@ -53,6 +54,9 @@ function Get-LedgerJournal {
         }
         elseif ($Line -match '^OrgNumber:\s*(.+)$') {
             $Journal.OrgNumber = $Matches[1]
+        }
+        elseif ($Line -match '^SchemaVersion:\s*(\d+)\s*$') {
+            $Journal.SchemaVersion = [int]$Matches[1]
         }
     }
 
