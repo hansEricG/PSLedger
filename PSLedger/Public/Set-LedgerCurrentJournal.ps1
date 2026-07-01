@@ -45,6 +45,9 @@ function Set-LedgerCurrentJournal {
         Remove-LedgerJournalExtensions
     }
 
+    # Fiscal year names are journal-specific — clear any stale selection
+    $script:CurrentFiscalYear = $null
+
     $script:CurrentJournalPath = $resolvedPath
 
     # Load per-journal extensions

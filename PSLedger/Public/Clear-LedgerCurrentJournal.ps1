@@ -25,4 +25,5 @@ function Clear-LedgerCurrentJournal {
 
     Remove-LedgerJournalExtensions
     $script:CurrentJournalPath = $null
+    $script:CurrentFiscalYear = $null
 }

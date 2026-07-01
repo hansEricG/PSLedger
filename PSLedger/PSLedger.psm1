@@ -10,6 +10,7 @@
 
 # Module-level state
 $script:CurrentJournalPath = $null
+$script:CurrentFiscalYear = $null
 
 # Public functions
 . $PSScriptRoot\Public\New-LedgerJournal.ps1
@@ -45,6 +46,9 @@ $script:CurrentJournalPath = $null
 . $PSScriptRoot\Public\Set-LedgerCurrentJournal.ps1
 . $PSScriptRoot\Public\Clear-LedgerCurrentJournal.ps1
 . $PSScriptRoot\Public\Get-LedgerCurrentJournal.ps1
+. $PSScriptRoot\Public\Set-LedgerCurrentFiscalYear.ps1
+. $PSScriptRoot\Public\Clear-LedgerCurrentFiscalYear.ps1
+. $PSScriptRoot\Public\Get-LedgerCurrentFiscalYear.ps1
 . $PSScriptRoot\Public\Get-LedgerFirstFiscalYear.ps1
 . $PSScriptRoot\Public\Get-LedgerLatestFiscalYear.ps1
 . $PSScriptRoot\Public\Get-LedgerLatestOpenFiscalYear.ps1
@@ -69,6 +73,8 @@ $script:BuiltInFunctions = @(
     'Remove-LedgerRecurringEntry', 'Invoke-LedgerRecurringEntry',
     'Get-LedgerExtension', 'Set-LedgerCurrentJournal', 'Clear-LedgerCurrentJournal',
     'Get-LedgerCurrentJournal',
+    'Set-LedgerCurrentFiscalYear', 'Clear-LedgerCurrentFiscalYear',
+    'Get-LedgerCurrentFiscalYear',
     'Get-LedgerFirstFiscalYear', 'Get-LedgerLatestFiscalYear',
     'Get-LedgerLatestOpenFiscalYear', 'Get-LedgerNextFiscalYear',
     'Add-LedgerAttachment', 'Get-LedgerAttachment', 'Remove-LedgerAttachment',

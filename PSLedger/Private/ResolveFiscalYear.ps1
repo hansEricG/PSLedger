@@ -16,6 +16,11 @@ function Resolve-LedgerFiscalYear {
         return $FiscalYear
     }
 
+    # Fall back to the session's current fiscal year, if set
+    if ($script:CurrentFiscalYear) {
+        return $script:CurrentFiscalYear
+    }
+
     # Find latest fiscal year by scanning directory
     $yearDirs = Get-ChildItem -Path $JournalPath -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '^\d{4}-\d{2}_\d{4}-\d{2}$' } |
