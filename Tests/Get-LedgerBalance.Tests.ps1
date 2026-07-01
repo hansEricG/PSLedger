@@ -152,11 +152,8 @@ Describe 'Get-LedgerBalance' {
                 # Account 1910 starts with an opening balance of 4000 (debit),
                 # offset by equity account 2010 (credit).
                 Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2010' -AccountName 'Eget kapital'
-                $IbFile = Join-Path $JournalPath $FiscalYear 'ver0000.txt'
+                $IbFile = Join-Path $JournalPath $FiscalYear 'ib.txt'
                 @(
-                    'Date: 2024-01-01'
-                    'Description: Ingående balans'
-                    ''
                     "1910`t4000"
                     "2010`t-4000"
                 ) | Set-Content -Path $IbFile -Encoding UTF8

@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.7.0] - 2026-07-01
+
+### Changed
+- **Opening balances (ingående balans) are now stored as metadata, not as a
+  verification.** Each fiscal year keeps its opening balance in an `ib.txt` file
+  (tab-separated `account\tamount`, signed like SIE `#IB`) instead of a
+  `ver0001.txt` verification with the description `Ingående balans`. As a result,
+  imported and regular verifications keep their source numbering
+  (`ver0001..verN`) instead of being shifted by one. This affects:
+  - `Import-LedgerSie` — writes `#IB` (year index `0`) to `ib.txt`; `#VER`
+    records import as `ver0001..verN`.
+  - `Copy-LedgerOpeningBalance` — writes `ib.txt` in the target year (and now
+    refuses only if an opening balance already exists, independent of
+    verifications).
+  - `Get-LedgerBalance` / `Get-LedgerLedger` — read the opening balance from
+    `ib.txt`.
+- `Export-LedgerSie` now emits proper balance metadata: opening balances
+  (`#IB`), closing balances for balance-sheet accounts (`#UB`) and the period
+  result for result accounts (`#RES`). The opening balance is no longer exported
+  as a `#VER`.
+
+### Added
+- `Convert-LedgerOpeningBalance` — migrates existing journals to the new format.
+  For every fiscal year whose `ver0001.txt` is an `Ingående balans` verification,
+  it extracts the rows into `ib.txt`, deletes that verification, and renumbers
+  the remaining verifications (and their attachment directories) down by one.
+  Idempotent and supports `-WhatIf`.
+
+### Breaking
+- Journals created with earlier versions must be migrated with
+  `Convert-LedgerOpeningBalance` before their balances read correctly, because
+  the opening balance is no longer detected from a verification.
+
 ## [0.6.0] - 2026-06-30
 
 ### Added

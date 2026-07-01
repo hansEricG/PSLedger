@@ -3,8 +3,9 @@
 Exports a fiscal year to a SIE 4E file.
 
 .DESCRIPTION
-Writes a SIE 4 transaction file (typ 4E) containing the chart of accounts and
-all verifications for a fiscal year. The file uses CP437 (PC-8) encoding as
+Writes a SIE 4 transaction file (typ 4E) containing the chart of accounts, the
+opening (#IB), closing (#UB) and result (#RES) balances, and all verifications
+for a fiscal year. The file uses CP437 (PC-8) encoding as
 required by the SIE standard, decimal amounts use a period as decimal
 separator, and dates are written as yyyymmdd. All verifications are placed in
 series 'A' with their existing numbers.
@@ -110,6 +111,23 @@ function Export-LedgerSie {
 
         foreach ($a in $accounts) {
             & $append (Format-SieRecord -Tag 'KONTO' -Fields @($a.AccountNumber, $a.AccountName))
+        }
+
+        # Balance metadata (year index 0):
+        #   #IB  opening balances (ingående balans), from ib.txt
+        #   #UB  closing balances for balance-sheet accounts (1xxx-2xxx)
+        #   #RES period result for result accounts (3xxx-8xxx)
+        $openingRows = @(Read-LedgerOpeningBalance -YearDir $YearDir | Sort-Object Account)
+        foreach ($ib in $openingRows) {
+            & $append (Format-SieRecord -Tag 'IB' -Fields @('0', $ib.Account, [decimal]$ib.Amount))
+        }
+
+        $balances = @(Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear)
+        foreach ($b in ($balances | Where-Object { $_.AccountNumber -match '^[12]' -and [decimal]$_.Balance -ne 0 })) {
+            & $append (Format-SieRecord -Tag 'UB' -Fields @('0', $b.AccountNumber, [decimal]$b.Balance))
+        }
+        foreach ($b in ($balances | Where-Object { $_.AccountNumber -match '^[3-8]' -and [decimal]$_.Balance -ne 0 })) {
+            & $append (Format-SieRecord -Tag 'RES' -Fields @('0', $b.AccountNumber, [decimal]$b.Balance))
         }
 
         foreach ($e in $entries) {

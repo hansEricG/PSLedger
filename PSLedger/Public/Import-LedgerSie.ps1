@@ -23,9 +23,9 @@ contiguous with the existing years). Import the missing year(s) first, or use
 -Force to override.
 
 Opening balances (#IB records for the current year, year index 0) are imported
-as the first verification (ver0001.txt) with the description 'Ingående balans',
-so balance-sheet accounts carry their opening balance into the fiscal year. If
-the opening balances do not sum to zero by a small rounding difference (within
+as the fiscal year's opening balance metadata (ib.txt), not as a verification, so
+imported #VER records keep their source numbering (ver0001..verN). If the opening
+balances do not sum to zero by a small rounding difference (within
 -RoundingTolerance), the difference is posted to -RoundingAccount; a larger
 difference aborts the import.
 
@@ -175,8 +175,9 @@ function Import-LedgerSie {
         # Guard against duplicate imports: only import into an empty fiscal year.
         if (-not $Force) {
             $ExistingVer = Get-ChildItem -Path $YearDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
-            if ($ExistingVer) {
-                throw "Fiscal year $FiscalYear already contains verifications. Import only into an empty fiscal year to avoid duplicating entries. Use -Force to import anyway."
+            $ExistingIb = Get-LedgerOpeningBalancePath -YearDir $YearDir
+            if ($ExistingVer -or (Test-Path $ExistingIb -PathType Leaf)) {
+                throw "Fiscal year $FiscalYear already contains verifications or an opening balance. Import only into an empty fiscal year to avoid duplicating entries. Use -Force to import anyway."
             }
         }
 
@@ -267,7 +268,8 @@ function Import-LedgerSie {
             }
         }
 
-        # Import opening balances first so the entry becomes ver0001 (Ingående balans).
+        # Import opening balances as metadata (ib.txt), not as a verification, so
+        # imported #VER records keep their source numbering (ver0001..verN).
         $ibRounding = [decimal]0
         if ($ibRows.Count -gt 0) {
             # Sum as decimal (Measure-Object -Sum returns a double and introduces
@@ -297,20 +299,7 @@ function Import-LedgerSie {
                 $ibRows.Add([PSCustomObject]@{ Account = $RoundingAccount; Amount = $ibRounding }) | Out-Null
             }
 
-            $ibStartText = $null
-            if (Test-Path $YearFile) {
-                foreach ($Line in (Get-Content $YearFile)) {
-                    if ($Line -match '^StartDate:\s*(.+)$') { $ibStartText = $Matches[1]; break }
-                }
-            }
-            if (-not $ibStartText) {
-                throw "Cannot determine start date for fiscal year $FiscalYear."
-            }
-            $ibDate = [datetime]$ibStartText
-
-            $ibEntryRows = foreach ($r in $ibRows) { @{ Account = $r.Account; Amount = $r.Amount } }
-            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-                -Date $ibDate -Description 'Ingående balans' -Rows @($ibEntryRows)
+            Write-LedgerOpeningBalance -YearDir $YearDir -Rows $ibRows
         }
 
         $imported = 0

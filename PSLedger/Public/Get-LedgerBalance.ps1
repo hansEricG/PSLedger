@@ -4,8 +4,8 @@ Generates a trial balance (saldobalans) for a fiscal year.
 
 .DESCRIPTION
 Reads all verifications in the specified fiscal year and aggregates amounts
-per account. The opening balance verification (description 'Ingående balans')
-is reported separately as OpeningBalance, while all other verifications are
+per account. The opening balance is read from the fiscal year's opening balance
+metadata (ib.txt) and reported as OpeningBalance, while all verifications are
 summed into Debit and Credit. The closing balance (Balance) is
 OpeningBalance + Debit - Credit. Account names are resolved from the journal's
 chart of accounts.
@@ -61,25 +61,28 @@ function Get-LedgerBalance {
 
         # Read all verification files
         $Files = Get-ChildItem -Path $YearDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
-        if (-not $Files) {
+        $OpeningRows = Read-LedgerOpeningBalance -YearDir $YearDir
+        if (-not $Files -and -not $OpeningRows) {
             return
         }
 
         # Aggregate amounts per account
         $Totals = @{}
 
+        # Seed opening balances from ib.txt (ingående balans metadata).
+        foreach ($Row in $OpeningRows) {
+            $AccNum = $Row.Account
+            if (-not $Totals.ContainsKey($AccNum)) {
+                $Totals[$AccNum] = @{ Opening = [decimal]0; Debit = [decimal]0; Credit = [decimal]0 }
+            }
+            $Totals[$AccNum].Opening += [decimal]$Row.Amount
+        }
+
         foreach ($File in $Files) {
             $Lines = Get-Content $File.FullName
-            $IsOpeningBalance = $false
-            foreach ($Line in $Lines) {
-                if ($Line -match '^Description:\s*(.+)$') {
-                    $IsOpeningBalance = ($Matches[1].Trim() -eq 'Ingående balans')
-                    break
-                }
-            }
 
             foreach ($Line in $Lines) {
-                if ($Line -match '^(\d+)\t(.+)$') {
+                if ($Line -match '^(\d+)\t([^\t]+)') {
                     $AccNum = $Matches[1]
                     $Amount = [decimal]$Matches[2]
 
@@ -87,10 +90,7 @@ function Get-LedgerBalance {
                         $Totals[$AccNum] = @{ Opening = [decimal]0; Debit = [decimal]0; Credit = [decimal]0 }
                     }
 
-                    if ($IsOpeningBalance) {
-                        $Totals[$AccNum].Opening += $Amount
-                    }
-                    elseif ($Amount -gt 0) {
+                    if ($Amount -gt 0) {
                         $Totals[$AccNum].Debit += $Amount
                     }
                     elseif ($Amount -lt 0) {

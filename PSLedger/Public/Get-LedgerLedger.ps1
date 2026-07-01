@@ -4,10 +4,10 @@ Displays the general ledger (huvudbok) for a specific account.
 
 .DESCRIPTION
 Lists all transactions affecting the specified account in chronological order
-with a running balance. If the account has an opening balance (from the
-'Ingående balans' verification), it is shown as the first row (ingående saldo)
-and the running balance starts from it; the opening balance is not counted in
-the period Debit/Credit columns. Each returned object includes the verification
+with a running balance. If the account has an opening balance (from the fiscal
+year's opening balance metadata, ib.txt), it is shown as the first row (ingående
+saldo) and the running balance starts from it; the opening balance is not counted
+in the period Debit/Credit columns. Each returned object includes the verification
 number, date, description, debit or credit amount, and running balance.
 Optionally filters by date range; when -FromDate is set, the opening row reflects
 the carried-forward balance at that date (the opening balance plus any
@@ -62,33 +62,37 @@ function Get-LedgerLedger {
 
         $entries = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Account $Account
 
-        if (-not $entries) { return }
-
-        $sorted = $entries | Sort-Object { [datetime]$_.Date }, VerificationNumber
-
-        # Separate the opening balance entry ('Ingående balans') from regular
-        # transactions so it can be shown as the running balance starting point.
+        # Opening balance (ingående balans) is stored as metadata in ib.txt, not
+        # as a verification. Read the account's opening balance and the fiscal
+        # year start date (used as the date for the opening row).
+        $YearDir = Join-Path $JournalPath $FiscalYear
         $openingBalance = [decimal]0
-        $openingEntry = $null
-        $regular = New-Object System.Collections.Generic.List[object]
-        foreach ($entry in $sorted) {
-            if ($entry.Description -eq 'Ingående balans') {
-                foreach ($row in $entry.Rows) {
-                    if ($row.Account -eq $Account) { $openingBalance += [decimal]$row.Amount }
-                }
-                if (-not $openingEntry) { $openingEntry = $entry }
-            }
-            else {
-                $regular.Add($entry) | Out-Null
+        $hasOpening = $false
+        foreach ($row in (Read-LedgerOpeningBalance -YearDir $YearDir)) {
+            if ($row.Account -eq $Account) {
+                $openingBalance += [decimal]$row.Amount
+                $hasOpening = $true
             }
         }
+
+        $yearStart = $null
+        $YearFile = Join-Path $YearDir 'year.txt'
+        if (Test-Path $YearFile) {
+            foreach ($Line in (Get-Content $YearFile)) {
+                if ($Line -match '^StartDate:\s*(.+)$') { $yearStart = $Matches[1]; break }
+            }
+        }
+
+        if (-not $entries -and -not $hasOpening) { return }
+
+        $regular = @($entries | Sort-Object { [datetime]$_.Date }, VerificationNumber)
 
         # Carry the opening balance forward. When -FromDate is set and the account
         # has an opening balance, also fold in transactions dated before -FromDate
         # so the opening row reflects the correct carried-forward balance at that
         # date (ingående saldo per periodens början), not just the year-start value.
         $broughtForward = $openingBalance
-        if ($openingEntry -and $FromDate) {
+        if ($hasOpening -and $FromDate) {
             foreach ($entry in $regular) {
                 if (([datetime]$entry.Date) -lt $FromDate) {
                     foreach ($row in $entry.Rows) {
@@ -102,11 +106,10 @@ function Get-LedgerLedger {
 
         # Emit the opening balance (ingående saldo) as the first row. When a
         # -FromDate is set it reflects the carried-forward balance at that date.
-        if ($openingEntry) {
-            $openingDate = if ($FromDate) { $FromDate.ToString('yyyy-MM-dd') } else { $openingEntry.Date }
-            $openingVer = if ($FromDate) { $null } else { $openingEntry.VerificationNumber }
+        if ($hasOpening) {
+            $openingDate = if ($FromDate) { $FromDate.ToString('yyyy-MM-dd') } else { $yearStart }
             [PSCustomObject]@{
-                VerificationNumber = $openingVer
+                VerificationNumber = $null
                 Date               = $openingDate
                 Description        = 'Ingående balans'
                 Debit              = [decimal]0

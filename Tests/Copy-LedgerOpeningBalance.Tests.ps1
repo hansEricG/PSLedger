@@ -66,63 +66,56 @@ Describe 'Copy-LedgerOpeningBalance' {
             Add-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Date '2024-06-15' -Description 'Inköp' -Rows $Rows2
         }
 
-        It 'Should create ver0001.txt in target fiscal year' {
+        It 'Should create ib.txt in target fiscal year' {
             Copy-LedgerOpeningBalance -JournalPath $JournalPath -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
 
-            $VerFile = Join-Path $JournalPath '2025-01_2025-12' 'ver0001.txt'
-            Test-Path $VerFile | Should -BeTrue
+            $IbFile = Join-Path $JournalPath '2025-01_2025-12' 'ib.txt'
+            Test-Path $IbFile | Should -BeTrue
         }
 
-        It 'Should use target year start date' {
+        It 'Should not create a verification for the opening balance' {
             Copy-LedgerOpeningBalance -JournalPath $JournalPath -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
 
-            $Entry = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2025-01_2025-12' -VerificationNumber 1
-            $Entry.Date | Should -Be '2025-01-01'
+            $Entries = @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2025-01_2025-12')
+            $Entries.Count | Should -Be 0
         }
 
-        It 'Should set description to Ingående balans' {
+        It 'Should carry balances into the target OpeningBalance' {
             Copy-LedgerOpeningBalance -JournalPath $JournalPath -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
 
-            $Entry = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2025-01_2025-12' -VerificationNumber 1
-            $Entry.Description | Should -Be 'Ingående balans'
+            $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear '2025-01_2025-12'
+            $Kassa = $Balance | Where-Object { $_.AccountNumber -eq '1910' }
+            $Kassa.OpeningBalance | Should -Be 50000
+
+            $Lev = $Balance | Where-Object { $_.AccountNumber -eq '2440' }
+            $Lev.OpeningBalance | Should -Be -20000
         }
 
         It 'Should only include balance sheet accounts (1xxx and 2xxx)' {
             Copy-LedgerOpeningBalance -JournalPath $JournalPath -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
 
-            $Entry = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2025-01_2025-12' -VerificationNumber 1
-            $Entry.Rows | ForEach-Object { $_.Account | Should -Match '^[12]' }
+            $IbFile = Join-Path $JournalPath '2025-01_2025-12' 'ib.txt'
+            foreach ($Line in (Get-Content $IbFile)) {
+                ($Line -split "`t")[0] | Should -Match '^[12]'
+            }
         }
 
-        It 'Should carry correct balances' {
+        It 'Should produce a balanced opening balance (sum of amounts = 0)' {
             Copy-LedgerOpeningBalance -JournalPath $JournalPath -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
 
-            $Entry = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2025-01_2025-12' -VerificationNumber 1
-            $Kassa = $Entry.Rows | Where-Object { $_.Account -eq '1910' }
-            $Kassa.Amount | Should -Be 50000
-
-            $Lev = $Entry.Rows | Where-Object { $_.Account -eq '2440' }
-            $Lev.Amount | Should -Be -20000
-        }
-
-        It 'Should produce a balanced entry (sum of amounts = 0)' {
-            Copy-LedgerOpeningBalance -JournalPath $JournalPath -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
-
-            $Entry = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2025-01_2025-12' -VerificationNumber 1
-            $Sum = ($Entry.Rows | Measure-Object -Property Amount -Sum).Sum
+            $IbFile = Join-Path $JournalPath '2025-01_2025-12' 'ib.txt'
+            $Sum = [decimal]0
+            foreach ($Line in (Get-Content $IbFile)) {
+                $Sum += [decimal](($Line -split "`t")[1])
+            }
             $Sum | Should -Be 0
         }
 
-        It 'Should throw if target already has verifications' {
-            # Add an entry to target year first
-            $Rows = @(
-                @{ Account = '1910'; Amount = 100 }
-                @{ Account = '3010'; Amount = -100 }
-            )
-            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear '2025-01_2025-12' -Date '2025-01-15' -Description 'Existing' -Rows $Rows
+        It 'Should throw if target already has an opening balance' {
+            Copy-LedgerOpeningBalance -JournalPath $JournalPath -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
 
             { Copy-LedgerOpeningBalance -JournalPath $JournalPath -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12' } |
-                Should -Throw '*already has verifications*'
+                Should -Throw '*already has an opening balance*'
         }
 
         It 'Should throw if source fiscal year does not exist' {

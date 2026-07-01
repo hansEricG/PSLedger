@@ -7,6 +7,7 @@
 . $PSScriptRoot\Private\ExtensionLoader.ps1
 . $PSScriptRoot\Private\ResolveJournalPath.ps1
 . $PSScriptRoot\Private\ResolveFiscalYear.ps1
+. $PSScriptRoot\Private\OpeningBalance.ps1
 
 # Module-level state
 $script:CurrentJournalPath = $null
@@ -27,6 +28,7 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Get-LedgerIncomeStatement.ps1
 . $PSScriptRoot\Public\Get-LedgerBalanceSheet.ps1
 . $PSScriptRoot\Public\Copy-LedgerOpeningBalance.ps1
+. $PSScriptRoot\Public\Convert-LedgerOpeningBalance.ps1
 . $PSScriptRoot\Public\Add-LedgerReversal.ps1
 . $PSScriptRoot\Public\Test-LedgerSie.ps1
 . $PSScriptRoot\Public\Export-LedgerSie.ps1
@@ -66,6 +68,7 @@ $script:BuiltInFunctions = @(
     'New-LedgerFiscalYear', 'Add-LedgerEntry', 'Get-LedgerEntry', 'Get-LedgerBalance',
     'Get-LedgerFiscalYear', 'Close-LedgerFiscalYear', 'Import-LedgerChart',
     'Get-LedgerIncomeStatement', 'Get-LedgerBalanceSheet', 'Copy-LedgerOpeningBalance',
+    'Convert-LedgerOpeningBalance',
     'Add-LedgerReversal', 'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie',
     'Get-LedgerLedger', 'Get-LedgerVatReport', 'Add-LedgerDimension', 'Get-LedgerDimension',
     'Add-LedgerObject', 'Get-LedgerObject', 'Add-LedgerAccrual',

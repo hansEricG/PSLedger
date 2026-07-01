@@ -203,12 +203,18 @@ Describe 'Import-LedgerSie' {
                 New-LedgerFiscalYear -JournalPath $IbJournal -StartDate '2024-01-01' -EndDate '2024-12-31'
             }
 
-            It 'Should create an opening balance verification dated on the year start' {
+            It 'Should import the opening balance as metadata, not a verification' {
                 Import-LedgerSie -JournalPath $IbJournal -FiscalYear $FiscalYear -Path $IbSieFile -CreateMissingAccounts
 
+                # The opening balance is stored in ib.txt, so the only verification
+                # is the imported #VER (numbered ver0001, matching the source).
                 $entries = @(Get-LedgerEntry -JournalPath $IbJournal -FiscalYear $FiscalYear | Sort-Object VerificationNumber)
-                $entries[0].Description | Should -Be 'Ingående balans'
-                $entries[0].Date | Should -Be '2024-01-01'
+                $entries.Count | Should -Be 1
+                $entries[0].VerificationNumber | Should -Be 1
+                $entries[0].Description | Should -Be 'Försäljning'
+
+                $IbFile = Join-Path $IbJournal $FiscalYear 'ib.txt'
+                Test-Path $IbFile | Should -BeTrue
             }
 
             It 'Should carry the opening balance into Get-LedgerBalance' {
@@ -229,10 +235,12 @@ Describe 'Import-LedgerSie' {
             It 'Should ignore #IB records for other years (year index != 0)' {
                 Import-LedgerSie -JournalPath $IbJournal -FiscalYear $FiscalYear -Path $IbSieFile -CreateMissingAccounts
 
-                $opening = @(Get-LedgerEntry -JournalPath $IbJournal -FiscalYear $FiscalYear | Where-Object Description -eq 'Ingående balans')
-                $opening.Rows.Account | Should -Not -Contain '9999'
-                # Only the two year-0 IB rows should be present
-                @($opening.Rows).Count | Should -Be 2
+                # Only the two year-0 IB rows should carry an opening balance;
+                # the year -1 record (account 9999) must be ignored.
+                $balance = Get-LedgerBalance -JournalPath $IbJournal -FiscalYear $FiscalYear
+                $withOpening = @($balance | Where-Object { $_.OpeningBalance -ne 0 })
+                $withOpening.AccountNumber | Should -Not -Contain '9999'
+                $withOpening.Count | Should -Be 2
             }
 
             It 'Should report ImportedOpeningBalance as false when the SIE file has no #IB' {
@@ -369,8 +377,8 @@ Describe 'Import-LedgerSie' {
             It 'Should post a small öresdifferens to the rounding account' {
                 Import-LedgerSie -JournalPath $RoundJournal -FiscalYear $FiscalYear -Path $RoundSie -CreateMissingAccounts
 
-                $opening = Get-LedgerEntry -JournalPath $RoundJournal -FiscalYear $FiscalYear | Where-Object Description -eq 'Ingående balans'
-                ($opening.Rows | Where-Object Account -eq '3740').Amount | Should -Be -0.14
+                $balance = Get-LedgerBalance -JournalPath $RoundJournal -FiscalYear $FiscalYear
+                ($balance | Where-Object AccountNumber -eq '3740').OpeningBalance | Should -Be -0.14
             }
 
             It 'Should report the rounding adjustment in the result' {
@@ -378,11 +386,11 @@ Describe 'Import-LedgerSie' {
                 $result.OpeningBalanceRounding | Should -Be -0.14
             }
 
-            It 'Should produce a balanced opening balance entry' {
+            It 'Should produce a balanced opening balance (sum of amounts = 0)' {
                 Import-LedgerSie -JournalPath $RoundJournal -FiscalYear $FiscalYear -Path $RoundSie -CreateMissingAccounts
-                $opening = Get-LedgerEntry -JournalPath $RoundJournal -FiscalYear $FiscalYear | Where-Object Description -eq 'Ingående balans'
+                $balance = Get-LedgerBalance -JournalPath $RoundJournal -FiscalYear $FiscalYear
                 $sum = [decimal]0
-                $opening.Rows | ForEach-Object { $sum += [decimal]$_.Amount }
+                foreach ($row in $balance) { $sum += [decimal]$row.OpeningBalance }
                 $sum | Should -Be 0
             }
 
@@ -401,8 +409,8 @@ Describe 'Import-LedgerSie' {
                 Add-LedgerAccount -JournalPath $RoundJournal -AccountNumber '3741' -AccountName 'Avrundning'
                 Import-LedgerSie -JournalPath $RoundJournal -FiscalYear $FiscalYear -Path $RoundSie -RoundingAccount '3741'
 
-                $opening = Get-LedgerEntry -JournalPath $RoundJournal -FiscalYear $FiscalYear | Where-Object Description -eq 'Ingående balans'
-                ($opening.Rows | Where-Object Account -eq '3741').Amount | Should -Be -0.14
+                $balance = Get-LedgerBalance -JournalPath $RoundJournal -FiscalYear $FiscalYear
+                ($balance | Where-Object AccountNumber -eq '3741').OpeningBalance | Should -Be -0.14
             }
 
             It 'Should abort when the difference exceeds -RoundingTolerance' {

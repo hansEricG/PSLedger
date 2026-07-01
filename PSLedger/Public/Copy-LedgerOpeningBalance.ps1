@@ -4,9 +4,10 @@ Copies closing balances as opening balances into a new fiscal year.
 
 .DESCRIPTION
 Reads the trial balance from a source fiscal year, takes all balance-sheet
-accounts (1xxx assets and 2xxx equity/liabilities), and creates an opening
-verification (ver0001.txt) in the target fiscal year. The entry is dated on
-the target year's start date with the description 'Ingående balans'.
+accounts (1xxx assets and 2xxx equity/liabilities), and writes them as the
+opening balance metadata (ib.txt) of the target fiscal year. The opening balance
+is stored as metadata, not as a verification, so verification numbering starts at
+ver0001 for the first real entry.
 
 .PARAMETER JournalPath
 The path to an existing journal directory.
@@ -59,10 +60,10 @@ function Copy-LedgerOpeningBalance {
             throw "Target fiscal year not found: $ToFiscalYear"
         }
 
-        # Check target has no entries
-        $ExistingFiles = Get-ChildItem -Path $ToDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
-        if ($ExistingFiles) {
-            throw "Target fiscal year $ToFiscalYear already has verifications. Cannot create opening balance."
+        # Check target has no opening balance yet
+        $ExistingIb = Get-LedgerOpeningBalancePath -YearDir $ToDir
+        if (Test-Path $ExistingIb -PathType Leaf) {
+            throw "Target fiscal year $ToFiscalYear already has an opening balance (ib.txt)."
         }
 
         # Get balance accounts from source year
@@ -102,34 +103,11 @@ function Copy-LedgerOpeningBalance {
             throw "No balance sheet accounts with non-zero balances in $FromFiscalYear."
         }
 
-        # Get target year start date
-        $YearFile = Join-Path $ToDir 'year.txt'
-        $StartDate = $null
-        if (Test-Path $YearFile) {
-            foreach ($Line in (Get-Content $YearFile)) {
-                if ($Line -match '^StartDate:\s*(.+)$') {
-                    $StartDate = $Matches[1]
-                    break
-                }
-            }
+        # Write the opening balance as metadata (ib.txt), not as a verification.
+        $IbRows = foreach ($Acc in $BalanceAccounts) {
+            [PSCustomObject]@{ Account = $Acc.AccountNumber; Amount = $Acc.Balance }
         }
-        if (-not $StartDate) {
-            throw "Cannot determine start date for target fiscal year $ToFiscalYear."
-        }
-
-        # Build verification content
-        $Lines = @(
-            "Date: $StartDate"
-            "Description: Ingående balans"
-            ""
-        )
-
-        foreach ($Acc in $BalanceAccounts) {
-            $Lines += "$($Acc.AccountNumber)`t$($Acc.Balance)"
-        }
-
-        $FilePath = Join-Path $ToDir 'ver0001.txt'
-        $Lines | Set-Content -Path $FilePath -Encoding UTF8
+        Write-LedgerOpeningBalance -YearDir $ToDir -Rows $IbRows
     }
 }
 
