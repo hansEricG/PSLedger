@@ -9,6 +9,7 @@
 . $PSScriptRoot\Private\ResolveFiscalYear.ps1
 . $PSScriptRoot\Private\OpeningBalance.ps1
 . $PSScriptRoot\Private\JournalSchema.ps1
+. $PSScriptRoot\Private\JournalMetadata.ps1
 . $PSScriptRoot\Private\Migrations.ps1
 
 # Module-level state
@@ -18,6 +19,7 @@ $script:CurrentFiscalYear = $null
 # Public functions
 . $PSScriptRoot\Public\New-LedgerJournal.ps1
 . $PSScriptRoot\Public\Get-LedgerJournal.ps1
+. $PSScriptRoot\Public\Set-LedgerJournal.ps1
 . $PSScriptRoot\Public\Add-LedgerAccount.ps1
 . $PSScriptRoot\Public\Get-LedgerAccount.ps1
 . $PSScriptRoot\Public\New-LedgerFiscalYear.ps1
@@ -66,7 +68,7 @@ $script:CurrentFiscalYear = $null
 
 # Export built-in public functions
 $script:BuiltInFunctions = @(
-    'New-LedgerJournal', 'Get-LedgerJournal', 'Add-LedgerAccount', 'Get-LedgerAccount',
+    'New-LedgerJournal', 'Get-LedgerJournal', 'Set-LedgerJournal', 'Add-LedgerAccount', 'Get-LedgerAccount',
     'New-LedgerFiscalYear', 'Add-LedgerEntry', 'Get-LedgerEntry', 'Get-LedgerBalance',
     'Get-LedgerFiscalYear', 'Close-LedgerFiscalYear', 'Import-LedgerChart',
     'Get-LedgerIncomeStatement', 'Get-LedgerBalanceSheet', 'Copy-LedgerOpeningBalance',

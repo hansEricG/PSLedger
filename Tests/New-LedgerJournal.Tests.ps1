@@ -39,6 +39,12 @@ Describe 'New-LedgerJournal' {
             $Param | Should -Not -BeNullOrEmpty
             $Param.ParameterType.Name | Should -Be 'String'
         }
+
+        It 'Should have an optional Metadata parameter of type Hashtable' {
+            $Param = $Command.Parameters['Metadata']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'Hashtable'
+        }
     }
 
     Context 'Behavior' {
@@ -72,6 +78,16 @@ Describe 'New-LedgerJournal' {
 
             $Content = Get-Content (Join-Path $JournalPath 'journal.txt') -Raw
             $Content | Should -Match '556677-8899'
+        }
+
+        It 'Should write custom metadata fields to journal.txt when provided' {
+            New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB' -Metadata @{ VatNumber = 'SE556677889901' }
+
+            (Get-LedgerJournal -Path $JournalPath).Metadata.VatNumber | Should -Be 'SE556677889901'
+        }
+
+        It 'Should throw when a metadata key is reserved' {
+            { New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB' -Metadata @{ OrgNumber = 'X' } } | Should -Throw
         }
 
         It 'Should throw if the journal directory already exists' {

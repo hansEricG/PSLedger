@@ -58,6 +58,29 @@ Describe 'Get-LedgerJournal' {
             $Result.SchemaVersion | Should -Be 2
         }
 
+        It 'Should expose custom metadata fields via the Metadata property' {
+            $MetaPath = Join-Path $TestDrive 'meta.ledger'
+            New-LedgerJournal -Path $MetaPath -Name 'Meta AB' -Metadata @{ VatNumber = 'SE556677889901' }
+
+            $Result = Get-LedgerJournal -Path $MetaPath
+
+            $Result.Metadata.VatNumber | Should -Be 'SE556677889901'
+        }
+
+        It 'Should return an empty Metadata dictionary when there are no custom fields' {
+            $Result = Get-LedgerJournal -Path $JournalPath
+
+            $Result.Metadata.Count | Should -Be 0
+        }
+
+        It 'Should not expose reserved fields as metadata' {
+            $Result = Get-LedgerJournal -Path $JournalPath
+
+            $Result.Metadata.Contains('Name') | Should -BeFalse
+            $Result.Metadata.Contains('OrgNumber') | Should -BeFalse
+            $Result.Metadata.Contains('SchemaVersion') | Should -BeFalse
+        }
+
         It 'Should report SchemaVersion 1 for a legacy journal without the field' {
             $LegacyPath = Join-Path $TestDrive 'legacy.ledger'
             New-Item -ItemType Directory -Path $LegacyPath | Out-Null

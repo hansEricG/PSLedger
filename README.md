@@ -26,6 +26,9 @@ Import-Module PSLedger
 # 1. Create a journal
 New-LedgerJournal -Path .\MinFirma.ledger -Name 'MinFirma AB' -OrgNumber '556677-8899'
 
+# 1b. (optional) Store extra company info, e.g. a VAT number
+Set-LedgerJournal -JournalPath .\MinFirma.ledger -Metadata @{ VatNumber = 'SE556677889901' }
+
 # 2. Set it as current (optional — saves typing -JournalPath on every command)
 Set-LedgerCurrentJournal -Path .\MinFirma.ledger
 
@@ -59,6 +62,7 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 |---------|-------------|
 | `New-LedgerJournal` | Create a new journal (company) |
 | `Get-LedgerJournal` | Read journal metadata |
+| `Set-LedgerJournal` | Update company name / org number / metadata |
 | `Import-LedgerChart` | Import chart of accounts from template or file |
 | `Add-LedgerAccount` | Add a single account to the chart |
 | `Get-LedgerAccount` | List or look up accounts |

@@ -22,6 +22,17 @@
   as a `#VER`.
 
 ### Added
+- `Set-LedgerJournal` — updates the company `Name`, `OrgNumber` and/or arbitrary
+  metadata fields in an existing journal's `journal.txt` after creation. Only the
+  supplied fields change; comments and the `SchemaVersion` are preserved. Passing
+  an empty `-OrgNumber` (or an empty metadata value) removes the field. Supports
+  `-WhatIf`/`-Confirm`.
+- **Free-form company metadata** — `New-LedgerJournal` and `Set-LedgerJournal`
+  accept a `-Metadata` hashtable for extra company fields (e.g.
+  `@{ VatNumber = 'SE556677889901' }`), stored as `Key: Value` lines in
+  `journal.txt`. `Get-LedgerJournal` exposes them via a `Metadata` property
+  (e.g. `$journal.Metadata.VatNumber`). Reserved keys (`Name`, `OrgNumber`,
+  `SchemaVersion`) use their dedicated parameters.
 - **Journal schema versioning** — each journal now records a `SchemaVersion`
   field in `journal.txt`, and the module knows which on-disk format version it
   supports. Writing commands refuse to operate on an out-of-date journal and
