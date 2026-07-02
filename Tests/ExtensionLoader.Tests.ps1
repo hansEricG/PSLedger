@@ -1,7 +1,24 @@
 BeforeAll {
     $ModulePath = Join-Path $PSScriptRoot '..' 'PSLedger' 'PSLedger.psd1'
+
+    # Isolate the User extension source: by default it falls back to
+    # $HOME\.psledger\Extensions, so a developer's real user extensions would
+    # leak into these tests. Point it at a dedicated empty directory instead.
+    $script:OriginalUserExt = $env:PSLEDGER_USER_EXTENSIONS
+    $script:IsolatedUserExt = Join-Path ([System.IO.Path]::GetTempPath()) ("PSLedgerUserExt_" + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $script:IsolatedUserExt -Force | Out-Null
+    $env:PSLEDGER_USER_EXTENSIONS = $script:IsolatedUserExt
+
     Import-Module $ModulePath -Force
     Import-Module TDDUtils -Force
+}
+
+AfterAll {
+    $env:PSLEDGER_USER_EXTENSIONS = $script:OriginalUserExt
+    if ($script:IsolatedUserExt -and (Test-Path $script:IsolatedUserExt)) {
+        Remove-Item $script:IsolatedUserExt -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Import-Module $ModulePath -Force
 }
 
 Describe 'ExtensionLoader' {
@@ -188,7 +205,7 @@ function Get-UserExt {
         }
 
         AfterAll {
-            $env:PSLEDGER_USER_EXTENSIONS = $null
+            $env:PSLEDGER_USER_EXTENSIONS = $script:IsolatedUserExt
             Import-Module $ModulePath -Force
         }
 
