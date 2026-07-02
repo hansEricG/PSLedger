@@ -1,11 +1,12 @@
 <#
 .SYNOPSIS
-Attaches a file to a verification.
+Attaches one or more files to a verification.
 
 .DESCRIPTION
-Copies (or moves) a file into the verification's attachment directory. The
-directory is created on demand as a subdirectory of the fiscal year directory,
-named after the verification (e.g. ver0001/).
+Copies (or moves) one or more files into the verification's attachment
+directory. The directory is created on demand as a subdirectory of the fiscal
+year directory, named after the verification (e.g. ver0001/). One result object
+is returned per attached file.
 
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal.
@@ -18,10 +19,10 @@ Accepts pipeline input from fiscal year objects.
 The verification number to attach the file to.
 
 .PARAMETER Path
-The path to the file to attach.
+One or more paths to the files to attach.
 
 .PARAMETER Move
-If specified, moves the file instead of copying it.
+If specified, moves the files instead of copying them.
 
 .EXAMPLE
 Add-LedgerAttachment -VerificationNumber 3 -Path .\faktura-101.pdf
@@ -32,6 +33,11 @@ Copies faktura-101.pdf to the attachment directory for verification 3.
 Add-LedgerAttachment -VerificationNumber 1 -Path .\kvitto.jpg -Move
 
 Moves kvitto.jpg into the attachment directory for verification 1.
+
+.EXAMPLE
+Add-LedgerAttachment -VerificationNumber 5 -Path .\faktura.pdf, .\kvitto.jpg, .\avtal.pdf
+
+Attaches three files to verification 5 in a single call.
 #>
 function Add-LedgerAttachment {
     [CmdletBinding()]
@@ -46,7 +52,7 @@ function Add-LedgerAttachment {
         [int]$VerificationNumber,
 
         [Parameter(Mandatory)]
-        [string]$Path,
+        [string[]]$Path,
 
         [Parameter()]
         [switch]$Move
@@ -68,9 +74,11 @@ function Add-LedgerAttachment {
             throw "Verification $VerificationNumber not found in fiscal year $FiscalYear."
         }
 
-        # Verify source file exists
-        if (-not (Test-Path $Path -PathType Leaf)) {
-            throw "File not found: $Path"
+        # Verify all source files exist before copying any
+        foreach ($sourcePath in $Path) {
+            if (-not (Test-Path $sourcePath -PathType Leaf)) {
+                throw "File not found: $sourcePath"
+            }
         }
 
         # Create attachment directory on demand
@@ -79,22 +87,24 @@ function Add-LedgerAttachment {
             New-Item -ItemType Directory -Path $attachDir -Force | Out-Null
         }
 
-        $sourceFile = Get-Item $Path
-        $destPath = Join-Path $attachDir $sourceFile.Name
+        foreach ($sourcePath in $Path) {
+            $sourceFile = Get-Item $sourcePath
+            $destPath = Join-Path $attachDir $sourceFile.Name
 
-        if ($Move) {
-            Move-Item -Path $Path -Destination $destPath -Force
-        }
-        else {
-            Copy-Item -Path $Path -Destination $destPath -Force
-        }
+            if ($Move) {
+                Move-Item -Path $sourcePath -Destination $destPath -Force
+            }
+            else {
+                Copy-Item -Path $sourcePath -Destination $destPath -Force
+            }
 
-        [PSCustomObject]@{
-            VerificationNumber = $VerificationNumber
-            FiscalYear         = $FiscalYear
-            FileName           = $sourceFile.Name
-            DestinationPath    = $destPath
-            Size               = $sourceFile.Length
+            [PSCustomObject]@{
+                VerificationNumber = $VerificationNumber
+                FiscalYear         = $FiscalYear
+                FileName           = $sourceFile.Name
+                DestinationPath    = $destPath
+                Size               = $sourceFile.Length
+            }
         }
     }
 }

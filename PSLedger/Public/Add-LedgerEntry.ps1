@@ -24,6 +24,16 @@ A description of the transaction.
 An array of hashtables, each with 'Account' (account number) and 'Amount'
 (positive for debit, negative for credit). The sum of all amounts must be zero.
 
+.PARAMETER Attachment
+One or more paths to files to attach to the newly created verification (e.g. a
+receipt or invoice). All files must exist; they are validated before the
+verification is written. Delegates to Add-LedgerAttachment.
+
+.PARAMETER PassThru
+If specified, returns an object describing the created verification, including
+its number, fiscal year, file path and any attached files. By default the
+command produces no output.
+
 .EXAMPLE
 $rows = @(
     @{ Account = '1910'; Amount = 5000 }
@@ -39,9 +49,10 @@ $rows = @(
     @{ Account = '2440'; Amount = -6400 }
     @{ Account = '2640'; Amount = -1600 }
 )
-Add-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Date '2024-03-20' -Description 'Hyra kontor' -Rows $rows
+Add-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Date '2024-03-20' -Description 'Hyra kontor' -Rows $rows -Attachment .\hyresfaktura.pdf, .\betalbevis.pdf -PassThru
 
-Records an office rent invoice with VAT split across multiple accounts.
+Records an office rent invoice with VAT split across multiple accounts, attaches
+two files to the verification, and returns the created verification object.
 #>
 function Add-LedgerEntry {
     [CmdletBinding()]
@@ -60,7 +71,13 @@ function Add-LedgerEntry {
         [string]$Description,
 
         [Parameter(Mandatory)]
-        [hashtable[]]$Rows
+        [hashtable[]]$Rows,
+
+        [Parameter()]
+        [string[]]$Attachment,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
@@ -119,6 +136,15 @@ function Add-LedgerEntry {
             }
         }
 
+        # Validate attachment files exist before writing the verification
+        if ($Attachment) {
+            foreach ($attachmentPath in $Attachment) {
+                if (-not (Test-Path $attachmentPath -PathType Leaf)) {
+                    throw "Attachment file not found: $attachmentPath"
+                }
+            }
+        }
+
         # Determine next verification number by scanning existing files
         $ExistingFiles = Get-ChildItem -Path $YearDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
         if ($ExistingFiles) {
@@ -162,6 +188,24 @@ function Add-LedgerEntry {
         }
 
         $Lines | Set-Content -Path $FilePath -Encoding UTF8
+
+        # Attach any supplied files to the new verification
+        $attached = @()
+        if ($Attachment) {
+            $attached = Add-LedgerAttachment -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -VerificationNumber $NextNum -Path $Attachment
+        }
+
+        if ($PassThru) {
+            [PSCustomObject]@{
+                VerificationNumber = $NextNum
+                FiscalYear         = $FiscalYear
+                Date               = $Date
+                Description        = $Description
+                Path               = $FilePath
+                Attachments        = @($attached | ForEach-Object { $_.FileName })
+            }
+        }
     }
 }
 

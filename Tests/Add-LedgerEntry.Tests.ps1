@@ -54,6 +54,19 @@ Describe 'Add-LedgerEntry' {
             $Param | Should -Not -BeNullOrEmpty
             $Param.Attributes.Mandatory | Should -Contain $true
         }
+
+        It 'Should have an optional Attachment parameter that accepts multiple files' {
+            $Param = $Command.Parameters['Attachment']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'String[]'
+            $Param.Attributes.Mandatory | Should -Not -Contain $true
+        }
+
+        It 'Should have an optional PassThru switch' {
+            $Param = $Command.Parameters['PassThru']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'SwitchParameter'
+        }
     }
 
     Context 'Behavior' {
@@ -162,6 +175,45 @@ Describe 'Add-LedgerEntry' {
                 Should -Not -Throw
             { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-12-31' -Description 'Sista dagen' -Rows $Rows } |
                 Should -Not -Throw
+        }
+
+        It 'Should produce no output by default' {
+            $result = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-15' -Description 'Tyst' -Rows $Rows
+            $result | Should -BeNullOrEmpty
+        }
+
+        It 'Should return a verification object with -PassThru' {
+            $result = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-15' -Description 'Med passthru' -Rows $Rows -PassThru
+            $result.VerificationNumber | Should -Be 1
+            $result.FiscalYear | Should -Be $FiscalYear
+            $result.Description | Should -Be 'Med passthru'
+            $result.Path | Should -Match 'ver0001\.txt'
+        }
+
+        It 'Should attach files supplied via -Attachment' {
+            $fileA = Join-Path $TestDrive 'kvitto-a.pdf'
+            $fileB = Join-Path $TestDrive 'kvitto-b.pdf'
+            'A' | Set-Content $fileA -Encoding UTF8
+            'B' | Set-Content $fileB -Encoding UTF8
+
+            $result = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date '2024-01-15' -Description 'Med bilagor' -Rows $Rows `
+                -Attachment $fileA, $fileB -PassThru
+
+            $result.Attachments.Count | Should -Be 2
+            $attachDir = Join-Path $JournalPath $FiscalYear 'ver0001'
+            Test-Path (Join-Path $attachDir 'kvitto-a.pdf') | Should -BeTrue
+            Test-Path (Join-Path $attachDir 'kvitto-b.pdf') | Should -BeTrue
+        }
+
+        It 'Should not create a verification when an attachment file is missing' {
+            $missing = Join-Path $TestDrive 'saknas.pdf'
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date '2024-01-15' -Description 'Trasig bilaga' -Rows $Rows `
+                -Attachment $missing } | Should -Throw '*not found*'
+
+            $VerFile = Join-Path $JournalPath $FiscalYear 'ver0001.txt'
+            Test-Path $VerFile | Should -BeFalse
         }
     }
 }

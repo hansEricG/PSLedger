@@ -26,10 +26,10 @@ Describe 'Add-LedgerAttachment' {
             $Param.Attributes.Mandatory | Should -Contain $true
         }
 
-        It 'Should have a mandatory Path parameter of type String' {
+        It 'Should have a mandatory Path parameter that accepts multiple files' {
             $Param = $Command.Parameters['Path']
             $Param | Should -Not -BeNullOrEmpty
-            $Param.ParameterType.Name | Should -Be 'String'
+            $Param.ParameterType.Name | Should -Be 'String[]'
             $Param.Attributes.Mandatory | Should -Contain $true
         }
 
@@ -80,6 +80,34 @@ Describe 'Add-LedgerAttachment' {
             Add-LedgerAttachment -VerificationNumber 1 -Path $testFile -Move
             # Original should be gone
             Test-Path $testFile | Should -BeFalse
+        }
+
+        It 'Should attach multiple files in a single call' {
+            $fileA = Join-Path $TestDrive 'multi-a.pdf'
+            $fileB = Join-Path $TestDrive 'multi-b.pdf'
+            'A' | Set-Content $fileA -Encoding UTF8
+            'B' | Set-Content $fileB -Encoding UTF8
+
+            $result = Add-LedgerAttachment -VerificationNumber 1 -Path $fileA, $fileB
+            $result.Count | Should -Be 2
+            $result.FileName | Should -Contain 'multi-a.pdf'
+            $result.FileName | Should -Contain 'multi-b.pdf'
+
+            $destDir = Join-Path $journalDir '2024-01_2024-12' 'ver0001'
+            Test-Path (Join-Path $destDir 'multi-a.pdf') | Should -BeTrue
+            Test-Path (Join-Path $destDir 'multi-b.pdf') | Should -BeTrue
+        }
+
+        It 'Should not copy any file when one of several does not exist' {
+            $good = Join-Path $TestDrive 'good.pdf'
+            'good' | Set-Content $good -Encoding UTF8
+            $missing = Join-Path $TestDrive 'missing.pdf'
+
+            { Add-LedgerAttachment -VerificationNumber 1 -Path $good, $missing } |
+                Should -Throw '*not found*'
+
+            $destDir = Join-Path $journalDir '2024-01_2024-12' 'ver0001'
+            Test-Path (Join-Path $destDir 'good.pdf') | Should -BeFalse
         }
 
         It 'Should throw when verification does not exist' {

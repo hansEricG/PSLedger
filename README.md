@@ -185,8 +185,16 @@ Associate files (invoices, receipts, contracts) with verifications:
 # Attach a PDF invoice to verification 3
 Add-LedgerAttachment -VerificationNumber 3 -Path .\faktura-101.pdf
 
+# Attach several files at once
+Add-LedgerAttachment -VerificationNumber 3 -Path .\faktura-101.pdf, .\kvitto.jpg, .\avtal.pdf
+
 # Attach and move (removes original)
 Add-LedgerAttachment -VerificationNumber 3 -Path .\kvitto.jpg -Move
+
+# Attach files while creating the entry (returns the new verification with -PassThru)
+Add-LedgerEntry -FiscalYear '2024-01_2024-12' -Date '2024-03-15' `
+    -Description 'Hyra kontor' -Rows $rows `
+    -Attachment .\hyresfaktura.pdf, .\betalbevis.pdf -PassThru
 
 # List attachments
 Get-LedgerAttachment -VerificationNumber 3

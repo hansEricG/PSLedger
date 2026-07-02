@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- `Add-LedgerAttachment` now accepts multiple files in a single call — `-Path`
+  takes an array (e.g. `-Path .\faktura.pdf, .\kvitto.jpg`). All source files are
+  validated before any are copied/moved, and one result object is returned per
+  file.
+
+### Added
+- `Add-LedgerEntry` gained an optional `-Attachment` parameter that attaches one
+  or more files to the verification as it is created (delegating to
+  `Add-LedgerAttachment`). Attachment files are validated before the verification
+  is written, so a missing file leaves no partial verification behind.
+- `Add-LedgerEntry` gained a `-PassThru` switch that returns an object describing
+  the created verification (`VerificationNumber`, `FiscalYear`, `Date`,
+  `Description`, `Path`, `Attachments`). Without `-PassThru` the command remains
+  silent, preserving existing behaviour.
+
 ## [0.7.0] - 2026-07-01
 
 ### Changed
