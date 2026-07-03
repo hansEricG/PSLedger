@@ -72,6 +72,8 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Add-LedgerDocument.ps1
 . $PSScriptRoot\Public\Get-LedgerDocument.ps1
 . $PSScriptRoot\Public\Remove-LedgerDocument.ps1
+. $PSScriptRoot\Public\Backup-LedgerJournal.ps1
+. $PSScriptRoot\Public\Restore-LedgerJournal.ps1
 
 # Export built-in public functions
 $script:BuiltInFunctions = @(
@@ -94,7 +96,8 @@ $script:BuiltInFunctions = @(
     'Get-LedgerFirstFiscalYear', 'Get-LedgerLatestFiscalYear',
     'Get-LedgerLatestOpenFiscalYear', 'Get-LedgerNextFiscalYear',
     'Add-LedgerAttachment', 'Get-LedgerAttachment', 'Remove-LedgerAttachment',
-    'Add-LedgerDocument', 'Get-LedgerDocument', 'Remove-LedgerDocument'
+    'Add-LedgerDocument', 'Get-LedgerDocument', 'Remove-LedgerDocument',
+    'Backup-LedgerJournal', 'Restore-LedgerJournal'
 )
 
 # Load extensions at module scope (env variable — semicolon-separated paths)
