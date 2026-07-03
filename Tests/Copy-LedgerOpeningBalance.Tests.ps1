@@ -128,4 +128,45 @@ Describe 'Copy-LedgerOpeningBalance' {
                 Should -Throw '*not found*'
         }
     }
+
+    Context 'Result carry account by company type' {
+        BeforeAll {
+            function New-CarryJournal {
+            param ([string]$CompanyType)
+            $jp = Join-Path $TestDrive ("carry_" + [System.IO.Path]::GetRandomFileName() + '.ledger')
+            New-LedgerJournal -Path $jp -Name 'Carry' -CompanyType $CompanyType
+            New-LedgerFiscalYear -JournalPath $jp -StartDate '2024-01-01' -EndDate '2024-12-31'
+            New-LedgerFiscalYear -JournalPath $jp -StartDate '2025-01-01' -EndDate '2025-12-31'
+            Add-LedgerAccount -JournalPath $jp -AccountNumber '1910' -AccountName 'Kassa'
+            Add-LedgerAccount -JournalPath $jp -AccountNumber '3010' -AccountName 'Försäljning'
+            Add-LedgerAccount -JournalPath $jp -AccountNumber '2099' -AccountName 'Årets resultat'
+            Add-LedgerAccount -JournalPath $jp -AccountNumber '2019' -AccountName 'Årets resultat, eget kapital'
+            Add-LedgerEntry -JournalPath $jp -FiscalYear '2024-01_2024-12' -Date '2024-06-01' -Description 'Vinst' -Rows @(
+                @{ Account = '1910'; Amount = 30000 }
+                @{ Account = '3010'; Amount = -30000 }
+            )
+            Copy-LedgerOpeningBalance -JournalPath $jp -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
+            $ib = @{}
+            foreach ($Line in (Get-Content (Join-Path $jp '2025-01_2025-12' 'ib.txt'))) {
+                $p = $Line -split "`t"
+                $ib[$p[0]] = [decimal]$p[1]
+            }
+            $ib
+        }
+        }
+
+        It 'Should carry the year result to 2099 for an AB journal' {
+            $ib = New-CarryJournal -CompanyType 'AB'
+            $ib.ContainsKey('2099') | Should -BeTrue
+            $ib['2099'] | Should -Be -30000
+            $ib.ContainsKey('2019') | Should -BeFalse
+        }
+
+        It 'Should carry the year result to 2019 for an EF journal' {
+            $ib = New-CarryJournal -CompanyType 'EF'
+            $ib.ContainsKey('2019') | Should -BeTrue
+            $ib['2019'] | Should -Be -30000
+            $ib.ContainsKey('2099') | Should -BeFalse
+        }
+    }
 }

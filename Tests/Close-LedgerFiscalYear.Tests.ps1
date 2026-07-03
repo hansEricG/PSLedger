@@ -34,6 +34,29 @@ Describe 'Close-LedgerFiscalYear' {
             $Param.Attributes.ValueFromPipelineByPropertyName | Should -Contain $true
             $Param.Aliases | Should -Contain 'Name'
         }
+
+        It 'Should support ShouldProcess (-WhatIf / -Confirm)' {
+            $Command.Parameters.ContainsKey('WhatIf') | Should -BeTrue
+            $Command.Parameters.ContainsKey('Confirm') | Should -BeTrue
+        }
+
+        It 'Should have an optional EquityAccount parameter of type String' {
+            $Param = $Command.Parameters['EquityAccount']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'String'
+        }
+
+        It 'Should have an optional ResultAccount parameter of type String' {
+            $Param = $Command.Parameters['ResultAccount']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'String'
+        }
+
+        It 'Should have a SkipResultEntry switch parameter' {
+            $Param = $Command.Parameters['SkipResultEntry']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'SwitchParameter'
+        }
     }
 
     Context 'Behavior' {
@@ -91,6 +114,121 @@ Describe 'Close-LedgerFiscalYear' {
 
             $Result = Get-LedgerFiscalYear -JournalPath $JournalPath
             $Result.Status | Should -Be 'Closed'
+        }
+
+        It 'Should not create a verification when there is no result to book' {
+            Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+
+            $VerFiles = Get-ChildItem -Path (Join-Path $JournalPath $FiscalYear) -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
+            @($VerFiles).Count | Should -Be 0
+        }
+    }
+
+    Context 'Result booking' {
+        BeforeAll {
+            function New-ProfitJournal {
+                param ([string]$Path, [string]$CompanyType, [string]$EquityAccount)
+                if ($CompanyType) {
+                    New-LedgerJournal -Path $Path -Name 'Bokslut AB' -CompanyType $CompanyType
+                }
+                else {
+                    New-LedgerJournal -Path $Path -Name 'Bokslut AB'
+                }
+                New-LedgerFiscalYear -JournalPath $Path -StartDate '2024-01-01' -EndDate '2024-12-31'
+                Add-LedgerAccount -JournalPath $Path -AccountNumber '1910' -AccountName 'Kassa'
+                Add-LedgerAccount -JournalPath $Path -AccountNumber '3010' -AccountName 'Försäljning'
+                Add-LedgerAccount -JournalPath $Path -AccountNumber '8999' -AccountName 'Årets resultat'
+                if ($EquityAccount) {
+                    Add-LedgerAccount -JournalPath $Path -AccountNumber $EquityAccount -AccountName 'Årets resultat, eget kapital'
+                }
+                # A 5000 profit: debit 1910, credit 3010.
+                Add-LedgerEntry -JournalPath $Path -FiscalYear '2024-01_2024-12' -Date '2024-06-01' `
+                    -Description 'Försäljning' -Rows @(
+                    @{ Account = '1910'; Amount = 5000 }
+                    @{ Account = '3010'; Amount = -5000 }
+                )
+            }
+        }
+
+        BeforeEach {
+            $JournalName = [System.IO.Path]::GetRandomFileName()
+            $JournalPath = Join-Path $TestDrive "$JournalName.ledger"
+            $FiscalYear = '2024-01_2024-12'
+        }
+
+        It 'Should book the net result to the CompanyType default equity account (AB -> 2099)' {
+            New-ProfitJournal -Path $JournalPath -CompanyType 'AB' -EquityAccount '2099'
+
+            Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+
+            $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+            ($Balance | Where-Object AccountNumber -eq '2099').Balance | Should -Be -5000
+            ($Balance | Where-Object AccountNumber -eq '8999').Balance | Should -Be 5000
+        }
+
+        It 'Should net the profit and loss accounts to zero after booking' {
+            New-ProfitJournal -Path $JournalPath -CompanyType 'AB' -EquityAccount '2099'
+
+            Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+
+            $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $PLSum = ($Balance | Where-Object { $_.AccountNumber -match '^[3-8]' } | Measure-Object -Property Balance -Sum).Sum
+            $PLSum | Should -Be 0
+        }
+
+        It 'Should date the result verification at the year end date' {
+            New-ProfitJournal -Path $JournalPath -CompanyType 'AB' -EquityAccount '2099'
+
+            Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+
+            $ResultEntry = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear |
+                Where-Object { $_.Description -eq 'Årets resultat (bokslut)' }
+            $ResultEntry | Should -Not -BeNullOrEmpty
+            $ResultEntry.Date | Should -Be '2024-12-31'
+        }
+
+        It 'Should transfer the result to 2019 for an EF journal' {
+            New-ProfitJournal -Path $JournalPath -CompanyType 'EF' -EquityAccount '2019'
+
+            Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+
+            $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+            ($Balance | Where-Object AccountNumber -eq '2019').Balance | Should -Be -5000
+        }
+
+        It 'Should honour an explicit -EquityAccount override' {
+            New-ProfitJournal -Path $JournalPath -CompanyType 'AB' -EquityAccount '2091'
+
+            Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear -EquityAccount '2091'
+
+            $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+            ($Balance | Where-Object AccountNumber -eq '2091').Balance | Should -Be -5000
+        }
+
+        It 'Should not book a result when -SkipResultEntry is used' {
+            New-ProfitJournal -Path $JournalPath -CompanyType 'AB' -EquityAccount '2099'
+
+            Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear -SkipResultEntry
+
+            $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+            ($Balance | Where-Object AccountNumber -eq '8999') | Should -BeNullOrEmpty
+            (Get-LedgerFiscalYear -JournalPath $JournalPath).Status | Should -Be 'Closed'
+        }
+
+        It 'Should throw when there is a result but no CompanyType and no -EquityAccount' {
+            New-ProfitJournal -Path $JournalPath
+
+            { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear } | Should -Throw '*CompanyType*'
+        }
+
+        It 'Should not book or close the year with -WhatIf' {
+            New-ProfitJournal -Path $JournalPath -CompanyType 'AB' -EquityAccount '2099'
+
+            Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear -WhatIf
+
+            (Get-LedgerFiscalYear -JournalPath $JournalPath).Status | Should -Be 'Open'
+            $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+            ($Balance | Where-Object AccountNumber -eq '8999') | Should -BeNullOrEmpty
         }
     }
 }

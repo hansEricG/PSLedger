@@ -25,17 +25,26 @@ The new company or organisation name.
 The new organisation number (e.g. '556677-8899'). Pass an empty string to
 remove the organisation number.
 
+.PARAMETER CompanyType
+The company form. One of AB (aktiebolag), EF (enskild firma), HB (handelsbolag)
+or KB (kommanditbolag). Pass an empty string to remove the company type.
+
 .PARAMETER Metadata
 A hashtable of additional free-form company fields to set, such as
 @{ VatNumber = 'SE556677889901'; Email = 'info@firma.se' }. Keys must be simple
-identifiers; the reserved keys Name, OrgNumber and SchemaVersion are not allowed
-(use the dedicated parameters instead). Set a key's value to an empty string or
-`$null` to remove that field.
+identifiers; the reserved keys Name, OrgNumber, SchemaVersion and CompanyType are
+not allowed (use the dedicated parameters instead). Set a key's value to an empty
+string or `$null` to remove that field.
 
 .EXAMPLE
 Set-LedgerJournal -JournalPath .\MinFirma.ledger -Name 'MinFirma Bokföring AB'
 
 Renames the company.
+
+.EXAMPLE
+Set-LedgerJournal -JournalPath .\MinFirma.ledger -CompanyType AB
+
+Sets the company form on a journal that was created without one.
 
 .EXAMPLE
 Set-LedgerJournal -JournalPath C:\Bokföring\Konsult.ledger -Metadata @{ VatNumber = 'SE556677889901'; Email = 'info@konsult.se' }
@@ -56,6 +65,9 @@ function Set-LedgerJournal {
         [string]$OrgNumber,
 
         [Parameter()]
+        [string]$CompanyType,
+
+        [Parameter()]
         [hashtable]$Metadata
     )
     process {
@@ -72,6 +84,7 @@ function Set-LedgerJournal {
 
         $UpdateName = $PSBoundParameters.ContainsKey('Name')
         $UpdateOrg = $PSBoundParameters.ContainsKey('OrgNumber')
+        $UpdateCompanyType = $PSBoundParameters.ContainsKey('CompanyType')
 
         # Collect every field to change into a single ordered map (key -> value).
         # An empty/$null value means "remove this field". Reserved keys keep their
@@ -84,6 +97,12 @@ function Set-LedgerJournal {
         if ($UpdateOrg) {
             $Updates['OrgNumber'] = $OrgNumber
         }
+        if ($UpdateCompanyType) {
+            if (-not [string]::IsNullOrEmpty($CompanyType)) {
+                Test-LedgerCompanyType -CompanyType $CompanyType
+            }
+            $Updates['CompanyType'] = $CompanyType
+        }
         if ($PSBoundParameters.ContainsKey('Metadata')) {
             foreach ($Key in $Metadata.Keys) {
                 Test-LedgerMetadataKey -Key ([string]$Key)
@@ -92,7 +111,7 @@ function Set-LedgerJournal {
         }
 
         if ($Updates.Count -eq 0) {
-            throw "Nothing to update. Specify -Name, -OrgNumber and/or -Metadata."
+            throw "Nothing to update. Specify -Name, -OrgNumber, -CompanyType and/or -Metadata."
         }
 
         $Lines = @(Get-Content $JournalFile)

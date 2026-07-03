@@ -46,6 +46,24 @@ Describe 'Get-LedgerJournal' {
             $Result.OrgNumber | Should -Be '556677-8899'
         }
 
+        It 'Should return the CompanyType when the journal has one' {
+            $TypedPath = Join-Path $TestDrive 'typed.ledger'
+            New-LedgerJournal -Path $TypedPath -Name 'Typad AB' -CompanyType 'AB'
+
+            (Get-LedgerJournal -Path $TypedPath).CompanyType | Should -Be 'AB'
+        }
+
+        It 'Should return a null CompanyType when the journal has none' {
+            (Get-LedgerJournal -Path $JournalPath).CompanyType | Should -BeNullOrEmpty
+        }
+
+        It 'Should not expose CompanyType as metadata' {
+            $TypedPath = Join-Path $TestDrive 'typedmeta.ledger'
+            New-LedgerJournal -Path $TypedPath -Name 'Typad AB' -CompanyType 'EF'
+
+            (Get-LedgerJournal -Path $TypedPath).Metadata.Contains('CompanyType') | Should -BeFalse
+        }
+
         It 'Should return an object with the Path' {
             $Result = Get-LedgerJournal -Path $JournalPath
 
@@ -79,6 +97,7 @@ Describe 'Get-LedgerJournal' {
             $Result.Metadata.Contains('Name') | Should -BeFalse
             $Result.Metadata.Contains('OrgNumber') | Should -BeFalse
             $Result.Metadata.Contains('SchemaVersion') | Should -BeFalse
+            $Result.Metadata.Contains('CompanyType') | Should -BeFalse
         }
 
         It 'Should report SchemaVersion 1 for a legacy journal without the field' {

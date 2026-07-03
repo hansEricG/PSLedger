@@ -45,6 +45,13 @@ Describe 'New-LedgerJournal' {
             $Param | Should -Not -BeNullOrEmpty
             $Param.ParameterType.Name | Should -Be 'Hashtable'
         }
+
+        It 'Should have an optional CompanyType parameter of type String' {
+            $Param = $Command.Parameters['CompanyType']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'String'
+            $Param.Attributes.Mandatory | Should -Not -Contain $true
+        }
     }
 
     Context 'Behavior' {
@@ -88,6 +95,26 @@ Describe 'New-LedgerJournal' {
 
         It 'Should throw when a metadata key is reserved' {
             { New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB' -Metadata @{ OrgNumber = 'X' } } | Should -Throw
+        }
+
+        It 'Should write company type to journal.txt when provided' {
+            New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB' -CompanyType 'AB'
+
+            (Get-LedgerJournal -Path $JournalPath).CompanyType | Should -Be 'AB'
+        }
+
+        It 'Should not write a company type when omitted' {
+            New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB'
+
+            (Get-Content (Join-Path $JournalPath 'journal.txt') -Raw) | Should -Not -Match 'CompanyType:'
+        }
+
+        It 'Should throw when the company type is not in the allowed set' {
+            { New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB' -CompanyType 'XYZ' } | Should -Throw
+        }
+
+        It 'Should reject CompanyType supplied through the metadata channel' {
+            { New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB' -Metadata @{ CompanyType = 'AB' } } | Should -Throw
         }
 
         It 'Should throw if the journal directory already exists' {

@@ -28,6 +28,7 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Get-LedgerBalance.ps1
 . $PSScriptRoot\Public\Get-LedgerFiscalYear.ps1
 . $PSScriptRoot\Public\Close-LedgerFiscalYear.ps1
+. $PSScriptRoot\Public\Test-LedgerFiscalYear.ps1
 . $PSScriptRoot\Public\Import-LedgerChart.ps1
 . $PSScriptRoot\Public\Get-LedgerIncomeStatement.ps1
 . $PSScriptRoot\Public\Get-LedgerBalanceSheet.ps1
@@ -44,6 +45,12 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Add-LedgerObject.ps1
 . $PSScriptRoot\Public\Get-LedgerObject.ps1
 . $PSScriptRoot\Public\Add-LedgerAccrual.ps1
+. $PSScriptRoot\Public\Add-LedgerDepreciation.ps1
+. $PSScriptRoot\Public\Get-LedgerTaxEstimate.ps1
+. $PSScriptRoot\Public\Add-LedgerTaxEntry.ps1
+. $PSScriptRoot\Public\Add-LedgerAppropriation.ps1
+. $PSScriptRoot\Public\Get-LedgerAnnualReport.ps1
+. $PSScriptRoot\Public\Export-LedgerAnnualReport.ps1
 . $PSScriptRoot\Public\New-LedgerRecurringEntry.ps1
 . $PSScriptRoot\Public\Get-LedgerRecurringEntry.ps1
 . $PSScriptRoot\Public\Remove-LedgerRecurringEntry.ps1
@@ -70,12 +77,14 @@ $script:CurrentFiscalYear = $null
 $script:BuiltInFunctions = @(
     'New-LedgerJournal', 'Get-LedgerJournal', 'Set-LedgerJournal', 'Add-LedgerAccount', 'Get-LedgerAccount',
     'New-LedgerFiscalYear', 'Add-LedgerEntry', 'Get-LedgerEntry', 'Get-LedgerBalance',
-    'Get-LedgerFiscalYear', 'Close-LedgerFiscalYear', 'Import-LedgerChart',
+    'Get-LedgerFiscalYear', 'Close-LedgerFiscalYear', 'Test-LedgerFiscalYear', 'Import-LedgerChart',
     'Get-LedgerIncomeStatement', 'Get-LedgerBalanceSheet', 'Copy-LedgerOpeningBalance',
     'Update-LedgerJournal',
     'Add-LedgerReversal', 'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie',
     'Get-LedgerLedger', 'Get-LedgerVatReport', 'Add-LedgerDimension', 'Get-LedgerDimension',
-    'Add-LedgerObject', 'Get-LedgerObject', 'Add-LedgerAccrual',
+    'Add-LedgerObject', 'Get-LedgerObject', 'Add-LedgerAccrual', 'Add-LedgerDepreciation',
+    'Get-LedgerTaxEstimate', 'Add-LedgerTaxEntry', 'Add-LedgerAppropriation',
+    'Get-LedgerAnnualReport', 'Export-LedgerAnnualReport',
     'New-LedgerRecurringEntry', 'Get-LedgerRecurringEntry',
     'Remove-LedgerRecurringEntry', 'Invoke-LedgerRecurringEntry',
     'Get-LedgerExtension', 'Set-LedgerCurrentJournal', 'Clear-LedgerCurrentJournal',

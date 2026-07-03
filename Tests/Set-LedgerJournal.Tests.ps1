@@ -42,6 +42,12 @@ Describe 'Set-LedgerJournal' {
             $Param | Should -Not -BeNullOrEmpty
             $Param.ParameterType.Name | Should -Be 'String'
         }
+
+        It 'Should have an optional CompanyType parameter of type String' {
+            $Param = $Command.Parameters['CompanyType']
+            $Param | Should -Not -BeNullOrEmpty
+            $Param.ParameterType.Name | Should -Be 'String'
+        }
     }
 
     Context 'Behavior' {
@@ -85,6 +91,30 @@ Describe 'Set-LedgerJournal' {
             Set-LedgerJournal -JournalPath $NoOrgPath -OrgNumber '556677-8899'
 
             (Get-LedgerJournal -Path $NoOrgPath).OrgNumber | Should -Be '556677-8899'
+        }
+
+        It 'Should set the company type on a journal that has none' {
+            Set-LedgerJournal -JournalPath $JournalPath -CompanyType 'AB'
+
+            (Get-LedgerJournal -Path $JournalPath).CompanyType | Should -Be 'AB'
+        }
+
+        It 'Should update an existing company type' {
+            Set-LedgerJournal -JournalPath $JournalPath -CompanyType 'EF'
+            Set-LedgerJournal -JournalPath $JournalPath -CompanyType 'AB'
+
+            (Get-LedgerJournal -Path $JournalPath).CompanyType | Should -Be 'AB'
+        }
+
+        It 'Should remove the company type when passed an empty string' {
+            Set-LedgerJournal -JournalPath $JournalPath -CompanyType 'AB'
+            Set-LedgerJournal -JournalPath $JournalPath -CompanyType ''
+
+            (Get-LedgerJournal -Path $JournalPath).CompanyType | Should -BeNullOrEmpty
+        }
+
+        It 'Should throw when the company type is not in the allowed set' {
+            { Set-LedgerJournal -JournalPath $JournalPath -CompanyType 'XYZ' } | Should -Throw
         }
 
         It 'Should remove the org number when passed an empty string' {

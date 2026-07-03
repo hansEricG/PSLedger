@@ -75,7 +75,9 @@ function Copy-LedgerOpeningBalance {
         # Filter to balance sheet accounts (1xxx and 2xxx)
         $BalanceAccounts = $Balance | Where-Object { $_.AccountNumber -match '^[12]' -and $_.Balance -ne 0 }
 
-        # Calculate year's result from P&L accounts (3xxx-8xxx) and add to 2099
+        # Calculate year's result from P&L accounts (3xxx-8xxx) and carry it into
+        # the equity result account. The account depends on the journal's
+        # CompanyType (AB -> 2099, EF -> 2019), falling back to 2099.
         $PLAccounts = $Balance | Where-Object { $_.AccountNumber -match '^[3-8]' }
         $YearResult = if ($PLAccounts) { ($PLAccounts | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
 
@@ -83,15 +85,16 @@ function Copy-LedgerOpeningBalance {
             throw "No balance sheet accounts with non-zero balances in $FromFiscalYear."
         }
 
-        # Merge year's result into account 2099
+        # Merge year's result into the equity result account
         if ($YearResult -ne 0) {
-            $Existing2099 = $BalanceAccounts | Where-Object { $_.AccountNumber -eq '2099' }
-            if ($Existing2099) {
-                $BalanceAccounts = $BalanceAccounts | Where-Object { $_.AccountNumber -ne '2099' }
-                $YearResult += $Existing2099.Balance
+            $ResultAccount = Resolve-LedgerResultCarryAccount -JournalPath $JournalPath
+            $ExistingResult = $BalanceAccounts | Where-Object { $_.AccountNumber -eq $ResultAccount }
+            if ($ExistingResult) {
+                $BalanceAccounts = $BalanceAccounts | Where-Object { $_.AccountNumber -ne $ResultAccount }
+                $YearResult += $ExistingResult.Balance
             }
             $BalanceAccounts = @($BalanceAccounts) + @([PSCustomObject]@{
-                AccountNumber = '2099'
+                AccountNumber = $ResultAccount
                 AccountName   = 'Årets resultat'
                 Debit         = [decimal]0
                 Credit        = [decimal]0

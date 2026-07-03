@@ -4,7 +4,7 @@ Reads journal information from an existing PSLedger journal.
 
 .DESCRIPTION
 Reads the journal.txt file from the specified journal directory and returns
-a PSCustomObject with the company information (Path, Name, OrgNumber,
+a PSCustomObject with the company information (Path, Name, OrgNumber, CompanyType,
 SchemaVersion). Any additional free-form fields are exposed as an ordered
 dictionary on the Metadata property (e.g. $journal.Metadata.VatNumber).
 
@@ -47,6 +47,7 @@ function Get-LedgerJournal {
         Path          = $Path
         Name          = $null
         OrgNumber     = $null
+        CompanyType   = $null
         SchemaVersion = 1
         Metadata      = [ordered]@{}
     }
@@ -57,6 +58,9 @@ function Get-LedgerJournal {
         }
         elseif ($Line -match '^OrgNumber:\s*(.+)$') {
             $Journal.OrgNumber = $Matches[1]
+        }
+        elseif ($Line -match '^CompanyType:\s*(.+)$') {
+            $Journal.CompanyType = $Matches[1]
         }
         elseif ($Line -match '^SchemaVersion:\s*(\d+)\s*$') {
             $Journal.SchemaVersion = [int]$Matches[1]

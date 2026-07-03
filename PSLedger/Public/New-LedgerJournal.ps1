@@ -17,11 +17,16 @@ The company or organisation name.
 .PARAMETER OrgNumber
 Optional organisation number (e.g. '556677-8899').
 
+.PARAMETER CompanyType
+Optional company form. One of AB (aktiebolag), EF (enskild firma), HB
+(handelsbolag) or KB (kommanditbolag). Drives year-end defaults such as which
+equity account the net result is booked to.
+
 .PARAMETER Metadata
 Optional hashtable of additional free-form company fields to store, such as
 @{ VatNumber = 'SE556677889901'; Email = 'info@firma.se' }. Keys must be simple
-identifiers; the reserved keys Name, OrgNumber and SchemaVersion are not allowed
-(use the dedicated parameters instead).
+identifiers; the reserved keys Name, OrgNumber, SchemaVersion and CompanyType are
+not allowed (use the dedicated parameters instead).
 
 .EXAMPLE
 New-LedgerJournal -Path .\MinFirma.ledger -Name 'MinFirma AB'
@@ -29,9 +34,9 @@ New-LedgerJournal -Path .\MinFirma.ledger -Name 'MinFirma AB'
 Creates a basic journal without an organisation number.
 
 .EXAMPLE
-New-LedgerJournal -Path C:\Bokföring\Konsult.ledger -Name 'Konsult AB' -OrgNumber '556677-8899' -Metadata @{ VatNumber = 'SE556677889901' }
+New-LedgerJournal -Path C:\Bokföring\Konsult.ledger -Name 'Konsult AB' -OrgNumber '556677-8899' -CompanyType AB -Metadata @{ VatNumber = 'SE556677889901' }
 
-Creates a journal with full company details including a VAT number.
+Creates a journal with full company details including company form and a VAT number.
 #>
 function New-LedgerJournal {
     [CmdletBinding()]
@@ -44,11 +49,17 @@ function New-LedgerJournal {
 
         [string]$OrgNumber,
 
+        [string]$CompanyType,
+
         [hashtable]$Metadata
     )
 
     if (Test-Path $Path) {
         throw "Journal already exists: $Path"
+    }
+
+    if ($CompanyType) {
+        Test-LedgerCompanyType -CompanyType $CompanyType
     }
 
     New-Item -ItemType Directory -Path $Path -Force | Out-Null
@@ -63,6 +74,10 @@ function New-LedgerJournal {
 
     if ($OrgNumber) {
         $Lines += "OrgNumber: $OrgNumber"
+    }
+
+    if ($CompanyType) {
+        $Lines += "CompanyType: $CompanyType"
     }
 
     if ($Metadata) {
