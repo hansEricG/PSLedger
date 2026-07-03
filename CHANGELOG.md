@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-03
+
 ### Changed
 - `Add-LedgerAttachment` now accepts multiple files in a single call — `-Path`
   takes an array (e.g. `-Path .\faktura.pdf, .\kvitto.jpg`). All source files are
@@ -9,6 +11,17 @@
   file.
 
 ### Added
+- `Backup-LedgerJournal` creates a timestamped zip backup of a journal
+  (`<Name>_yyyy-MM-dd_HHmmss.zip`). Backups go to a `backups` folder next to the
+  journal by default (override with `-DestinationPath`), and the five most recent
+  are retained (`-KeepCount`, `0` keeps all). Supports `-WhatIf`/`-Confirm` and
+  does not enforce the schema version, so a backup can be taken before
+  `Update-LedgerJournal`.
+- `Restore-LedgerJournal` extracts a backup archive, recreating the journal
+  directory in the destination (default: current directory). Validates the
+  archive contains a single journal folder with `journal.txt`, refuses to
+  overwrite an existing journal unless `-Force` is given, and supports
+  `-WhatIf`/`-Confirm`.
 - `Add-LedgerEntry` gained an optional `-Attachment` parameter that attaches one
   or more files to the verification as it is created (delegating to
   `Add-LedgerAttachment`). Attachment files are validated before the verification
