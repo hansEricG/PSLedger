@@ -135,6 +135,9 @@ set with `Set-LedgerReportInput`.
 Fixed-asset and shareholding notes are auto-detected from the standard BAS account
 ranges — a note is only included when the relevant accounts carry a balance.
 
+> For a full step-by-step walkthrough of the year-end close and annual report, see
+> [docs/Bokslut-och-arsredovisning.md](docs/Bokslut-och-arsredovisning.md).
+
 ```powershell
 # One-time: stable company facts on the journal
 Set-LedgerJournal -JournalPath .\HEG.ledger -Metadata @{
