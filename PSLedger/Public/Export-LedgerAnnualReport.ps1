@@ -1,29 +1,43 @@
 <#
 .SYNOPSIS
-Exports an annual report (årsredovisning) to a formatted text or Markdown file.
+Exports a complete annual report (årsredovisning) to a text, Markdown or Word (.docx)
+file.
 
 .DESCRIPTION
-Renders the combined income statement and balance sheet produced by
-Get-LedgerAnnualReport to a human-readable document and writes it to a file. The
-document has a header with the company name, organisation number and the fiscal
-year date range, followed by a Resultaträkning section and a Balansräkning section.
+Renders a full K2 årsredovisning for a fiscal year and writes it to a file. The
+document contains the sections of a printed annual report for a small Swedish limited
+company: a heading with company name, organisation number and the fiscal year date
+range, förvaltningsberättelse (verksamheten, väsentliga händelser, flerårsöversikt and
+förslag till vinstdisposition), resultaträkning and balansräkning with a Not column and
+a comparison year, noter (redovisningsprinciper, medelantal anställda, and the
+auto-detected notes for anläggningstillgångar, aktier och andelar and eget kapital) and
+finally underskrifter with a fastställelseintyg.
 
-When a preceding fiscal year exists (and -NoComparison is not used) each amount is
-shown next to the previous year's figure, one column per year, mirroring a printed
-årsredovisning with jämförelseår. Amounts use Swedish formatting (space thousands
-separator, comma decimal). The file is written as UTF-8.
+Stable company information (säte, verksamhetsföremål, antal aktier, styrelseledamöter)
+is read from the journal metadata via Get-LedgerCompanyProfile. Year-specific narrative
+and decision data (väsentliga händelser, föreslagen utdelning, medelantal anställda,
+marknadsvärde och ort/datum för underskrift) is read from the fiscal year's report.txt
+via Get-LedgerReportInput.
+
+Fixed-asset and shareholding notes are auto-detected from the standard BAS account
+ranges; a note is only included when the relevant accounts carry a balance. Amounts use
+Swedish formatting (space thousands separator) and are shown in whole kronor. All text
+formats are written as UTF-8.
 
 .PARAMETER JournalPath
-The path to an existing journal directory.
+The path to an existing journal directory. If omitted, uses the current journal set via
+Set-LedgerCurrentJournal.
 
 .PARAMETER FiscalYear
-The fiscal year identifier (e.g. '2024-01_2024-12').
+The fiscal year identifier (e.g. '2024-09_2025-08'). If omitted, uses the current fiscal
+year set via Set-LedgerCurrentFiscalYear.
 
 .PARAMETER Path
 Destination path for the report file.
 
 .PARAMETER Format
-The output format: 'Text' (fixed-width columns, default) or 'Markdown' (tables).
+The output format: 'Text' (fixed-width columns, default), 'Markdown' (tables) or 'Word'
+(a .docx document).
 
 .PARAMETER NoComparison
 Omits the previous year's comparison column.
@@ -32,15 +46,16 @@ Omits the previous year's comparison column.
 Overwrite the destination file if it already exists.
 
 .EXAMPLE
-Export-LedgerAnnualReport -JournalPath .\MinAB.ledger -FiscalYear '2024-01_2024-12' -Path .\arsredovisning-2024.txt
+Export-LedgerAnnualReport -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' -Path .\arsredovisning.txt
 
-Writes a plain-text annual report for 2024 with 2023 as the comparison year.
+Writes a full plain-text annual report for 2024/2025 with the previous year as the
+comparison column.
 
 .EXAMPLE
-Export-LedgerAnnualReport -JournalPath .\MinAB.ledger -FiscalYear '2024-01_2024-12' `
-    -Path .\arsredovisning-2024.md -Format Markdown -Force
+Export-LedgerAnnualReport -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' `
+    -Path .\arsredovisning.docx -Format Word -Force
 
-Writes the annual report as a Markdown document, overwriting any existing file.
+Writes the complete annual report as a Word document, overwriting any existing file.
 #>
 function Export-LedgerAnnualReport {
     [CmdletBinding()]
@@ -56,7 +71,7 @@ function Export-LedgerAnnualReport {
         [string]$Path,
 
         [Parameter()]
-        [ValidateSet('Text', 'Markdown')]
+        [ValidateSet('Text', 'Markdown', 'Word')]
         [string]$Format = 'Text',
 
         [Parameter()]
@@ -73,109 +88,18 @@ function Export-LedgerAnnualReport {
             throw "Destination file already exists: $Path. Use -Force to overwrite."
         }
 
-        $Journal = Get-LedgerJournal -Path $JournalPath
-        $Year = Get-LedgerFiscalYear -JournalPath $JournalPath | Where-Object { $_.Name -eq $FiscalYear }
+        $blocks = @(Build-LedgerAnnualReportBlocks -JournalPath $JournalPath -FiscalYear $FiscalYear -NoComparison:$NoComparison)
 
-        $Report = @(Get-LedgerAnnualReport -JournalPath $JournalPath -FiscalYear $FiscalYear -NoComparison:$NoComparison)
-        $ComparisonYear = if ($Report) { $Report[0].ComparisonFiscalYear } else { $null }
-
-        # Column labels use the fiscal year's end year (e.g. '2024-01_2024-12' -> 2024).
-        function Get-YearLabel {
-            param ([string]$Name)
-            if ($Name -and $Name -match '_(\d{4})-\d{2}$') { $Matches[1] } else { $Name }
-        }
-        $CurrentLabel = Get-YearLabel -Name $FiscalYear
-        $ComparisonLabel = if ($ComparisonYear) { Get-YearLabel -Name $ComparisonYear } else { $null }
-
-        $Culture = [System.Globalization.CultureInfo]::GetCultureInfo('sv-SE')
-        function Format-Amount {
-            param ($Value)
-            if ($null -eq $Value) { return '' }
-            ([decimal]$Value).ToString('N2', $Culture)
-        }
-
-        $IncomeRows = $Report | Where-Object { $_.Statement -eq 'IncomeStatement' }
-        $BalanceRows = $Report | Where-Object { $_.Statement -eq 'BalanceSheet' }
-
-        $DateRange = if ($Year) {
-            "$(([datetime]$Year.StartDate).ToString('yyyy-MM-dd')) - $(([datetime]$Year.EndDate).ToString('yyyy-MM-dd'))"
-        }
-        else {
-            $FiscalYear
-        }
-        $Heading = $Journal.Name
-        if ($Journal.OrgNumber) {
-            $Heading = "$Heading ($($Journal.OrgNumber))"
-        }
-
-        $nl = "`r`n"
-        $sb = New-Object System.Text.StringBuilder
-        $append = { param($line) [void]$sb.Append($line); [void]$sb.Append($nl) }
-
-        if ($Format -eq 'Markdown') {
-            & $append "# Årsredovisning"
-            & $append ''
-            & $append "**$Heading**"
-            & $append ''
-            & $append "Räkenskapsår: $DateRange"
-            & $append ''
-
-            $header = if ($ComparisonLabel) { "| Post | $CurrentLabel | $ComparisonLabel |" } else { "| Post | $CurrentLabel |" }
-            $divider = if ($ComparisonLabel) { '| --- | ---: | ---: |' } else { '| --- | ---: |' }
-
-            $writeSection = {
-                param($Title, $Rows)
-                & $append "## $Title"
-                & $append ''
-                & $append $header
-                & $append $divider
-                foreach ($r in $Rows) {
-                    $cur = Format-Amount $r.Amount
-                    if ($ComparisonLabel) {
-                        $cmp = Format-Amount $r.ComparisonAmount
-                        & $append "| $($r.Label) | $cur | $cmp |"
-                    }
-                    else {
-                        & $append "| $($r.Label) | $cur |"
-                    }
-                }
-                & $append ''
+        switch ($Format) {
+            'Word' {
+                ConvertTo-LedgerReportDocx -Block $blocks -Path $Path
             }
-
-            & $writeSection 'Resultaträkning' $IncomeRows
-            & $writeSection 'Balansräkning' $BalanceRows
-        }
-        else {
-            $labelWidth = 44
-            $amountWidth = 16
-
-            $columnHeader = (' ' * $labelWidth) + $CurrentLabel.PadLeft($amountWidth)
-            if ($ComparisonLabel) { $columnHeader += $ComparisonLabel.PadLeft($amountWidth) }
-
-            & $append 'Årsredovisning'
-            & $append $Heading
-            & $append "Räkenskapsår: $DateRange"
-            & $append ''
-
-            $writeSection = {
-                param($Title, $Rows)
-                & $append $Title
-                & $append $columnHeader
-                foreach ($r in $Rows) {
-                    $label = if ($r.Label.Length -gt $labelWidth) { $r.Label.Substring(0, $labelWidth) } else { $r.Label.PadRight($labelWidth) }
-                    $line = $label + (Format-Amount $r.Amount).PadLeft($amountWidth)
-                    if ($ComparisonLabel) {
-                        $line += (Format-Amount $r.ComparisonAmount).PadLeft($amountWidth)
-                    }
-                    & $append $line
-                }
-                & $append ''
+            'Markdown' {
+                ConvertTo-LedgerReportMarkdown -Block $blocks | Set-Content -Path $Path -Encoding UTF8
             }
-
-            & $writeSection 'Resultaträkning' $IncomeRows
-            & $writeSection 'Balansräkning' $BalanceRows
+            default {
+                ConvertTo-LedgerReportText -Block $blocks | Set-Content -Path $Path -Encoding UTF8
+            }
         }
-
-        $sb.ToString() | Set-Content -Path $Path -Encoding UTF8
     }
 }

@@ -9,6 +9,8 @@ A simple command-line double-entry bookkeeping system built as a PowerShell modu
 - **BAS chart templates** — built-in Swedish account plans (Mini, Småföretag, Komplett)
 - **Validation** — account existence, date range, closed-year protection
 - **Reports** — trial balance, income statement, balance sheet, general ledger, VAT report
+- **Annual report (årsredovisning)** — full K2 report (förvaltningsberättelse, noter,
+  flerårsöversikt, vinstdisposition) exported to Text, Markdown or Word (`.docx`)
 - **Year-end workflow** — close fiscal year, copy opening balances
 - **Corrections** — reversal entries following Swedish bookkeeping law
 - **SIE 4 import/export** — exchange data with other Swedish accounting systems (incl. dimensions)
@@ -74,7 +76,19 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Add-LedgerReversal` | Correct an entry via reversal |
 | `Get-LedgerBalance` | Trial balance (saldobalans) |
 | `Get-LedgerIncomeStatement` | Income statement (resultaträkning) |
-| `Get-LedgerBalanceSheet` | Balance sheet (balansräkning) |
+| `Get-LedgerBalanceSheet` | Balance sheet (balansräkning), `-Detailed` for equity split |
+| `Get-LedgerAnnualReport` | Combined income statement + balance sheet with comparison year |
+| `Export-LedgerAnnualReport` | Write a full K2 årsredovisning to Text, Markdown or Word (.docx) |
+| `Get-LedgerMultiYearOverview` | Flerårsöversikt (multi-year key figures) |
+| `Get-LedgerEquityReconciliation` | Förändring av eget kapital (equity note) |
+| `Get-LedgerProfitDisposition` | Förslag till vinstdisposition |
+| `Get-LedgerFixedAssetNote` | Anläggningsregisternot (roll-forward) |
+| `Get-LedgerShareholdingNote` | Not för aktier och andelar (bokfört + marknadsvärde) |
+| `Get-LedgerEmployeeNote` | Not för medelantal anställda |
+| `Get-LedgerAccountingPrinciples` | Standard K2 redovisnings- och värderingsprinciper |
+| `Get-LedgerCompanyProfile` | Stable company info for the annual report (säte, aktier, styrelse) |
+| `Set-LedgerReportInput` | Store year-specific annual report input (report.txt) |
+| `Get-LedgerReportInput` | Read year-specific annual report input |
 | `Copy-LedgerOpeningBalance` | Roll over balances to a new year |
 | `Update-LedgerJournal` | Migrate a journal to the current on-disk format |
 | `Backup-LedgerJournal` | Create a timestamped zip backup (with retention) |
@@ -107,6 +121,45 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Add-LedgerDocument` | Add a shared supporting document to a fiscal year |
 | `Get-LedgerDocument` | List a fiscal year's shared documents |
 | `Remove-LedgerDocument` | Remove a fiscal year document |
+
+## Annual Report (Årsredovisning)
+
+PSLedger can produce a complete K2 (BFNAR 2016:10) annual report for a small
+limited company and export it to plain text, Markdown or a Word (`.docx`)
+document. Stable company facts (registered office, object of the business, number
+of shares, board members) live in the journal metadata; year-specific narrative
+and decisions (significant events, proposed dividend, average employees, market
+value of securities, signing place/date) live in an optional per-year `report.txt`
+set with `Set-LedgerReportInput`.
+
+Fixed-asset and shareholding notes are auto-detected from the standard BAS account
+ranges — a note is only included when the relevant accounts carry a balance.
+
+```powershell
+# One-time: stable company facts on the journal
+Set-LedgerJournal -JournalPath .\HEG.ledger -Metadata @{
+    RegisteredOffice = 'Gävle'
+    BusinessObject   = 'Konsultverksamhet inom IT.'
+    NumberOfShares   = '1000'
+    ShareCapital     = '100000'
+    BoardMembers     = 'Hans-Erik Grönlund'
+}
+
+# Per year: narrative and board decisions for this fiscal year
+Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' `
+    -SignificantEvents 'Inga väsentliga händelser har inträffat under året.' `
+    -ProposedDividend 50000 -AverageEmployees 1 -SecuritiesMarketValue 95000 `
+    -SigningPlace 'Gävle' -SigningDate '2025-11-15'
+
+# Export the full annual report as a Word document (also: Text, Markdown)
+Export-LedgerAnnualReport -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' `
+    -Path .\arsredovisning.docx -Format Word
+
+# Individual building blocks are available as data cmdlets too
+Get-LedgerMultiYearOverview   -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08'
+Get-LedgerProfitDisposition   -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08'
+Get-LedgerEquityReconciliation -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08'
+```
 
 ## SIE Import/Export
 

@@ -22,6 +22,12 @@ The path to an existing journal directory.
 .PARAMETER FiscalYear
 The fiscal year identifier (e.g. '2024-01_2024-12').
 
+.PARAMETER Detailed
+Adds breakdown lines used by a printed K2 balansräkning: equity is split into
+Aktiekapital, Bundna reserver, Balanserat resultat and Årets resultat, and
+short-term liabilities are split into Aktuella skatteskulder and Övriga skulder.
+The aggregate lines are still returned, so the extra rows are additive.
+
 .EXAMPLE
 Get-LedgerBalanceSheet -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
 
@@ -29,11 +35,11 @@ Returns objects with Section, Group, Label, and Amount properties showing every
 balance sheet line plus the section totals.
 
 .EXAMPLE
-Get-LedgerBalanceSheet -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' |
+Get-LedgerBalanceSheet -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Detailed |
     Format-Table Label, @{N='Amount';E={'{0:N2}' -f $_.Amount};A='Right'}
 
-Displays the balance sheet as a formatted table similar to a printed
-balansräkning.
+Displays the balance sheet with the equity and tax-liability breakdown used in a
+printed årsredovisning.
 #>
 function Get-LedgerBalanceSheet {
     [CmdletBinding()]
@@ -43,7 +49,10 @@ function Get-LedgerBalanceSheet {
 
         [Parameter(ValueFromPipelineByPropertyName)]
         [Alias('Name')]
-        [string]$FiscalYear
+        [string]$FiscalYear,
+
+        [Parameter()]
+        [switch]$Detailed
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
@@ -88,10 +97,32 @@ function Get-LedgerBalanceSheet {
             [PSCustomObject]@{ Section = 'Assets'; Group = 'CashAndBank'; Label = 'Likvida medel'; Amount = $CashAndBank }
             [PSCustomObject]@{ Section = 'Assets'; Group = 'TotalAssets'; Label = 'Summa tillgångar'; Amount = $TotalAssets }
             [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'Equity'; Label = 'Eget kapital'; Amount = $Equity }
+            if ($Detailed) {
+                # Break equity (2000-2099) into the components a K2 annual report
+                # shows under Bundet respektive Fritt eget kapital. The components
+                # sum back to the Equity aggregate above.
+                $ShareCapital = Get-RangeSum -From 2081 -To 2084
+                $RestrictedReserves = Get-RangeSum -From 2085 -To 2089
+                $RetainedEarnings = Get-RangeSum -From 2090 -To 2098
+                $BookedYearResult = Get-RangeSum -From 2099 -To 2099
+                [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'ShareCapital'; Label = 'Aktiekapital'; Amount = $ShareCapital }
+                [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'RestrictedReserves'; Label = 'Bundna reserver'; Amount = $RestrictedReserves }
+                [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'RetainedEarnings'; Label = 'Balanserat resultat'; Amount = $RetainedEarnings }
+                [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'BookedYearResult'; Label = 'Årets resultat'; Amount = $BookedYearResult }
+            }
             [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'Result'; Label = 'Resultat'; Amount = $Result }
             [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'UntaxedReserves'; Label = 'Obeskattade reserver och avsättningar'; Amount = $UntaxedReserves }
             [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'LongTermLiabilities'; Label = 'Långfristiga skulder'; Amount = $LongTermLiabilities }
             [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'ShortTermLiabilities'; Label = 'Kortfristiga skulder'; Amount = $ShortTermLiabilities }
+            if ($Detailed) {
+                # Split short-term liabilities (2400-2999) so current tax
+                # liabilities are shown on their own line, as in a printed
+                # balansräkning. The two lines sum to ShortTermLiabilities above.
+                $CurrentTaxLiabilities = Get-RangeSum -From 2500 -To 2599
+                $OtherShortTermLiabilities = (Get-RangeSum -From 2400 -To 2499) + (Get-RangeSum -From 2600 -To 2999)
+                [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'CurrentTaxLiabilities'; Label = 'Aktuella skatteskulder'; Amount = $CurrentTaxLiabilities }
+                [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'OtherShortTermLiabilities'; Label = 'Övriga skulder'; Amount = $OtherShortTermLiabilities }
+            }
             [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'TotalEquityAndLiabilities'; Label = 'Summa eget kapital och skulder'; Amount = $TotalEquityAndLiabilities }
         )
     }

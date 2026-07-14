@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+### Added
+- **Full årsredovisning (annual report) support.** `Export-LedgerAnnualReport` now
+  renders a complete K2 (BFNAR 2016:10) annual report for a small limited company —
+  förvaltningsberättelse (verksamhet, väsentliga händelser, flerårsöversikt, förslag
+  till vinstdisposition), resultaträkning och balansräkning with a Not column and a
+  comparison year, noter (redovisningsprinciper, medelantal anställda, and
+  auto-detected notes for anläggningstillgångar, aktier och andelar och eget kapital)
+  and underskrifter with a fastställelseintyg. A new `-Format Word` option writes a
+  `.docx` document (dependency-free Open XML package) in addition to `Text` and
+  `Markdown`.
+- `Set-LedgerReportInput` / `Get-LedgerReportInput` store and read year-specific
+  narrative and decision data (väsentliga händelser, föreslagen utdelning, medelantal
+  anställda, marknadsvärde för värdepapper, ort/datum för underskrift) in an optional
+  per-year `report.txt` file, in the same spirit as `ib.txt`.
+- `Get-LedgerCompanyProfile` collects the stable company information used in an annual
+  report (säte, verksamhetsföremål, antal aktier, aktiekapital, styrelseledamöter)
+  from the journal metadata.
+- `Get-LedgerMultiYearOverview` produces a flerårsöversikt (nettoomsättning, resultat
+  efter finansiella poster, årets resultat, balansomslutning) over several years.
+- `Get-LedgerEquityReconciliation` builds the förändring av eget kapital note, and
+  `Get-LedgerProfitDisposition` computes the förslag till vinstdisposition (including
+  utdelning per aktie).
+- `Get-LedgerFixedAssetNote`, `Get-LedgerShareholdingNote` and `Get-LedgerEmployeeNote`
+  produce the anläggnings-, värdepappers- respektive personalnoter.
+- `Get-LedgerAccountingPrinciples` returns the standard K2 redovisnings- och
+  värderingsprinciper text.
+
+### Changed
+- `Get-LedgerBalanceSheet` gained a `-Detailed` switch that splits eget kapital into
+  Aktiekapital, Bundna reserver, Balanserat resultat och Årets resultat and short-term
+  liabilities into Aktuella skatteskulder och Övriga skulder. The aggregate lines are
+  still returned, so the extra rows are additive.
+
 ## [0.8.0] - 2026-07-03
 
 ### Changed
