@@ -34,6 +34,8 @@ function Remove-LedgerRecurringEntry {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
+    $Name = Assert-LedgerSafeLeafName -Name $Name -Kind 'recurring entry'
+
     $recurringDir = Join-Path $JournalPath 'recurring'
     $filePath = Join-Path $recurringDir "$Name.txt"
 

@@ -115,6 +115,12 @@ Describe 'Get-LedgerEntry' {
             $Result | Should -BeNullOrEmpty
         }
 
+        It 'Should return nothing for verification number 0 (not all entries)' {
+            $Result = @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber 0)
+
+            $Result.Count | Should -Be 0
+        }
+
         It 'Should return empty if no entries exist' {
             $EmptyJournal = Join-Path $TestDrive 'empty.ledger'
             New-LedgerJournal -Path $EmptyJournal -Name 'Tom AB'

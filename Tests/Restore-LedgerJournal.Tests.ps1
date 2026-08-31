@@ -145,5 +145,28 @@ Describe 'Restore-LedgerJournal' {
             { Restore-LedgerJournal -ArchivePath $Bad -DestinationPath (Join-Path $TestDrive 'restore8') } |
                 Should -Throw '*Invalid backup archive*'
         }
+
+        It 'Should reject an archive whose entries escape the destination (zip-slip)' {
+            $Bad = Join-Path $TestDrive 'zipslip.zip'
+            Add-Type -AssemblyName System.IO.Compression
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $fs = [System.IO.File]::Open($Bad, [System.IO.FileMode]::Create)
+            try {
+                $zip = [System.IO.Compression.ZipArchive]::new($fs, [System.IO.Compression.ZipArchiveMode]::Create)
+                try {
+                    $e1 = $zip.CreateEntry('EvilJournal.ledger/journal.txt')
+                    $w1 = [System.IO.StreamWriter]::new($e1.Open())
+                    $w1.Write('Name: Evil'); $w1.Dispose()
+                    $e2 = $zip.CreateEntry('EvilJournal.ledger/../../evil.txt')
+                    $w2 = [System.IO.StreamWriter]::new($e2.Open())
+                    $w2.Write('pwned'); $w2.Dispose()
+                }
+                finally { $zip.Dispose() }
+            }
+            finally { $fs.Dispose() }
+
+            { Restore-LedgerJournal -ArchivePath $Bad -DestinationPath (Join-Path $TestDrive 'restore-slip') } |
+                Should -Throw '*Invalid backup archive*'
+        }
     }
 }

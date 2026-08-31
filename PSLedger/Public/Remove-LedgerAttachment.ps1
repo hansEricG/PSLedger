@@ -55,6 +55,8 @@ function Remove-LedgerAttachment {
             throw "Fiscal year not found: $FiscalYear"
         }
 
+        $FileName = Assert-LedgerSafeLeafName -Name $FileName -Kind 'attachment'
+
         $attachDir = Join-Path $YearDir ('ver' + $VerificationNumber.ToString('0000'))
         if (-not (Test-Path $attachDir -PathType Container)) {
             throw "No attachments found for verification $VerificationNumber."

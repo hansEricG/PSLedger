@@ -69,7 +69,7 @@ function Get-LedgerEntry {
             throw "Fiscal year not found: $FiscalYear"
         }
 
-        $Pattern = if ($VerificationNumber) {
+        $Pattern = if ($PSBoundParameters.ContainsKey('VerificationNumber')) {
             'ver' + $VerificationNumber.ToString('0000') + '.txt'
         }
         else {

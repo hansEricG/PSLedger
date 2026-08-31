@@ -76,6 +76,25 @@ function Restore-LedgerJournal {
         if (-not $HasJournalFile) {
             throw "Invalid backup archive - journal.txt not found in: $ArchivePath"
         }
+
+        # Guard against path traversal (zip-slip): every entry must resolve to a
+        # location inside the destination directory. Reject '..' segments, rooted
+        # paths, or any entry whose resolved path escapes the destination.
+        $DestRoot = [System.IO.Path]::GetFullPath($DestinationPath)
+        if (-not $DestRoot.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+            $DestRoot += [System.IO.Path]::DirectorySeparatorChar
+        }
+        foreach ($Entry in $Zip.Entries) {
+            $EntryName = $Entry.FullName
+            if ([System.IO.Path]::IsPathRooted($EntryName) -or
+                $EntryName -match '(^|[\\/])\.\.([\\/]|$)') {
+                throw "Invalid backup archive - unsafe entry path: $EntryName"
+            }
+            $Resolved = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($DestRoot, $EntryName))
+            if (-not $Resolved.StartsWith($DestRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "Invalid backup archive - entry escapes destination: $EntryName"
+            }
+        }
     }
     finally {
         $Zip.Dispose()

@@ -49,6 +49,8 @@ function Remove-LedgerDocument {
             throw "Fiscal year not found: $FiscalYear"
         }
 
+        $FileName = Assert-LedgerSafeLeafName -Name $FileName -Kind 'document'
+
         $docDir = Join-Path $YearDir 'documents'
         if (-not (Test-Path $docDir -PathType Container)) {
             throw "No documents found for fiscal year $FiscalYear."

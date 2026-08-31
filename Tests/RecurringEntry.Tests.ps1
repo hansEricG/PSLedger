@@ -117,6 +117,11 @@ Describe 'Recurring Entries' {
             { Remove-LedgerRecurringEntry -JournalPath $jp -Name 'NonExist' } |
                 Should -Throw '*not found*'
         }
+
+        It 'Should reject a Name that tries to escape the recurring directory' {
+            { Remove-LedgerRecurringEntry -JournalPath $jp -Name '..\..\journal' } |
+                Should -Throw '*plain file name*'
+        }
     }
 
     Context 'Invoke-LedgerRecurringEntry' {

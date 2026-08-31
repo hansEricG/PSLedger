@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Hardening / stabilization.** `Remove-LedgerAttachment`, `Remove-LedgerDocument`
+  and `Remove-LedgerRecurringEntry` now reject file/template names containing path
+  separators, drive qualifiers or `..`, so a crafted name can no longer delete
+  files outside the intended directory (path traversal). `Restore-LedgerJournal`
+  validates every archive entry and refuses archives whose entries would escape
+  the destination directory (zip-slip). `Add-LedgerEntry` now fails closed when a
+  fiscal year's `year.txt` is missing or has no parseable `StartDate`/`EndDate`
+  instead of silently skipping the date-range check. `Get-LedgerEntry -VerificationNumber 0`
+  now returns nothing rather than all verifications.
+
 ## [0.10.0] - 2026-08-31
 
 ### Added

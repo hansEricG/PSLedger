@@ -339,5 +339,15 @@ Describe 'Remove-LedgerAttachment' {
                 Where-Object { $_.FileName -eq 'piped.pdf' }
             $remaining | Should -BeNullOrEmpty
         }
+
+        It 'Should reject a FileName that tries to escape the attachment directory' {
+            { Remove-LedgerAttachment -VerificationNumber 1 -FileName '..\..\journal.txt' -Confirm:$false } |
+                Should -Throw '*plain file name*'
+        }
+
+        It 'Should reject a rooted FileName' {
+            { Remove-LedgerAttachment -VerificationNumber 1 -FileName 'C:\Windows\system32\evil.txt' -Confirm:$false } |
+                Should -Throw '*plain file name*'
+        }
     }
 }

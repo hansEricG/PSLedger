@@ -384,5 +384,10 @@ Describe 'Remove-LedgerDocument' {
             $remaining = Get-LedgerDocument | Where-Object { $_.FileName -eq 'piped.pdf' }
             $remaining | Should -BeNullOrEmpty
         }
+
+        It 'Should reject a FileName that tries to escape the documents directory' {
+            { Remove-LedgerDocument -FileName '..\..\journal.txt' -Confirm:$false } |
+                Should -Throw '*plain file name*'
+        }
     }
 }

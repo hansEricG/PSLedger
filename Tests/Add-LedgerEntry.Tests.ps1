@@ -175,6 +175,18 @@ Describe 'Add-LedgerEntry' {
                 Should -Throw '*outside fiscal year*'
         }
 
+        It 'Should fail closed when year.txt is missing' {
+            Remove-Item -Path (Join-Path $JournalPath $FiscalYear 'year.txt') -Force
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-06-15' -Description 'Utan year.txt' -Rows $Rows } |
+                Should -Throw '*year.txt not found*'
+        }
+
+        It 'Should fail closed when year.txt has no parseable date range' {
+            Set-Content -Path (Join-Path $JournalPath $FiscalYear 'year.txt') -Value @('Status: Open') -Encoding UTF8
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-06-15' -Description 'Trasig year.txt' -Rows $Rows } |
+                Should -Throw '*StartDate/EndDate*'
+        }
+
         It 'Should accept date on fiscal year boundary dates' {
             { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-01' -Description 'Första dagen' -Rows $Rows } |
                 Should -Not -Throw

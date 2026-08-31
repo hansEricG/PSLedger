@@ -109,29 +109,40 @@ function Add-LedgerEntry {
                 throw "Fiscal year not found: $FiscalYear"
             }
 
-            # Check if fiscal year is closed
+            # Check if fiscal year is closed and capture its date range. year.txt
+            # must exist and carry a parseable StartDate/EndDate — otherwise we
+            # fail closed rather than silently skipping the date-range check.
             $YearFile = Join-Path $YearDir 'year.txt'
+            if (-not (Test-Path $YearFile -PathType Leaf)) {
+                throw "Invalid fiscal year - year.txt not found in: $FiscalYear"
+            }
             $YearStartDate = $null
             $YearEndDate = $null
-            if (Test-Path $YearFile) {
-                foreach ($Line in (Get-Content $YearFile)) {
-                    if ($Line -match '^Status:\s*Closed') {
-                        throw "Fiscal year $FiscalYear is Closed. Cannot add entries."
+            foreach ($Line in (Get-Content $YearFile)) {
+                if ($Line -match '^Status:\s*Closed') {
+                    throw "Fiscal year $FiscalYear is Closed. Cannot add entries."
+                }
+                elseif ($Line -match '^StartDate:\s*(.+)$') {
+                    $parsed = [datetime]::MinValue
+                    if ([datetime]::TryParse($Matches[1].Trim(), [ref]$parsed)) {
+                        $YearStartDate = $parsed
                     }
-                    elseif ($Line -match '^StartDate:\s*(.+)$') {
-                        $YearStartDate = [datetime]$Matches[1]
-                    }
-                    elseif ($Line -match '^EndDate:\s*(.+)$') {
-                        $YearEndDate = [datetime]$Matches[1]
+                }
+                elseif ($Line -match '^EndDate:\s*(.+)$') {
+                    $parsed = [datetime]::MinValue
+                    if ([datetime]::TryParse($Matches[1].Trim(), [ref]$parsed)) {
+                        $YearEndDate = $parsed
                     }
                 }
             }
 
+            if (-not $YearStartDate -or -not $YearEndDate) {
+                throw "Invalid fiscal year - StartDate/EndDate missing or unparseable in year.txt for $FiscalYear."
+            }
+
             # Validate date within fiscal year range
-            if ($YearStartDate -and $YearEndDate) {
-                if ($Date -lt $YearStartDate -or $Date -gt $YearEndDate) {
-                    throw "Date $($Date.ToString('yyyy-MM-dd')) is outside fiscal year $FiscalYear ($($YearStartDate.ToString('yyyy-MM-dd')) to $($YearEndDate.ToString('yyyy-MM-dd')))."
-                }
+            if ($Date -lt $YearStartDate -or $Date -gt $YearEndDate) {
+                throw "Date $($Date.ToString('yyyy-MM-dd')) is outside fiscal year $FiscalYear ($($YearStartDate.ToString('yyyy-MM-dd')) to $($YearEndDate.ToString('yyyy-MM-dd')))."
             }
 
             # Validate balance (round to avoid floating-point accumulation errors)
