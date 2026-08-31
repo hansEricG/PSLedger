@@ -3,6 +3,23 @@
 ## [Unreleased]
 
 ### Added
+- **Payroll management (lönehantering), phase 1.** An employee register plus a
+  payslip workflow layered on top of the ledger. `Add-LedgerEmployee`,
+  `Get-LedgerEmployee` and `Set-LedgerEmployee` manage an `employees.txt` register
+  (number, name, personal number, default salary account and preliminary tax
+  rate). `New-LedgerPayslip` creates a numbered payslip (`pay0001.txt`) recording
+  the gross salary, the preliminary tax (from `-TaxAmount`, `-TaxRate` or the
+  employee default), the employer contribution rate (default 0.3142) and the
+  accounts involved; it computes net pay, employer contribution and total employer
+  cost. `Invoke-LedgerPayrollPosting` posts a payslip as a verification that debits
+  the salary cost account with the gross pay, credits the tax liability (2710) with
+  the withheld tax, credits bank (1930) with the net pay and books the employer
+  contribution as both a cost (7510) and a liability (2730), so the payroll
+  liabilities reconcile against the ledger. `Get-LedgerPayslip` lists payslips
+  (filterable by status or employee) and `Export-LedgerPayslip` writes a payslip
+  (lönebesked) as a PDF, Word, Markdown or text document. Payslips live at the
+  journal level and are additive — no schema migration is required. See
+  [docs/Lonehantering.md](docs/Lonehantering.md).
 - **Income tax return export (inkomstdeklaration 2, SRU).**
   `Export-LedgerIncomeTaxReturn` writes a fiscal year as a Skatteverket SRU
   submission — the two files `INFO.SRU` (submitter metadata) and `BLANKETTER.SRU`

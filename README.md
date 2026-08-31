@@ -153,6 +153,13 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Invoke-LedgerSupplierInvoicePosting` | Post a supplier invoice to the ledger (verification) |
 | `Add-LedgerSupplierPayment` | Register a full or partial supplier payment |
 | `Get-LedgerAccountsPayable` | Open payables with aging buckets (`-Summary`) |
+| `Add-LedgerEmployee` | Add an employee to the employee register |
+| `Get-LedgerEmployee` | List or look up employees |
+| `Set-LedgerEmployee` | Update employee details |
+| `New-LedgerPayslip` | Create a payslip (draft) |
+| `Get-LedgerPayslip` | List payslips, filter by status or employee |
+| `Invoke-LedgerPayrollPosting` | Post a payslip to the ledger (verification) |
+| `Export-LedgerPayslip` | Export a payslip to PDF, Word, Markdown or text |
 
 ## Annual Report (Årsredovisning)
 
@@ -481,6 +488,37 @@ Get-LedgerAccountsPayable -Summary       # one row per bucket with the total
 ```
 
 For a full walkthrough see [docs/Leverantorsreskontra.md](docs/Leverantorsreskontra.md).
+
+## Payroll (Lönehantering)
+
+Manage an employee register and payslips for a simple Swedish payroll. Posting a
+payslip creates an ordinary verification, so the payroll liability accounts (2710
+Personalskatt, 2730 Arbetsgivaravgift skuld) always reconcile against the ledger.
+
+```powershell
+Set-LedgerCurrentJournal -Path .\MinFirma.ledger
+
+# 1. Register an employee (default salary account 7210, optional default tax rate)
+Add-LedgerEmployee -EmployeeNumber '1' -Name 'Anna Andersson' `
+    -PersonalNumber '19850101-1234' -SalaryAccount '7210' -TaxRate 0.30
+
+# 2. Create a payslip — gross salary; tax from -TaxRate/-TaxAmount or the default
+New-LedgerPayslip -EmployeeNumber '1' -GrossSalary 30000 `
+    -PeriodStart '2024-03-01' -PeriodEnd '2024-03-31' -PayDate '2024-03-25'
+
+# 3. Post it to the ledger (creates the verification):
+#      7210 Löner                    +30000
+#      2710 Personalskatt             -9000
+#      1930 Företagskonto            -21000
+#      7510 Arbetsgivaravgifter       +9426
+#      2730 Arbetsgivaravgift skuld   -9426
+Invoke-LedgerPayrollPosting -PayslipNumber 1
+
+# 4. Print a payslip (PDF, Word, Markdown or text)
+Export-LedgerPayslip -PayslipNumber 1 -Path .\lonebesked-1.pdf
+```
+
+For a full walkthrough see [docs/Lonehantering.md](docs/Lonehantering.md).
 
 ## Custom Extensions
 

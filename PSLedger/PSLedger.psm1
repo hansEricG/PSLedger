@@ -21,6 +21,7 @@
 . $PSScriptRoot\Private\OcrReference.ps1
 . $PSScriptRoot\Private\InvoiceCharge.ps1
 . $PSScriptRoot\Private\PdfWriter.ps1
+. $PSScriptRoot\Private\PayslipStore.ps1
 . $PSScriptRoot\Private\Migrations.ps1
 
 # Module-level state
@@ -119,6 +120,13 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Invoke-LedgerSupplierInvoicePosting.ps1
 . $PSScriptRoot\Public\Add-LedgerSupplierPayment.ps1
 . $PSScriptRoot\Public\Get-LedgerAccountsPayable.ps1
+. $PSScriptRoot\Public\Add-LedgerEmployee.ps1
+. $PSScriptRoot\Public\Get-LedgerEmployee.ps1
+. $PSScriptRoot\Public\Set-LedgerEmployee.ps1
+. $PSScriptRoot\Public\New-LedgerPayslip.ps1
+. $PSScriptRoot\Public\Get-LedgerPayslip.ps1
+. $PSScriptRoot\Public\Invoke-LedgerPayrollPosting.ps1
+. $PSScriptRoot\Public\Export-LedgerPayslip.ps1
 
 # Export built-in public functions
 $script:BuiltInFunctions = @(
@@ -162,7 +170,10 @@ $script:BuiltInFunctions = @(
     'Add-LedgerSupplier', 'Get-LedgerSupplier', 'Set-LedgerSupplier',
     'New-LedgerSupplierInvoice', 'Get-LedgerSupplierInvoice',
     'Invoke-LedgerSupplierInvoicePosting', 'Add-LedgerSupplierPayment',
-    'Get-LedgerAccountsPayable'
+    'Get-LedgerAccountsPayable',
+    'Add-LedgerEmployee', 'Get-LedgerEmployee', 'Set-LedgerEmployee',
+    'New-LedgerPayslip', 'Get-LedgerPayslip', 'Invoke-LedgerPayrollPosting',
+    'Export-LedgerPayslip'
 )
 
 # Load extensions at module scope (env variable — semicolon-separated paths)
