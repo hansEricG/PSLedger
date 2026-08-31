@@ -84,7 +84,7 @@ function Set-LedgerJournalSchemaVersion {
         $lines += "SchemaVersion: $Version"
     }
 
-    $lines | Set-Content -Path $journalFile -Encoding UTF8
+    Set-LedgerFileContent -Path $journalFile -Value $lines
 }
 
 function Get-LedgerSchemaMigrationDescriptions {

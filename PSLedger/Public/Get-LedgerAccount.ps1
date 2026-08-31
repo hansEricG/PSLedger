@@ -48,12 +48,18 @@ function Get-LedgerAccount {
 
     $Lines = Get-Content $KontoplanFile
 
+    $lineNo = 0
     $Accounts = foreach ($Line in $Lines) {
+        $lineNo++
+        if ([string]::IsNullOrWhiteSpace($Line)) { continue }
         if ($Line -match '^(\d+)\t(.+)$') {
             [PSCustomObject]@{
                 AccountNumber = $Matches[1]
                 AccountName   = $Matches[2]
             }
+        }
+        else {
+            Write-Warning "Skipping malformed account row in '$KontoplanFile' (line ${lineNo}): '$Line'. Expected '<account number><TAB><account name>'."
         }
     }
 

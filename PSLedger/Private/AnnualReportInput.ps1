@@ -149,5 +149,5 @@ function Write-LedgerReportInput {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
 
-    $lines | Set-Content -Path $Path -Encoding UTF8
+    Set-LedgerFileContent -Path $Path -Value $lines
 }

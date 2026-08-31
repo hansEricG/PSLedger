@@ -163,5 +163,5 @@ function Save-LedgerPayslipFile {
         "BookedFiscalYear:`t$($Payslip.BookedFiscalYear)"
     )
 
-    $lines | Set-Content -Path $Payslip.FilePath -Encoding UTF8
+    Set-LedgerFileContent -Path $Payslip.FilePath -Value $lines
 }

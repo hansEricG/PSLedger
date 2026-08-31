@@ -230,7 +230,7 @@ function Add-LedgerEntry {
                 return
             }
 
-            $Lines | Set-Content -Path $FilePath -Encoding UTF8
+            Set-LedgerFileContent -Path $FilePath -Value $Lines
 
             # Attach any supplied files to the new verification
             $attached = @()

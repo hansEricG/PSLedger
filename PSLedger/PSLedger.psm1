@@ -9,6 +9,7 @@
 . $PSScriptRoot\Private\ResolveJournalPath.ps1
 . $PSScriptRoot\Private\ResolveFiscalYear.ps1
 . $PSScriptRoot\Private\PathSafety.ps1
+. $PSScriptRoot\Private\FileWrite.ps1
 . $PSScriptRoot\Private\OpeningBalance.ps1
 . $PSScriptRoot\Private\JournalSchema.ps1
 . $PSScriptRoot\Private\JournalMetadata.ps1

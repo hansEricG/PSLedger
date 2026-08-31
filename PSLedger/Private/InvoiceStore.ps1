@@ -252,6 +252,6 @@ function Save-LedgerInvoiceFile {
         }
     }
 
-    $lines | Set-Content -Path $Invoice.FilePath -Encoding UTF8
+    Set-LedgerFileContent -Path $Invoice.FilePath -Value $lines
 }
 

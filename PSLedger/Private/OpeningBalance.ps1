@@ -32,12 +32,27 @@ function Read-LedgerOpeningBalance {
     }
 
     $rows = New-Object System.Collections.Generic.List[object]
+    $lineNo = 0
     foreach ($Line in (Get-Content $ibFile)) {
+        $lineNo++
+        if ([string]::IsNullOrWhiteSpace($Line)) { continue }
         if ($Line -match '^(\d+)\t(.+)$') {
-            $rows.Add([PSCustomObject]@{
-                Account = $Matches[1]
-                Amount  = [decimal]$Matches[2]
-            }) | Out-Null
+            $amount = $null
+            try {
+                $amount = [decimal]$Matches[2]
+            }
+            catch {
+                Write-Warning "Skipping opening balance row with an unparseable amount in '$ibFile' (line ${lineNo}): '$Line'"
+            }
+            if ($null -ne $amount) {
+                $rows.Add([PSCustomObject]@{
+                    Account = $Matches[1]
+                    Amount  = $amount
+                }) | Out-Null
+            }
+        }
+        else {
+            Write-Warning "Skipping malformed opening balance row in '$ibFile' (line ${lineNo}): '$Line'. Expected '<account><TAB><amount>'."
         }
     }
     , $rows.ToArray()
@@ -67,5 +82,5 @@ function Write-LedgerOpeningBalance {
         $lines.Add("$account`t$amount") | Out-Null
     }
 
-    Set-Content -Path $ibFile -Value $lines -Encoding UTF8
+    Set-LedgerFileContent -Path $ibFile -Value $lines
 }

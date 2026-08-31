@@ -127,39 +127,64 @@ function Add-LedgerCreditInvoice {
         return
     }
 
-    $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-        -Date $Date -Description $description -Rows @($entryRows) -PassThru
+    # Snapshot the original invoice and track the files this call creates so a
+    # failure part-way through the multi-file booking can be rolled back, leaving
+    # no half-applied credit (a booked verification without the paired invoice
+    # status updates, or vice versa).
+    $originalSnapshot = Get-Content -LiteralPath $filePath -Raw -Encoding UTF8
+    $creditNotePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $creditNumber)
+    $verification = $null
 
-    # Persist the credit note with negated rows.
-    $creditRows = foreach ($row in $original.Rows) {
-        [PSCustomObject]@{
-            Account    = $row.Account
-            Amount     = - [decimal]$row.Amount
-            VatRate    = $row.VatRate
-            VatAccount = $row.VatAccount
-            VatAmount  = - [decimal]$row.VatAmount
+    try {
+        $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+            -Date $Date -Description $description -Rows @($entryRows) -PassThru
+
+        # Persist the credit note with negated rows.
+        $creditRows = foreach ($row in $original.Rows) {
+            [PSCustomObject]@{
+                Account    = $row.Account
+                Amount     = - [decimal]$row.Amount
+                VatRate    = $row.VatRate
+                VatAccount = $row.VatAccount
+                VatAmount  = - [decimal]$row.VatAmount
+            }
         }
-    }
 
-    $creditNote = [PSCustomObject]@{
-        InvoiceNumber      = $creditNumber
-        CustomerNumber     = $original.CustomerNumber
-        InvoiceDate        = $Date
-        DueDate            = $Date
-        Description        = "Kreditfaktura för faktura $InvoiceNumber"
-        Status             = 'Credited'
-        ReceivableAccount  = $original.ReceivableAccount
-        BookedVerification = $verification.VerificationNumber
-        BookedFiscalYear   = $FiscalYear
-        Rows               = @($creditRows)
-        Payments           = @()
-        FilePath           = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $creditNumber)
-    }
-    Save-LedgerInvoiceFile -Invoice $creditNote
+        $creditNote = [PSCustomObject]@{
+            InvoiceNumber      = $creditNumber
+            CustomerNumber     = $original.CustomerNumber
+            InvoiceDate        = $Date
+            DueDate            = $Date
+            Description        = "Kreditfaktura för faktura $InvoiceNumber"
+            Status             = 'Credited'
+            ReceivableAccount  = $original.ReceivableAccount
+            BookedVerification = $verification.VerificationNumber
+            BookedFiscalYear   = $FiscalYear
+            Rows               = @($creditRows)
+            Payments           = @()
+            FilePath           = $creditNotePath
+        }
+        Save-LedgerInvoiceFile -Invoice $creditNote
 
-    # Mark the original as credited so the receivable nets to zero.
-    $original.Status = 'Credited'
-    Save-LedgerInvoiceFile -Invoice $original
+        # Mark the original as credited so the receivable nets to zero.
+        $original.Status = 'Credited'
+        Save-LedgerInvoiceFile -Invoice $original
+    }
+    catch {
+        # Undo any partial writes: remove the reversing verification and the
+        # credit note, and restore the original invoice to its pre-call content.
+        if ($verification) {
+            $verPath = Join-Path (Join-Path $JournalPath $FiscalYear) ('ver' + $verification.VerificationNumber.ToString('0000') + '.txt')
+            if (Test-Path -LiteralPath $verPath) {
+                Remove-Item -LiteralPath $verPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+        if (Test-Path -LiteralPath $creditNotePath) {
+            Remove-Item -LiteralPath $creditNotePath -Force -ErrorAction SilentlyContinue
+        }
+        Set-Content -LiteralPath $filePath -Value $originalSnapshot -NoNewline -Encoding UTF8
+        throw
+    }
 
     if ($PassThru) {
         Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $creditNumber

@@ -29,6 +29,21 @@
   fiscal year's `year.txt` is missing or has no parseable `StartDate`/`EndDate`
   instead of silently skipping the date-range check. `Get-LedgerEntry -VerificationNumber 0`
   now returns nothing rather than all verifications.
+- **Atomic file writes.** Persistent ledger records (verifications, customer and
+  supplier invoices, payslips, opening balances, journal metadata and annual
+  report input) are now written to a temporary file in the same directory and
+  moved into place, so an error part-way through a write can no longer leave a
+  truncated, corrupt file — the record on disk is always either the complete old
+  or the complete new version.
+- **Credit-invoice rollback.** `Add-LedgerCreditInvoice` now rolls back a partial
+  booking: if any step fails after the reversing verification is booked, the
+  verification and credit note are removed and the original invoice is restored,
+  so a failure can no longer leave a booked verification without the paired
+  invoice status updates.
+- **Warnings for malformed data rows.** `Get-LedgerAccount` (accounts.txt) and the
+  opening-balance reader (ib.txt) now emit a warning identifying the file and line
+  of any malformed row instead of silently skipping it, while still returning the
+  valid rows.
 
 ## [0.10.0] - 2026-08-31
 

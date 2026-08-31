@@ -187,5 +187,5 @@ function Save-LedgerSupplierInvoiceFile {
         $lines += "$($p.Date.ToString('yyyy-MM-dd'))`t$(Format-LedgerInvoiceAmount -Value ([decimal]$p.Amount))`t$veriField`t$($p.FiscalYear)"
     }
 
-    $lines | Set-Content -Path $Invoice.FilePath -Encoding UTF8
+    Set-LedgerFileContent -Path $Invoice.FilePath -Value $lines
 }
