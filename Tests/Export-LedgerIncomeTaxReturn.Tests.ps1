@@ -138,6 +138,12 @@ Describe 'Export-LedgerIncomeTaxReturn' {
             Get-Uppgift $blk 'INK2R-2024P4' 7302 | Should -Be 65000
         }
 
+        It 'Should report årets resultat as the INK2R income statement closing line (7450)' {
+            Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest | Out-Null
+            $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+            Get-Uppgift $blk 'INK2R-2024P4' 7450 | Should -Be 65000
+        }
+
         It 'Should report årets resultat and non-deductible tax on INK2S and compute the surplus' {
             $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest
             $r.NetResult | Should -Be 65000

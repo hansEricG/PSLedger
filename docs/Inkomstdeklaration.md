@@ -29,6 +29,8 @@ För ett aktiebolag skapas tre blankettblock:
 - **Årets resultat** och **totalt eget kapital** beräknas från hela kontointervallet
   och årets resultat vävs in i fritt eget kapital (SRU 7302), så att balansräkningen
   alltid stämmer även om något ovanligt konto inte klassificeras på en egen rad.
+  Årets resultat skrivs även ut som resultaträkningens slutrad på INK2R
+  (SRU 7450 vinst / 7550 förlust).
 
 Beloppen anges i **hela kronor** (ören avkortas enligt SFL 22:1), organisationsnumret
 skrivs i **12-siffrig form** (`556677-8899` → `165566778899`) och filerna skrivs med

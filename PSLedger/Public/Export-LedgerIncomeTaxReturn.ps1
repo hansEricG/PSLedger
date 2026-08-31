@@ -176,6 +176,12 @@ function Export-LedgerIncomeTaxReturn {
         # sheet reflects total equity including årets resultat.
         if ($netResult -ne 0) { & $addSru 7302 $netResult }
 
+        # Årets resultat is also the closing line of the INK2R income statement
+        # (3.26 vinst / 3.27 förlust). A loss is reported as a positive amount;
+        # the minus is implicit in the pre-printed row.
+        if ($netResult -gt 0) { & $addSru 7450 $netResult }
+        elseif ($netResult -lt 0) { & $addSru 7550 (-$netResult) }
+
         # INK2S surplus/deficit. Default: result + non-deductible booked tax.
         $userAdjustments = @{}
         if ($TaxAdjustment) {
