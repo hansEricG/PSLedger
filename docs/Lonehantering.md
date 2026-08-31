@@ -9,9 +9,9 @@ alltid mot huvudboken.
 
 En lönespecifikation går igenom statusarna **Draft → Booked**.
 
-Fas 1 täcker kärnan: anställningsregister, lönespecifikation, bokföring och
-lönebesked. Betalning av skatt och avgifter till skattekontot samt
-arbetsgivardeklaration (AGI) hanteras i senare faser.
+Fas 1–2 täcker anställningsregister, lönespecifikation, bokföring, lönebesked och
+inbetalning av skatt och arbetsgivaravgifter till skattekontot.
+Arbetsgivardeklaration (AGI) och semesterlöneskuld hanteras i en senare fas.
 
 ## Datamodell
 
@@ -125,11 +125,51 @@ Dokumentet innehåller arbetsgivaren (från journalen), den anställda, löneper
 och utbetalningsdatum, bruttolön, preliminär skatt, nettolön att utbetala samt
 arbetsgivaravgiften.
 
+### 5. Betala skatt och arbetsgivaravgifter till skattekontot
+
+När lönen är bokförd ligger den avdragna skatten på 2710 (Personalskatt) och
+arbetsgivaravgiften på 2730 (Arbetsgivaravgift skuld) som skulder. Nästa månad
+betalas de in till Skatteverkets skattekonto. `Add-LedgerPayrollTaxPayment`
+skapar den verifikationen: skuldkontona debiteras och betalkontot (1930)
+krediteras.
+
+```powershell
+# Betala hela den utestående skatten och avgiften (nollar 2710 och 2730)
+Add-LedgerPayrollTaxPayment -Date '2024-04-12'
+```
+
+Ger verifikationen:
+
+```
+2710 Personalskatt            +9000
+2730 Arbetsgivaravgift skuld  +9426
+1930 Företagskonto           -18426
+```
+
+- Utan belopp betalas de utestående saldona på skuldkontona i räkenskapsåret, så
+  att de nollställs och lönehanteringen stämmer mot huvudboken.
+- Ange `-TaxAmount` och/eller `-EmployerContributionAmount` för att betala exakta
+  belopp.
+- `-Account` styr betalkontot (standard `1930`) och räkenskapsåret hämtas från
+  betalningsdatumet.
+
+### 6. Anställda och personalkostnader i årsredovisningen
+
+`Get-LedgerEmployeeNote` bygger noten *Anställda och personalkostnader*. Den
+härleder nu medelantalet anställda från antalet distinkta anställda med en
+bokförd lönespecifikation under året (om det inte anges explicit eller via
+`Set-LedgerReportInput`), och summerar personalkostnaderna på konton 7000–7699:
+
+```powershell
+Get-LedgerEmployeeNote | Format-List AverageEmployees, PersonnelCosts, Statement
+```
+
 ## Avstämning mot huvudboken
 
 Eftersom bokföringen skapar en verifikation stämmer lönehanteringen mot
 bokföringen. Efter bokförda men ännu inte inbetalda löner motsvarar saldot på
-skuldkontona den skatt och de avgifter som ska betalas till skattekontot:
+skuldkontona den skatt och de avgifter som ska betalas till skattekontot, och
+`Add-LedgerPayrollTaxPayment` nollställer dem vid inbetalningen:
 
 ```powershell
 $b = Get-LedgerBalance
@@ -147,13 +187,11 @@ $b = Get-LedgerBalance
 | `New-LedgerPayslip` | Skapa en lönespecifikation (utkast) |
 | `Get-LedgerPayslip` | Lista lönespecifikationer, filtrera på status/anställd |
 | `Invoke-LedgerPayrollPosting` | Bokför en lönespecifikation (skapar verifikation) |
+| `Add-LedgerPayrollTaxPayment` | Bokför inbetalning av skatt och avgifter till skattekontot |
 | `Export-LedgerPayslip` | Exportera ett lönebesked till PDF, Word, Markdown eller text |
 
 ## Kommande faser
 
-- **Fas 2** – Bokföring av betalning av skatt och avgifter till skattekontot,
-  samt integration med `Get-LedgerEmployeeNote` (medelantal anställda och
-  personalkostnader).
 - **Fas 3** – Arbetsgivardeklaration på individnivå (AGI) och semesterlöneskuld.
 
 Se även [Fakturahantering](Fakturahantering.md) och

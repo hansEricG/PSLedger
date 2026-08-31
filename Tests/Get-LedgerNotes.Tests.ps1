@@ -98,4 +98,27 @@ Describe 'Get-LedgerEmployeeNote' {
             $note.AverageEmployees | Should -Be 5
         }
     }
+
+    Context 'Payroll integration' {
+        BeforeAll {
+            $pj = Join-Path $TestDrive 'payrollnote.ledger'
+            New-LedgerJournal -Path $pj -Name 'Personal AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            Import-LedgerChart -JournalPath $pj -Template 'BAS-Smaforetag'
+            New-LedgerFiscalYear -JournalPath $pj -StartDate '2024-01-01' -EndDate '2024-12-31'
+            Add-LedgerEmployee -JournalPath $pj -EmployeeNumber '1' -Name 'Anna' -TaxRate 0.30
+            New-LedgerPayslip -JournalPath $pj -EmployeeNumber '1' -GrossSalary 30000 -PayDate '2024-03-25' | Out-Null
+            Invoke-LedgerPayrollPosting -JournalPath $pj -PayslipNumber 1
+        }
+
+        It 'Should derive the average employees from posted payslips' {
+            $note = Get-LedgerEmployeeNote -JournalPath $pj -FiscalYear '2024-01_2024-12'
+            $note.AverageEmployees | Should -Be 1
+            $note.Statement | Should -Match 'Medelantalet anställda'
+        }
+
+        It 'Should sum the personnel costs booked to 7000-7699' {
+            $note = Get-LedgerEmployeeNote -JournalPath $pj -FiscalYear '2024-01_2024-12'
+            $note.PersonnelCosts | Should -Be 39426
+        }
+    }
 }

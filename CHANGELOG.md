@@ -3,6 +3,18 @@
 ## [Unreleased]
 
 ### Added
+- **Payroll management (lönehantering), phase 2.** `Add-LedgerPayrollTaxPayment`
+  books the payment of withheld employee tax (2710 Personalskatt) and employer
+  contributions (2730 Arbetsgivaravgift skuld) to the tax account: the liability
+  accounts are debited and the payment account (1930) is credited. By default it
+  settles the outstanding balances of the two liability accounts to zero, so the
+  payroll liabilities reconcile against the ledger; `-TaxAmount` and
+  `-EmployerContributionAmount` pay specific amounts. `Get-LedgerEmployeeNote` now
+  derives the average number of employees from the distinct employees with a
+  payslip posted in the fiscal year (when not given explicitly or via
+  `Set-LedgerReportInput`) and reports the personnel costs booked to the 7000–7699
+  accounts as a new `PersonnelCosts` property. See
+  [docs/Lonehantering.md](docs/Lonehantering.md).
 - **Payroll management (lönehantering), phase 1.** An employee register plus a
   payslip workflow layered on top of the ledger. `Add-LedgerEmployee`,
   `Get-LedgerEmployee` and `Set-LedgerEmployee` manage an `employees.txt` register

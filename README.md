@@ -159,6 +159,7 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `New-LedgerPayslip` | Create a payslip (draft) |
 | `Get-LedgerPayslip` | List payslips, filter by status or employee |
 | `Invoke-LedgerPayrollPosting` | Post a payslip to the ledger (verification) |
+| `Add-LedgerPayrollTaxPayment` | Book payment of withheld tax and employer contributions |
 | `Export-LedgerPayslip` | Export a payslip to PDF, Word, Markdown or text |
 
 ## Annual Report (Årsredovisning)
@@ -516,6 +517,13 @@ Invoke-LedgerPayrollPosting -PayslipNumber 1
 
 # 4. Print a payslip (PDF, Word, Markdown or text)
 Export-LedgerPayslip -PayslipNumber 1 -Path .\lonebesked-1.pdf
+
+# 5. Pay the withheld tax (2710) and employer contributions (2730) to the tax
+#    account, settling the liabilities:
+#      2710 Personalskatt            +9000
+#      2730 Arbetsgivaravgift skuld  +9426
+#      1930 Företagskonto           -18426
+Add-LedgerPayrollTaxPayment -Date '2024-04-12'
 ```
 
 For a full walkthrough see [docs/Lonehantering.md](docs/Lonehantering.md).

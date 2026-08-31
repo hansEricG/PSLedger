@@ -153,6 +153,45 @@ Describe 'Get-LedgerPayslip' {
     }
 }
 
+Describe 'Add-LedgerPayrollTaxPayment' {
+    Context 'Behavior' {
+        BeforeEach {
+            $JournalPath = New-PayslipTestJournal -Root $TestDrive
+            New-LedgerPayslip -JournalPath $JournalPath -EmployeeNumber '1' -GrossSalary 30000 -PayDate '2024-03-25' | Out-Null
+            Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1
+        }
+
+        It 'Should settle the tax and contribution liabilities to zero' {
+            $pay = Add-LedgerPayrollTaxPayment -JournalPath $JournalPath -Date '2024-04-12'
+            $pay.TaxAmount | Should -Be 9000
+            $pay.EmployerContributionAmount | Should -Be 9426
+            $pay.Total | Should -Be 18426
+            $b = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear '2024-01_2024-12'
+            ($b | Where-Object AccountNumber -eq '2710').Balance | Should -Be 0
+            ($b | Where-Object AccountNumber -eq '2730').Balance | Should -Be 0
+        }
+
+        It 'Should credit the payment account with the total' {
+            Add-LedgerPayrollTaxPayment -JournalPath $JournalPath -Date '2024-04-12' | Out-Null
+            $b = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear '2024-01_2024-12'
+            # 21000 net pay + 18426 taxes = 39426 out of the bank
+            ($b | Where-Object AccountNumber -eq '1930').Balance | Should -Be -39426
+        }
+
+        It 'Should pay explicit amounts when given' {
+            $pay = Add-LedgerPayrollTaxPayment -JournalPath $JournalPath -Date '2024-04-12' -TaxAmount 5000 -EmployerContributionAmount 0
+            $pay.Total | Should -Be 5000
+            $b = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear '2024-01_2024-12'
+            ($b | Where-Object AccountNumber -eq '2710').Balance | Should -Be -4000
+        }
+
+        It 'Should throw when there is nothing to pay' {
+            Add-LedgerPayrollTaxPayment -JournalPath $JournalPath -Date '2024-04-12' | Out-Null
+            { Add-LedgerPayrollTaxPayment -JournalPath $JournalPath -Date '2024-05-12' } | Should -Throw '*Nothing to pay*'
+        }
+    }
+}
+
 Describe 'Export-LedgerPayslip' {
     Context 'Behavior' {
         BeforeEach {
