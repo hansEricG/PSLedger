@@ -229,10 +229,13 @@ Add-LedgerInvoiceReminder -InvoiceNumber 1 -Date '2024-05-01' -Fee 60 `
     -Path .\paminnelse-1.pdf -Format Pdf -Force
 ```
 
-Dokumentet visar det förfallna beloppet, en eventuell `-Fee` (endast på
-dokumentet, inte bokförd) och fakturans **OCR-referens** som betalningsreferens.
-`-Format` stödjer `Pdf` (standard), `Word`, `Markdown` och `Text` precis som
-`Export-LedgerInvoice`. Antalet skickade påminnelser syns på fakturan:
+Dokumentet visar det förfallna beloppet, en eventuell `-Fee` och fakturans
+**OCR-referens** som betalningsreferens. Som standard är avgiften bara med på
+dokumentet och bokförs inte. Lägg till `-BookFee` för att bokföra avgiften som en
+faktisk debitering på fakturan (se avsnitt 11) – då höjs den öppna fordran och
+avgiften visas som en del av beloppet att betala i stället för att läggas till
+ovanpå. `-Format` stödjer `Pdf` (standard), `Word`, `Markdown` och `Text` precis
+som `Export-LedgerInvoice`. Antalet skickade påminnelser syns på fakturan:
 
 ```powershell
 Get-LedgerInvoice | Format-Table InvoiceNumber, CustomerName, Status, ReminderCount, LastReminderDate
@@ -253,11 +256,64 @@ Get-LedgerInvoice | Format-Table InvoiceNumber, CustomerName, Total, OcrReferenc
 OCR-referensen visas automatiskt i betalningsavsnittet på exporterade fakturor
 (`Export-LedgerInvoice`) och på påminnelsedokument.
 
+### 11. Bokföra påminnelseavgift och förseningsersättning
+
+`Add-LedgerInvoiceFee` bokför en påminnelseavgift eller förseningsersättning som
+en faktisk debitering på en bokförd, obetald faktura: kundfordran debiteras och
+ett intäktskonto krediteras (ingen moms). Avgiften läggs till fakturans
+`Charges`-sektion, vilket höjer `Total` och `RemainingAmount`, så att
+kundreskontran fortsätter stämma mot huvudboken.
+
+```powershell
+# Påminnelseavgift 60 kr (max enligt lag) – debet 1510, kredit 3590
+Add-LedgerInvoiceFee -InvoiceNumber 1 -Amount 60 -Date '2024-05-01'
+
+# Förseningsersättning 450 kr för näringsidkare
+Add-LedgerInvoiceFee -InvoiceNumber 1 -Amount 450 -Date '2024-05-01'
+```
+
+Ger verifikationen:
+
+```
+1510 Kundfordringar     +60
+3590 Övriga sidointäkter -60
+```
+
+`-Account` styr intäktskontot (standard `3590`). Samma sak sker automatiskt när
+du kör `Add-LedgerInvoiceReminder ... -Fee 60 -BookFee`.
+
+### 12. Bokföra dröjsmålsränta
+
+`Add-LedgerInvoiceInterest` beräknar och bokför dröjsmålsränta. Räntan räknas ut
+som `kvarstående belopp × årsränta × antal förfallodagar / 365`, eller anges
+manuellt med `-Amount`. Kundfordran debiteras och ränteintäktskontot (standard
+`8310`) krediteras:
+
+```powershell
+# Ränta 10,5 % på kvarstående belopp för antalet förfallna dagar
+Add-LedgerInvoiceInterest -InvoiceNumber 1 -AnnualRate 0.105 -Date '2024-06-01'
+
+# Eller ett exakt räntebelopp
+Add-LedgerInvoiceInterest -InvoiceNumber 1 -Amount 250 -Date '2024-06-01'
+```
+
+Ger t.ex. verifikationen:
+
+```
+1510 Kundfordringar  +173,43
+8310 Ränteintäkter   -173,43
+```
+
+Ange antingen `-AnnualRate` eller `-Amount`. En faktura som inte är förfallen
+(förfallodatum efter `-Date`) kan inte räntedebiteras. Liksom avgifter höjer
+räntan den öppna fordran och stämmer mot saldot på 1510.
+
 ## Avstämning mot huvudboken
 
-Eftersom både bokföring och betalning skapar verifikationer stämmer reskontran
-mot bokföringen. Summan av `RemainingAmount` för `-Unpaid`-fakturor ska motsvara
-saldot på kundfordringskontot (1510):
+Eftersom både bokföring, betalning, avgifter och ränta skapar verifikationer
+stämmer reskontran mot bokföringen. Summan av `RemainingAmount` för
+`-Unpaid`-fakturor (inklusive bokförda avgifter och räntor) ska motsvara saldot
+på kundfordringskontot (1510):
 
 ```powershell
 $openApAr = (Get-LedgerInvoice -Unpaid | Measure-Object RemainingAmount -Sum).Sum
@@ -280,6 +336,8 @@ $saldo1510 = (Get-LedgerBalance | Where-Object AccountNumber -eq '1510').Balance
 | `Export-LedgerInvoice` | Exportera en faktura till PDF, Word, Markdown eller text |
 | `Add-LedgerCreditInvoice` | Kreditera (återför) en bokförd faktura |
 | `Add-LedgerInvoiceReminder` | Registrera en betalningspåminnelse (valfritt dokument med avgift och OCR) |
+| `Add-LedgerInvoiceFee` | Bokför påminnelseavgift/förseningsersättning på en faktura |
+| `Add-LedgerInvoiceInterest` | Beräkna och bokför dröjsmålsränta på en faktura |
 
 Se även [Leverantörsreskontra](Leverantorsreskontra.md) för hantering av
 leverantörsfakturor och leverantörsbetalningar.

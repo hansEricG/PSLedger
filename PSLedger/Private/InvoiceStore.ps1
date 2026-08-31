@@ -88,12 +88,14 @@ function ConvertTo-LedgerInvoiceObject {
     $meta = @{}
     $rows = @()
     $payments = @()
+    $charges = @()
     $section = 'meta'
 
     foreach ($line in $Content) {
         if ($line -match '^\s*;') { continue }
         if ($line -eq 'Rows:') { $section = 'rows'; continue }
         if ($line -eq 'Payments:') { $section = 'payments'; continue }
+        if ($line -eq 'Charges:') { $section = 'charges'; continue }
 
         switch ($section) {
             'rows' {
@@ -123,6 +125,20 @@ function ConvertTo-LedgerInvoiceObject {
                     }
                 }
             }
+            'charges' {
+                if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                $parts = $line -split "`t"
+                if ($parts.Count -ge 3) {
+                    $charges += [PSCustomObject]@{
+                        Date               = [datetime]::ParseExact($parts[0], 'yyyy-MM-dd', $null)
+                        Type               = $parts[1]
+                        Amount             = ConvertFrom-LedgerInvoiceAmount -Text $parts[2]
+                        Account            = if ($parts.Count -ge 4) { $parts[3] } else { '' }
+                        VerificationNumber = if ($parts.Count -ge 5 -and $parts[4]) { [int]$parts[4] } else { $null }
+                        FiscalYear         = if ($parts.Count -ge 6) { $parts[5] } else { '' }
+                    }
+                }
+            }
             default {
                 $parts = $line -split "`t", 2
                 if ($parts.Count -ge 2) {
@@ -136,7 +152,9 @@ function ConvertTo-LedgerInvoiceObject {
     if (-not $netTotal) { $netTotal = [decimal]0 }
     $vatTotal = [decimal]0
     foreach ($r in $rows) { $vatTotal += $r.VatAmount }
-    $total = [Math]::Round($netTotal + $vatTotal, 2)
+    $chargesTotal = ($charges | Measure-Object -Property Amount -Sum).Sum
+    if (-not $chargesTotal) { $chargesTotal = [decimal]0 }
+    $total = [Math]::Round($netTotal + $vatTotal + $chargesTotal, 2)
 
     $paidAmount = ($payments | Measure-Object -Property Amount -Sum).Sum
     if (-not $paidAmount) { $paidAmount = [decimal]0 }
@@ -156,8 +174,10 @@ function ConvertTo-LedgerInvoiceObject {
         LastReminderDate   = if ($meta['LastReminderDate']) { [datetime]::ParseExact($meta['LastReminderDate'], 'yyyy-MM-dd', $null) } else { $null }
         Rows               = $rows
         Payments           = $payments
+        Charges            = $charges
         NetTotal           = [Math]::Round([decimal]$netTotal, 2)
         VatTotal           = [Math]::Round($vatTotal, 2)
+        ChargesTotal       = [Math]::Round([decimal]$chargesTotal, 2)
         Total              = $total
         PaidAmount         = [Math]::Round([decimal]$paidAmount, 2)
         RemainingAmount    = [Math]::Round($total - $paidAmount, 2)
@@ -222,6 +242,14 @@ function Save-LedgerInvoiceFile {
     foreach ($p in $Invoice.Payments) {
         $veriField = if ($null -ne $p.VerificationNumber) { $p.VerificationNumber } else { '' }
         $lines += "$($p.Date.ToString('yyyy-MM-dd'))`t$(Format-LedgerInvoiceAmount -Value ([decimal]$p.Amount))`t$veriField`t$($p.FiscalYear)"
+    }
+
+    $lines += 'Charges:'
+    if ($Invoice.PSObject.Properties['Charges']) {
+        foreach ($c in $Invoice.Charges) {
+            $veriField = if ($null -ne $c.VerificationNumber) { $c.VerificationNumber } else { '' }
+            $lines += "$($c.Date.ToString('yyyy-MM-dd'))`t$($c.Type)`t$(Format-LedgerInvoiceAmount -Value ([decimal]$c.Amount))`t$($c.Account)`t$veriField`t$($c.FiscalYear)"
+        }
     }
 
     $lines | Set-Content -Path $Invoice.FilePath -Encoding UTF8

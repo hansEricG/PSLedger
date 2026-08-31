@@ -30,6 +30,16 @@
   exposes an `OcrReference`: a Swedish OCR number derived from the invoice number
   with a Luhn (mod-10) check digit and a length-control digit, printed on exported
   invoices and reminders for automatic payment matching.
+- **Booked late charges (fees and interest).** `Add-LedgerInvoiceFee` books a
+  reminder fee or late-payment compensation (påminnelseavgift / förseningsersättning)
+  and `Add-LedgerInvoiceInterest` calculates and books late-payment interest
+  (dröjsmålsränta = remaining amount × annual rate × days overdue / 365, or an
+  explicit amount) on a posted, unpaid invoice. Each charge debits the receivable
+  and credits an income account (3590 for fees, 8310 for interest; no VAT) and is
+  recorded in a new `Charges` section on the invoice, so it increases the invoice
+  total and the open receivable while staying reconciled against the general ledger.
+  `Add-LedgerInvoiceReminder` gains a `-BookFee` switch to book the reminder fee as
+  it is issued.
 - **Supplier ledger (leverantörsreskontra).** A supplier register plus a supplier
   invoice workflow that mirrors the customer ledger. `Add-LedgerSupplier`,
   `Get-LedgerSupplier` and `Set-LedgerSupplier` manage a `suppliers.txt` register.

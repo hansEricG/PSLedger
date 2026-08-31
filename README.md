@@ -132,6 +132,8 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Export-LedgerInvoice` | Export an invoice to PDF, Word, Markdown or text |
 | `Add-LedgerCreditInvoice` | Credit (reverse) a posted invoice |
 | `Add-LedgerInvoiceReminder` | Record a payment reminder (optional document with fee and OCR) |
+| `Add-LedgerInvoiceFee` | Book a reminder fee / late-payment compensation on an invoice |
+| `Add-LedgerInvoiceInterest` | Calculate and book late-payment interest on an invoice |
 | `Add-LedgerSupplier` | Add a supplier to the supplier register |
 | `Get-LedgerSupplier` | List or look up suppliers |
 | `Set-LedgerSupplier` | Update supplier details |
@@ -383,6 +385,13 @@ Add-LedgerCreditInvoice -InvoiceNumber 1
 # Send a payment reminder for an overdue invoice — records the reminder (no ledger
 # posting) and optionally writes a document with a reminder fee and the OCR reference
 Add-LedgerInvoiceReminder -InvoiceNumber 1 -Date '2024-05-01' -Fee 60 -Path .\paminnelse-1.pdf
+
+# Book a reminder fee / late-payment compensation as an actual charge (debit 1510,
+# credit 3590) so it increases the open receivable
+Add-LedgerInvoiceFee -InvoiceNumber 1 -Amount 60 -Date '2024-05-01'
+
+# Calculate and book late-payment interest (remaining × rate × days / 365; credit 8310)
+Add-LedgerInvoiceInterest -InvoiceNumber 1 -AnnualRate 0.105 -Date '2024-06-01'
 ```
 
 A VAT-free row simply omits the VAT (`VatRate = 0` and no `VatAccount`). Override

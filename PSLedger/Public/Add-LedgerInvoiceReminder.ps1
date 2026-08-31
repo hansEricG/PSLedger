@@ -28,8 +28,18 @@ The number of the overdue invoice.
 The reminder date, used to calculate the days overdue. Defaults to today.
 
 .PARAMETER Fee
-An optional reminder fee (påminnelseavgift) shown on the document and added to the
-amount to pay. Not booked to the ledger. Defaults to 0.
+An optional reminder fee (påminnelseavgift). By default it is only shown on the
+document and added to the amount to pay, not booked to the ledger. Combine with
+-BookFee to book it as an actual charge on the invoice. Defaults to 0.
+
+.PARAMETER BookFee
+Book the reminder fee as an actual charge on the invoice (debit the receivable,
+credit -FeeAccount) so it increases the open receivable. Requires -Fee greater
+than zero. Equivalent to calling Add-LedgerInvoiceFee.
+
+.PARAMETER FeeAccount
+The income account a booked fee is credited to. Defaults to '3590' (Övriga
+sidointäkter). Only used together with -BookFee.
 
 .PARAMETER Path
 Optional destination path for the reminder document. If omitted, the reminder is
@@ -54,6 +64,11 @@ Records a reminder for invoice 1 and writes a PDF reminder.
 Add-LedgerInvoiceReminder -InvoiceNumber 1 -Fee 60 -Date '2024-05-15' -Path .\paminnelse-1.docx -Format Word
 
 Records a second reminder with a 60 kr reminder fee and writes a Word document.
+.EXAMPLE
+Add-LedgerInvoiceReminder -InvoiceNumber 1 -Fee 60 -BookFee -Path .\paminnelse-1.pdf
+
+Records a reminder, books a 60 kr reminder fee on the invoice (debit 1510, credit
+3590) and writes a PDF where the fee is part of the outstanding amount.
 #>
 function Add-LedgerInvoiceReminder {
     [CmdletBinding()]
@@ -70,6 +85,12 @@ function Add-LedgerInvoiceReminder {
         [Parameter()]
         [ValidateRange(0, [double]::MaxValue)]
         [decimal]$Fee = 0,
+
+        [Parameter()]
+        [switch]$BookFee,
+
+        [Parameter()]
+        [string]$FeeAccount = '3590',
 
         [Parameter()]
         [string]$Path,
@@ -102,15 +123,24 @@ function Add-LedgerInvoiceReminder {
         throw "Invoice $InvoiceNumber is not an open receivable (status '$($invoice.Status)'). Only posted, unpaid invoices can be reminded."
     }
 
+    if ($BookFee -and $Fee -le 0) {
+        throw "-BookFee requires -Fee to be greater than zero."
+    }
+
     $invoice.ReminderCount = [int]$invoice.ReminderCount + 1
     $invoice.LastReminderDate = $Date
     Save-LedgerInvoiceFile -Invoice $invoice
+
+    if ($BookFee) {
+        Add-LedgerInvoiceChargeInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
+            -Type 'Fee' -Amount $Fee -Account $FeeAccount -Date $Date
+    }
 
     if ($PSBoundParameters.ContainsKey('Path')) {
         $journal = Get-LedgerJournal -Path $JournalPath
         $customer = Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $invoice.CustomerNumber
         $reloaded = Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
-        $blocks = @(Build-LedgerReminderBlock -Invoice $reloaded -Journal $journal -Customer $customer -AsOf $Date -Fee $Fee)
+        $blocks = @(Build-LedgerReminderBlock -Invoice $reloaded -Journal $journal -Customer $customer -AsOf $Date -Fee $Fee -FeeBooked:$BookFee)
 
         switch ($Format) {
             'Word' { ConvertTo-LedgerReportDocx -Block $blocks -Path $Path }
@@ -145,7 +175,10 @@ function Build-LedgerReminderBlock {
         [datetime]$AsOf,
 
         [Parameter()]
-        [decimal]$Fee = 0
+        [decimal]$Fee = 0,
+
+        [Parameter()]
+        [switch]$FeeBooked
     )
 
     $blocks = New-Object System.Collections.Generic.List[object]
@@ -178,8 +211,15 @@ function Build-LedgerReminderBlock {
     $blocks.Add(@{ Type = 'Paragraph'; Text = "Kvarstående belopp: $(Format-LedgerAmount -Value $Invoice.RemainingAmount) kr" })
     $amountToPay = [decimal]$Invoice.RemainingAmount
     if ($Fee -gt 0) {
-        $blocks.Add(@{ Type = 'Paragraph'; Text = "Påminnelseavgift: $(Format-LedgerAmount -Value $Fee) kr" })
-        $amountToPay = [Math]::Round($amountToPay + $Fee, 2)
+        if ($FeeBooked) {
+            # The fee has been booked as a charge and is already included in the
+            # remaining amount, so it is shown for information only.
+            $blocks.Add(@{ Type = 'Paragraph'; Text = "Varav påminnelseavgift: $(Format-LedgerAmount -Value $Fee) kr" })
+        }
+        else {
+            $blocks.Add(@{ Type = 'Paragraph'; Text = "Påminnelseavgift: $(Format-LedgerAmount -Value $Fee) kr" })
+            $amountToPay = [Math]::Round($amountToPay + $Fee, 2)
+        }
     }
     $blocks.Add(@{ Type = 'Heading'; Level = 2; Text = "Att betala: $(Format-LedgerAmount -Value $amountToPay) kr" })
 

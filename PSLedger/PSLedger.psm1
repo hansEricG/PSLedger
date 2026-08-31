@@ -18,6 +18,7 @@
 . $PSScriptRoot\Private\InvoiceStore.ps1
 . $PSScriptRoot\Private\SupplierInvoiceStore.ps1
 . $PSScriptRoot\Private\OcrReference.ps1
+. $PSScriptRoot\Private\InvoiceCharge.ps1
 . $PSScriptRoot\Private\PdfWriter.ps1
 . $PSScriptRoot\Private\Migrations.ps1
 
@@ -104,6 +105,8 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Get-LedgerAccountsReceivable.ps1
 . $PSScriptRoot\Public\Add-LedgerCreditInvoice.ps1
 . $PSScriptRoot\Public\Add-LedgerInvoiceReminder.ps1
+. $PSScriptRoot\Public\Add-LedgerInvoiceFee.ps1
+. $PSScriptRoot\Public\Add-LedgerInvoiceInterest.ps1
 . $PSScriptRoot\Public\Add-LedgerSupplier.ps1
 . $PSScriptRoot\Public\Get-LedgerSupplier.ps1
 . $PSScriptRoot\Public\Set-LedgerSupplier.ps1
@@ -149,6 +152,7 @@ $script:BuiltInFunctions = @(
     'Add-LedgerInvoicePayment', 'Export-LedgerInvoice',
     'Get-LedgerAccountsReceivable', 'Add-LedgerCreditInvoice',
     'Add-LedgerInvoiceReminder',
+    'Add-LedgerInvoiceFee', 'Add-LedgerInvoiceInterest',
     'Add-LedgerSupplier', 'Get-LedgerSupplier', 'Set-LedgerSupplier',
     'New-LedgerSupplierInvoice', 'Get-LedgerSupplierInvoice',
     'Invoke-LedgerSupplierInvoicePosting', 'Add-LedgerSupplierPayment',
