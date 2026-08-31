@@ -1,6 +1,7 @@
 BeforeAll {
     $ModulePath = Join-Path $PSScriptRoot '..' 'PSLedger' 'PSLedger.psd1'
     Import-Module $ModulePath -Force
+    Import-Module TDDUtils -Force
 }
 
 Describe 'SupportsShouldProcess coverage' {
@@ -25,8 +26,7 @@ Describe 'SupportsShouldProcess coverage' {
 
         It '<_> supports ShouldProcess' -ForEach $WriteCommands {
             $Command = Get-Command -Name $_
-            $Command.Parameters.ContainsKey('WhatIf') | Should -BeTrue
-            $Command.Parameters.ContainsKey('Confirm') | Should -BeTrue
+            Test-TDDSupportsShouldProcess -Command $Command | Should -BeTrue
         }
     }
 
