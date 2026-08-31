@@ -178,6 +178,9 @@ function Build-LedgerInvoiceBlock {
     if ($payBits.Count -gt 0) {
         $blocks.Add(@{ Type = 'Paragraph'; Text = "Betalning: $($payBits -join '   ')" })
     }
+    if ($Invoice.PSObject.Properties['OcrReference'] -and $Invoice.OcrReference) {
+        $blocks.Add(@{ Type = 'Paragraph'; Text = "OCR-referens: $($Invoice.OcrReference)" })
+    }
     $blocks.Add(@{ Type = 'Paragraph'; Text = "Vänligen ange fakturanummer $($Invoice.InvoiceNumber) vid betalning." })
 
     $blocks

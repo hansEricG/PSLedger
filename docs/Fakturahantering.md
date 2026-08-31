@@ -212,6 +212,47 @@ kundreskontran nettar till noll för paret. Bara en faktura med status `Booked`
 kan krediteras – ett utkast måste bokföras först (eller raderas), och en faktura
 med betalningar måste hanteras via betalningarna.
 
+### 9. Skicka betalningspåminnelse
+
+`Add-LedgerInvoiceReminder` registrerar en påminnelse på en bokförd men inte
+fullt betald faktura (status `Booked` eller `Partial`). Den räknar upp fakturans
+`ReminderCount` och sätter `LastReminderDate`, men bokför **ingenting** i
+huvudboken – en påminnelseavgift är villkorad och tas upp först om/när den
+faktiskt debiteras.
+
+```powershell
+# Registrera en påminnelse (ingen fil skrivs)
+Add-LedgerInvoiceReminder -InvoiceNumber 1 -Date '2024-05-01'
+
+# Skriv även ett påminnelsedokument med en påminnelseavgift (60 kr är vanligt)
+Add-LedgerInvoiceReminder -InvoiceNumber 1 -Date '2024-05-01' -Fee 60 `
+    -Path .\paminnelse-1.pdf -Format Pdf -Force
+```
+
+Dokumentet visar det förfallna beloppet, en eventuell `-Fee` (endast på
+dokumentet, inte bokförd) och fakturans **OCR-referens** som betalningsreferens.
+`-Format` stödjer `Pdf` (standard), `Word`, `Markdown` och `Text` precis som
+`Export-LedgerInvoice`. Antalet skickade påminnelser syns på fakturan:
+
+```powershell
+Get-LedgerInvoice | Format-Table InvoiceNumber, CustomerName, Status, ReminderCount, LastReminderDate
+```
+
+### 10. OCR-referens
+
+Varje faktura får en **OCR-referens** (`OcrReference`) uträknad ur fakturanumret
+enligt svensk standard: en kontrollsiffra enligt Luhn (mod-10) och en
+längdkontrollsiffra. Referensen är stabil för ett givet fakturanummer och kan
+skrivas ut på fakturan och på påminnelser så att inbetalningar kan matchas
+automatiskt.
+
+```powershell
+Get-LedgerInvoice | Format-Table InvoiceNumber, CustomerName, Total, OcrReference
+```
+
+OCR-referensen visas automatiskt i betalningsavsnittet på exporterade fakturor
+(`Export-LedgerInvoice`) och på påminnelsedokument.
+
 ## Avstämning mot huvudboken
 
 Eftersom både bokföring och betalning skapar verifikationer stämmer reskontran
@@ -238,3 +279,7 @@ $saldo1510 = (Get-LedgerBalance | Where-Object AccountNumber -eq '1510').Balance
 | `Get-LedgerAccountsReceivable` | Öppna fordringar med åldersanalys (`-Summary`) |
 | `Export-LedgerInvoice` | Exportera en faktura till PDF, Word, Markdown eller text |
 | `Add-LedgerCreditInvoice` | Kreditera (återför) en bokförd faktura |
+| `Add-LedgerInvoiceReminder` | Registrera en betalningspåminnelse (valfritt dokument med avgift och OCR) |
+
+Se även [Leverantörsreskontra](Leverantorsreskontra.md) för hantering av
+leverantörsfakturor och leverantörsbetalningar.

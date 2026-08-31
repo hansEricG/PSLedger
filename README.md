@@ -131,6 +131,15 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerAccountsReceivable` | Open receivables with aging buckets (`-Summary`) |
 | `Export-LedgerInvoice` | Export an invoice to PDF, Word, Markdown or text |
 | `Add-LedgerCreditInvoice` | Credit (reverse) a posted invoice |
+| `Add-LedgerInvoiceReminder` | Record a payment reminder (optional document with fee and OCR) |
+| `Add-LedgerSupplier` | Add a supplier to the supplier register |
+| `Get-LedgerSupplier` | List or look up suppliers |
+| `Set-LedgerSupplier` | Update supplier details |
+| `New-LedgerSupplierInvoice` | Register a supplier invoice (draft) |
+| `Get-LedgerSupplierInvoice` | List supplier invoices, `-Unpaid` for open payables |
+| `Invoke-LedgerSupplierInvoicePosting` | Post a supplier invoice to the ledger (verification) |
+| `Add-LedgerSupplierPayment` | Register a full or partial supplier payment |
+| `Get-LedgerAccountsPayable` | Open payables with aging buckets (`-Summary`) |
 
 ## Annual Report (Årsredovisning)
 
@@ -370,6 +379,10 @@ Export-LedgerInvoice -InvoiceNumber 1 -Path .\faktura-1.pdf
 # Credit (reverse) a posted, unpaid invoice — books the reversing verification and
 # marks both the original and the credit note 'Credited'
 Add-LedgerCreditInvoice -InvoiceNumber 1
+
+# Send a payment reminder for an overdue invoice — records the reminder (no ledger
+# posting) and optionally writes a document with a reminder fee and the OCR reference
+Add-LedgerInvoiceReminder -InvoiceNumber 1 -Date '2024-05-01' -Fee 60 -Path .\paminnelse-1.pdf
 ```
 
 A VAT-free row simply omits the VAT (`VatRate = 0` and no `VatAccount`). Override
@@ -380,8 +393,48 @@ the receivable account with `-ReceivableAccount` and the cash/bank account with
 `Export-LedgerInvoice` produces the PDF with a built-in, dependency-free writer.
 Add payment details (bankgiro, plusgiro, IBAN/BIC) to the document by storing them
 as journal metadata, e.g. `Set-LedgerJournal -Metadata @{ Bankgiro = '123-4567' }`.
+Every invoice also carries a Swedish **OCR reference** (`OcrReference`, a
+Luhn-checked number derived from the invoice number) that is printed on invoices
+and reminders for automatic payment matching.
 
 For a full walkthrough see [docs/Fakturahantering.md](docs/Fakturahantering.md).
+
+## Supplier Ledger (Leverantörsreskontra)
+
+Manage a supplier register and the full supplier-invoice lifecycle — register,
+post to the ledger and pay. Like the customer ledger, posting and paying both
+create ordinary verifications, so open payables always reconcile against account
+2440 Leverantörsskulder.
+
+```powershell
+Set-LedgerCurrentJournal -Path .\MinFirma.ledger
+
+# 1. Register a supplier (default payment terms 30 days)
+Add-LedgerSupplier -SupplierNumber '100' -Name 'Kontorsbolaget AB' `
+    -OrgNumber '556006-8420' -PaymentTermsDays 30
+
+# 2. Register a supplier invoice — one row per cost line (net amount + input VAT)
+$rows = @(
+    @{ Account = '5010'; Amount = 8000; VatRate = 0.25; VatAccount = '2640' }
+)
+New-LedgerSupplierInvoice -SupplierNumber '100' -Date '2024-03-10' `
+    -Description 'Lokalhyra mars' -SupplierInvoiceNo 'F-99123' -Rows $rows
+
+# 3. Post it to the ledger (creates the verification):
+#      5010 Lokalhyra           +8000
+#      2640 Ingående moms        +2000
+#      2440 Leverantörsskulder  -10000
+Invoke-LedgerSupplierInvoicePosting -InvoiceNumber 1
+
+# 4. Pay it (debit 2440, credit 1930). Full payment marks it Paid.
+Add-LedgerSupplierPayment -InvoiceNumber 1 -Date '2024-04-05'
+
+# Accounts payable with aging buckets (Current / 1-30 / 31-60 / 61-90 / 90+)
+Get-LedgerAccountsPayable
+Get-LedgerAccountsPayable -Summary       # one row per bucket with the total
+```
+
+For a full walkthrough see [docs/Leverantorsreskontra.md](docs/Leverantorsreskontra.md).
 
 ## Custom Extensions
 

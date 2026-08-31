@@ -22,6 +22,26 @@
   credits (reverses) a posted, unpaid invoice: it books the reversing verification and
   marks both the original and the new credit note `Credited` so the receivable nets to
   zero. See [docs/Fakturahantering.md](docs/Fakturahantering.md).
+- **Payment reminders and OCR references.** `Add-LedgerInvoiceReminder` records a
+  payment reminder on a posted, unpaid invoice (incrementing `ReminderCount` and
+  setting `LastReminderDate`) and can optionally write a reminder document — PDF,
+  Word, Markdown or plain text — showing the overdue amount, an optional reminder
+  fee (document-only, not booked) and the invoice OCR reference. Every invoice now
+  exposes an `OcrReference`: a Swedish OCR number derived from the invoice number
+  with a Luhn (mod-10) check digit and a length-control digit, printed on exported
+  invoices and reminders for automatic payment matching.
+- **Supplier ledger (leverantörsreskontra).** A supplier register plus a supplier
+  invoice workflow that mirrors the customer ledger. `Add-LedgerSupplier`,
+  `Get-LedgerSupplier` and `Set-LedgerSupplier` manage a `suppliers.txt` register.
+  `New-LedgerSupplierInvoice` registers a draft supplier invoice (stored under
+  `supplierinvoices/`, capturing the supplier's own invoice number and payment
+  reference), `Invoke-LedgerSupplierInvoicePosting` posts it (debit cost accounts
+  and input VAT 2640, credit 2440 Leverantörsskulder) and `Add-LedgerSupplierPayment`
+  registers full or partial payments (debit 2440, credit 1930). `Get-LedgerSupplierInvoice`
+  lists supplier invoices with an `-Unpaid` filter and `Get-LedgerAccountsPayable`
+  reports open payables with aging buckets (Current / 1-30 / 31-60 / 61-90 / 90+ days)
+  and a `-Summary` per-bucket total. See
+  [docs/Leverantorsreskontra.md](docs/Leverantorsreskontra.md).
 - **Full årsredovisning (annual report) support.** `Export-LedgerAnnualReport` now
   renders a complete K2 (BFNAR 2016:10) annual report for a small limited company —
   förvaltningsberättelse (verksamhet, väsentliga händelser, flerårsöversikt, förslag

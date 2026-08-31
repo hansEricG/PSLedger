@@ -1,46 +1,15 @@
-# Helpers for reading and writing invoice files under a journal's 'invoices/'
-# directory. An invoice is stored as a plain-text file (inv0001.txt) with tab-
-# separated "Key:\tValue" metadata lines, a 'Rows:' section (one revenue row per
-# line: Account, NetAmount, VatRate, VatAccount) and a 'Payments:' section (one
-# payment per line: Date, Amount, Verification, FiscalYear). Amounts are written
-# and read with the invariant culture so the tab-separated numeric columns round
-# -trip regardless of the machine's regional settings.
+# Helpers for reading and writing supplier invoice files under a journal's
+# 'supplierinvoices/' directory. A supplier invoice (leverantörsfaktura) is the
+# accounts-payable mirror of a customer invoice: cost accounts are debited (net)
+# together with input VAT, and the payable account (2440 Leverantörsskulder) is
+# credited with the gross total. Files are stored as sup0001.txt with the same
+# tab-separated layout as customer invoices (metadata + 'Rows:' + 'Payments:').
 
-$script:LedgerInvoiceStatuses = @('Draft', 'Booked', 'Partial', 'Paid', 'Credited')
-
-function Format-LedgerInvoiceAmount {
+function Get-LedgerSupplierInvoiceDirectory {
     <#
     .SYNOPSIS
-    Formats a decimal for storage using the invariant culture (dot decimal
-    separator) so tab-separated numeric columns are never split by a locale comma.
-    #>
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory)]
-        [decimal]$Value
-    )
-    return $Value.ToString([System.Globalization.CultureInfo]::InvariantCulture)
-}
-
-function ConvertFrom-LedgerInvoiceAmount {
-    <#
-    .SYNOPSIS
-    Parses a stored amount string back to a decimal using the invariant culture.
-    #>
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory)]
-        [AllowEmptyString()]
-        [string]$Text
-    )
-    if ([string]::IsNullOrWhiteSpace($Text)) { return [decimal]0 }
-    return [decimal]::Parse($Text, [System.Globalization.CultureInfo]::InvariantCulture)
-}
-
-function Get-LedgerInvoiceDirectory {
-    <#
-    .SYNOPSIS
-    Returns the path to a journal's invoices directory, optionally creating it.
+    Returns the path to a journal's supplier invoices directory, optionally
+    creating it.
     #>
     [CmdletBinding()]
     param (
@@ -49,30 +18,30 @@ function Get-LedgerInvoiceDirectory {
 
         [switch]$Create
     )
-    $dir = Join-Path $JournalPath 'invoices'
+    $dir = Join-Path $JournalPath 'supplierinvoices'
     if ($Create -and -not (Test-Path $dir)) {
         New-Item -Path $dir -ItemType Directory | Out-Null
     }
     return $dir
 }
 
-function Get-LedgerInvoiceFileName {
+function Get-LedgerSupplierInvoiceFileName {
     <#
     .SYNOPSIS
-    Returns the file name (inv0001.txt) for a given invoice number.
+    Returns the file name (sup0001.txt) for a given supplier invoice number.
     #>
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
         [int]$InvoiceNumber
     )
-    return 'inv' + $InvoiceNumber.ToString('0000') + '.txt'
+    return 'sup' + $InvoiceNumber.ToString('0000') + '.txt'
 }
 
-function ConvertTo-LedgerInvoiceObject {
+function ConvertTo-LedgerSupplierInvoiceObject {
     <#
     .SYNOPSIS
-    Parses the lines of an invoice file into a rich invoice object with computed
+    Parses the lines of a supplier invoice file into a rich object with computed
     NetTotal, VatTotal, Total, PaidAmount and RemainingAmount.
     #>
     [CmdletBinding()]
@@ -143,17 +112,16 @@ function ConvertTo-LedgerInvoiceObject {
 
     [PSCustomObject]@{
         InvoiceNumber      = [int]$meta['InvoiceNumber']
-        CustomerNumber     = $meta['CustomerNumber']
+        SupplierNumber     = $meta['SupplierNumber']
+        SupplierInvoiceNo  = $meta['SupplierInvoiceNo']
         InvoiceDate        = if ($meta['InvoiceDate']) { [datetime]::ParseExact($meta['InvoiceDate'], 'yyyy-MM-dd', $null) } else { $null }
         DueDate            = if ($meta['DueDate']) { [datetime]::ParseExact($meta['DueDate'], 'yyyy-MM-dd', $null) } else { $null }
         Description        = $meta['Description']
         Status             = $meta['Status']
-        ReceivableAccount  = $meta['ReceivableAccount']
+        PayableAccount     = $meta['PayableAccount']
+        Reference          = $meta['Reference']
         BookedVerification = if ($meta['BookedVerification']) { [int]$meta['BookedVerification'] } else { $null }
         BookedFiscalYear   = $meta['BookedFiscalYear']
-        OcrReference       = if ($meta['InvoiceNumber']) { Get-LedgerOcrReference -BaseNumber ([string]$meta['InvoiceNumber']) } else { '' }
-        ReminderCount      = if ($meta['ReminderCount']) { [int]$meta['ReminderCount'] } else { 0 }
-        LastReminderDate   = if ($meta['LastReminderDate']) { [datetime]::ParseExact($meta['LastReminderDate'], 'yyyy-MM-dd', $null) } else { $null }
         Rows               = $rows
         Payments           = $payments
         NetTotal           = [Math]::Round([decimal]$netTotal, 2)
@@ -165,10 +133,10 @@ function ConvertTo-LedgerInvoiceObject {
     }
 }
 
-function Read-LedgerInvoiceFile {
+function Read-LedgerSupplierInvoiceFile {
     <#
     .SYNOPSIS
-    Reads and parses a single invoice file, returning an invoice object.
+    Reads and parses a single supplier invoice file, returning an object.
     #>
     [CmdletBinding()]
     param (
@@ -176,21 +144,16 @@ function Read-LedgerInvoiceFile {
         [string]$Path
     )
     if (-not (Test-Path $Path -PathType Leaf)) {
-        throw "Invoice file not found: $Path"
+        throw "Supplier invoice file not found: $Path"
     }
     $content = @(Get-Content -Path $Path -Encoding UTF8)
-    return ConvertTo-LedgerInvoiceObject -Content $content -FilePath $Path
+    return ConvertTo-LedgerSupplierInvoiceObject -Content $content -FilePath $Path
 }
 
-function Save-LedgerInvoiceFile {
+function Save-LedgerSupplierInvoiceFile {
     <#
     .SYNOPSIS
-    Serialises an invoice object back to its file.
-
-    .DESCRIPTION
-    Writes the metadata, 'Rows:' and 'Payments:' sections. Accepts either an
-    object produced by ConvertTo-LedgerInvoiceObject or a PSCustomObject with the
-    same properties. The FilePath property determines the destination.
+    Serialises a supplier invoice object back to its file.
     #>
     [CmdletBinding()]
     param (
@@ -199,18 +162,18 @@ function Save-LedgerInvoiceFile {
     )
 
     $lines = @(
-        '; PSLedger Invoice'
+        '; PSLedger Supplier Invoice'
         "InvoiceNumber:`t$($Invoice.InvoiceNumber)"
-        "CustomerNumber:`t$($Invoice.CustomerNumber)"
+        "SupplierNumber:`t$($Invoice.SupplierNumber)"
+        "SupplierInvoiceNo:`t$($Invoice.SupplierInvoiceNo)"
         "InvoiceDate:`t$($Invoice.InvoiceDate.ToString('yyyy-MM-dd'))"
         "DueDate:`t$($Invoice.DueDate.ToString('yyyy-MM-dd'))"
         "Description:`t$($Invoice.Description)"
         "Status:`t$($Invoice.Status)"
-        "ReceivableAccount:`t$($Invoice.ReceivableAccount)"
+        "PayableAccount:`t$($Invoice.PayableAccount)"
+        "Reference:`t$($Invoice.Reference)"
         "BookedVerification:`t$(if ($null -ne $Invoice.BookedVerification) { $Invoice.BookedVerification } else { '' })"
         "BookedFiscalYear:`t$($Invoice.BookedFiscalYear)"
-        "ReminderCount:`t$(if ($Invoice.PSObject.Properties['ReminderCount'] -and $Invoice.ReminderCount) { $Invoice.ReminderCount } else { 0 })"
-        "LastReminderDate:`t$(if ($Invoice.PSObject.Properties['LastReminderDate'] -and $Invoice.LastReminderDate) { $Invoice.LastReminderDate.ToString('yyyy-MM-dd') } else { '' })"
         'Rows:'
     )
 
@@ -226,4 +189,3 @@ function Save-LedgerInvoiceFile {
 
     $lines | Set-Content -Path $Invoice.FilePath -Encoding UTF8
 }
-

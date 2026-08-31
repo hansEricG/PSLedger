@@ -16,6 +16,8 @@
 . $PSScriptRoot\Private\AnnualReportRender.ps1
 . $PSScriptRoot\Private\AnnualReportModel.ps1
 . $PSScriptRoot\Private\InvoiceStore.ps1
+. $PSScriptRoot\Private\SupplierInvoiceStore.ps1
+. $PSScriptRoot\Private\OcrReference.ps1
 . $PSScriptRoot\Private\PdfWriter.ps1
 . $PSScriptRoot\Private\Migrations.ps1
 
@@ -101,6 +103,15 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Export-LedgerInvoice.ps1
 . $PSScriptRoot\Public\Get-LedgerAccountsReceivable.ps1
 . $PSScriptRoot\Public\Add-LedgerCreditInvoice.ps1
+. $PSScriptRoot\Public\Add-LedgerInvoiceReminder.ps1
+. $PSScriptRoot\Public\Add-LedgerSupplier.ps1
+. $PSScriptRoot\Public\Get-LedgerSupplier.ps1
+. $PSScriptRoot\Public\Set-LedgerSupplier.ps1
+. $PSScriptRoot\Public\New-LedgerSupplierInvoice.ps1
+. $PSScriptRoot\Public\Get-LedgerSupplierInvoice.ps1
+. $PSScriptRoot\Public\Invoke-LedgerSupplierInvoicePosting.ps1
+. $PSScriptRoot\Public\Add-LedgerSupplierPayment.ps1
+. $PSScriptRoot\Public\Get-LedgerAccountsPayable.ps1
 
 # Export built-in public functions
 $script:BuiltInFunctions = @(
@@ -136,7 +147,12 @@ $script:BuiltInFunctions = @(
     'Add-LedgerCustomer', 'Get-LedgerCustomer', 'Set-LedgerCustomer',
     'New-LedgerInvoice', 'Get-LedgerInvoice', 'Invoke-LedgerInvoicePosting',
     'Add-LedgerInvoicePayment', 'Export-LedgerInvoice',
-    'Get-LedgerAccountsReceivable', 'Add-LedgerCreditInvoice'
+    'Get-LedgerAccountsReceivable', 'Add-LedgerCreditInvoice',
+    'Add-LedgerInvoiceReminder',
+    'Add-LedgerSupplier', 'Get-LedgerSupplier', 'Set-LedgerSupplier',
+    'New-LedgerSupplierInvoice', 'Get-LedgerSupplierInvoice',
+    'Invoke-LedgerSupplierInvoicePosting', 'Add-LedgerSupplierPayment',
+    'Get-LedgerAccountsPayable'
 )
 
 # Load extensions at module scope (env variable — semicolon-separated paths)
