@@ -55,6 +55,11 @@ Describe 'Add-LedgerEntry' {
             $Param.Attributes.Mandatory | Should -Contain $true
         }
 
+        It 'Should accept Rows from the pipeline' {
+            $Param = $Command.Parameters['Rows']
+            $Param.Attributes.ValueFromPipeline | Should -Contain $true
+        }
+
         It 'Should have an optional Attachment parameter that accepts multiple files' {
             $Param = $Command.Parameters['Attachment']
             $Param | Should -Not -BeNullOrEmpty
@@ -214,6 +219,53 @@ Describe 'Add-LedgerEntry' {
 
             $VerFile = Join-Path $JournalPath $FiscalYear 'ver0001.txt'
             Test-Path $VerFile | Should -BeFalse
+        }
+
+        It 'Should collect rows piped in as a single verification' {
+            $piped = @(
+                @{ Account = '1910'; Amount = 1000 }
+                @{ Account = '3010'; Amount = -1000 }
+            )
+            $piped | Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date '2024-01-15' -Description 'Via pipeline'
+
+            $VerFile = Join-Path $JournalPath $FiscalYear 'ver0001.txt'
+            Test-Path $VerFile | Should -BeTrue
+            $Content = Get-Content $VerFile -Raw
+            $Content | Should -Match '1910'
+            $Content | Should -Match '3010'
+            # A single verification means ver0002.txt must not exist
+            Test-Path (Join-Path $JournalPath $FiscalYear 'ver0002.txt') | Should -BeFalse
+        }
+
+        It 'Should accept rows built with New-LedgerEntryRow via the pipeline' {
+            # A single debit row cannot balance, so it must throw and write nothing
+            {
+                New-LedgerEntryRow -Debit '1910' 2500 |
+                    Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                        -Date '2024-01-15' -Description 'Obalanserad pipeline'
+            } | Should -Throw '*does not balance*'
+            Test-Path (Join-Path $JournalPath $FiscalYear 'ver0001.txt') | Should -BeFalse
+
+            $rows = @(
+                New-LedgerEntryRow -Debit '1910' 2500
+                New-LedgerEntryRow -Credit '3010' 2500
+            )
+            $rows | Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date '2024-01-15' -Description 'Balanserad pipeline'
+
+            $Content = Get-Content (Join-Path $JournalPath $FiscalYear 'ver0001.txt') -Raw
+            $Content | Should -Match '1910'
+            $Content | Should -Match '2500'
+            $Content | Should -Match '-2500'
+        }
+
+        It 'Should still bind FiscalYear from the pipeline by property name' {
+            $fyObject = [PSCustomObject]@{ Name = $FiscalYear }
+            $fyObject | Add-LedgerEntry -JournalPath $JournalPath `
+                -Date '2024-01-15' -Description 'Fiscal year via pipeline' -Rows $Rows
+
+            Test-Path (Join-Path $JournalPath $FiscalYear 'ver0001.txt') | Should -BeTrue
         }
     }
 }

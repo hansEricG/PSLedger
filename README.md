@@ -40,10 +40,18 @@ Import-LedgerChart -Template 'BAS-Smaforetag'
 # 4. Create a fiscal year
 New-LedgerFiscalYear -StartDate '2024-01-01' -EndDate '2024-12-31'
 
-# 5. Add entries
+# 5. Add entries — either as hashtables...
 $rows = @(
     @{ Account = '1910'; Amount = 50000 }
     @{ Account = '3040'; Amount = -50000 }
+)
+Add-LedgerEntry -FiscalYear '2024-01_2024-12' `
+    -Date '2024-03-15' -Description 'Konsultarvode faktura #101' -Rows $rows
+
+# ...or with New-LedgerEntryRow so you never juggle the debit/credit sign
+$rows = @(
+    New-LedgerEntryRow -Debit  '1910' 50000
+    New-LedgerEntryRow -Credit '3040' 50000
 )
 Add-LedgerEntry -FiscalYear '2024-01_2024-12' `
     -Date '2024-03-15' -Description 'Konsultarvode faktura #101' -Rows $rows
@@ -72,6 +80,7 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerFiscalYear` | List fiscal years |
 | `Close-LedgerFiscalYear` | Lock a fiscal year (no more entries) |
 | `Add-LedgerEntry` | Create a verification (journal entry) |
+| `New-LedgerEntryRow` | Build a verification row using -Debit/-Credit (no sign juggling) |
 | `Get-LedgerEntry` | Query entries with optional filters |
 | `Add-LedgerReversal` | Correct an entry via reversal |
 | `Get-LedgerBalance` | Trial balance (saldobalans) |

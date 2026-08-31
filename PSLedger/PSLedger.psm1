@@ -34,6 +34,7 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Get-LedgerAccount.ps1
 . $PSScriptRoot\Public\New-LedgerFiscalYear.ps1
 . $PSScriptRoot\Public\Add-LedgerEntry.ps1
+. $PSScriptRoot\Public\New-LedgerEntryRow.ps1
 . $PSScriptRoot\Public\Get-LedgerEntry.ps1
 . $PSScriptRoot\Public\Get-LedgerBalance.ps1
 . $PSScriptRoot\Public\Get-LedgerFiscalYear.ps1
@@ -119,7 +120,7 @@ $script:CurrentFiscalYear = $null
 # Export built-in public functions
 $script:BuiltInFunctions = @(
     'New-LedgerJournal', 'Get-LedgerJournal', 'Set-LedgerJournal', 'Add-LedgerAccount', 'Get-LedgerAccount',
-    'New-LedgerFiscalYear', 'Add-LedgerEntry', 'Get-LedgerEntry', 'Get-LedgerBalance',
+    'New-LedgerFiscalYear', 'Add-LedgerEntry', 'New-LedgerEntryRow', 'Get-LedgerEntry', 'Get-LedgerBalance',
     'Get-LedgerFiscalYear', 'Close-LedgerFiscalYear', 'Test-LedgerFiscalYear', 'Import-LedgerChart',
     'Get-LedgerIncomeStatement', 'Get-LedgerBalanceSheet', 'Copy-LedgerOpeningBalance',
     'Update-LedgerJournal',
