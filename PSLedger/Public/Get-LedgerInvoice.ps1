@@ -51,7 +51,7 @@ function Get-LedgerInvoice {
         [int]$InvoiceNumber,
 
         [Parameter()]
-        [ValidateSet('Draft', 'Booked', 'Partial', 'Paid')]
+        [ValidateSet('Draft', 'Booked', 'Partial', 'Paid', 'Credited')]
         [string]$Status,
 
         [Parameter()]

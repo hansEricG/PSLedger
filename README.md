@@ -128,6 +128,9 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerInvoice` | List invoices, `-Unpaid` for open receivables |
 | `Invoke-LedgerInvoicePosting` | Post an invoice to the ledger (verification) |
 | `Add-LedgerInvoicePayment` | Register a full or partial invoice payment |
+| `Get-LedgerAccountsReceivable` | Open receivables with aging buckets (`-Summary`) |
+| `Export-LedgerInvoice` | Export an invoice to PDF, Word, Markdown or text |
+| `Add-LedgerCreditInvoice` | Credit (reverse) a posted invoice |
 
 ## Annual Report (Årsredovisning)
 
@@ -356,12 +359,27 @@ Add-LedgerInvoicePayment -InvoiceNumber 2 -Amount 5000 -Date '2024-04-10'
 # List open receivables (posted but not fully paid)
 Get-LedgerInvoice -Unpaid |
     Format-Table InvoiceNumber, CustomerName, DueDate, Total, RemainingAmount, Status
+
+# Accounts receivable with aging buckets (Current / 1-30 / 31-60 / 61-90 / 90+)
+Get-LedgerAccountsReceivable
+Get-LedgerAccountsReceivable -Summary       # one row per bucket with the total
+
+# Export an invoice to a printable document (PDF by default; also Word/Markdown/Text)
+Export-LedgerInvoice -InvoiceNumber 1 -Path .\faktura-1.pdf
+
+# Credit (reverse) a posted, unpaid invoice — books the reversing verification and
+# marks both the original and the credit note 'Credited'
+Add-LedgerCreditInvoice -InvoiceNumber 1
 ```
 
 A VAT-free row simply omits the VAT (`VatRate = 0` and no `VatAccount`). Override
 the receivable account with `-ReceivableAccount` and the cash/bank account with
 `-Account` on the payment. Each invoice records the verifications it created
 (`BookedVerification`, and one per payment) so it can be traced back to the ledger.
+
+`Export-LedgerInvoice` produces the PDF with a built-in, dependency-free writer.
+Add payment details (bankgiro, plusgiro, IBAN/BIC) to the document by storing them
+as journal metadata, e.g. `Set-LedgerJournal -Metadata @{ Bankgiro = '123-4567' }`.
 
 For a full walkthrough see [docs/Fakturahantering.md](docs/Fakturahantering.md).
 

@@ -13,8 +13,15 @@
   credit 1510). Each invoice tracks its status (Draft → Booked → Partial → Paid) and
   the verifications it created, so open receivables always reconcile against the
   general ledger. `Get-LedgerInvoice` lists invoices with computed totals and an
-  `-Unpaid` filter for open receivables. See
-  [docs/Fakturahantering.md](docs/Fakturahantering.md).
+  `-Unpaid` filter for open receivables. `Get-LedgerAccountsReceivable` reports
+  open receivables with aging buckets (Current / 1-30 / 31-60 / 61-90 / 90+ days)
+  and a `-Summary` per-bucket total. `Export-LedgerInvoice` exports a single invoice
+  as a printable document — PDF (via a built-in dependency-free PDF writer), Word,
+  Markdown or plain text — including seller, customer, rows, VAT, totals and payment
+  details from journal metadata (bankgiro/plusgiro/IBAN/BIC). `Add-LedgerCreditInvoice`
+  credits (reverses) a posted, unpaid invoice: it books the reversing verification and
+  marks both the original and the new credit note `Credited` so the receivable nets to
+  zero. See [docs/Fakturahantering.md](docs/Fakturahantering.md).
 - **Full årsredovisning (annual report) support.** `Export-LedgerAnnualReport` now
   renders a complete K2 (BFNAR 2016:10) annual report for a small limited company —
   förvaltningsberättelse (verksamhet, väsentliga händelser, flerårsöversikt, förslag

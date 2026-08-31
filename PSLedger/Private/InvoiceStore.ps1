@@ -6,7 +6,7 @@
 # and read with the invariant culture so the tab-separated numeric columns round
 # -trip regardless of the machine's regional settings.
 
-$script:LedgerInvoiceStatuses = @('Draft', 'Booked', 'Partial', 'Paid')
+$script:LedgerInvoiceStatuses = @('Draft', 'Booked', 'Partial', 'Paid', 'Credited')
 
 function Format-LedgerInvoiceAmount {
     <#
