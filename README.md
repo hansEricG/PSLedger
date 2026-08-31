@@ -244,6 +244,32 @@ Add-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' `
     -Date '2024-03-01' -Description 'Hyra Stockholm' -Rows $rows
 ```
 
+## Row comments
+
+Each row can carry its own free-text comment, useful for clarifying what an
+amount refers to. Comments round-trip through `Get-LedgerEntry` as the row's
+`Comment` property.
+
+```powershell
+# Via New-LedgerEntryRow
+$rows = @(
+    New-LedgerEntryRow -Debit  '5010' 8000 -Comment 'Hyra mars, Sveavägen'
+    New-LedgerEntryRow -Credit '1910' 8000
+)
+Add-LedgerEntry -FiscalYear '2024-01_2024-12' -Date '2024-03-01' `
+    -Description 'Hyra' -Rows $rows
+
+# ...or as a Comment key on a row hashtable
+$rows = @(
+    @{ Account = '5010'; Amount = 8000; Comment = 'Hyra mars' }
+    @{ Account = '1910'; Amount = -8000 }
+)
+
+# Read the comment back
+$entry = Get-LedgerEntry -FiscalYear '2024-01_2024-12' -VerificationNumber 1
+$entry.Rows | Format-Table Account, Amount, Comment
+```
+
 ## Accruals & Recurring Entries
 
 ```powershell

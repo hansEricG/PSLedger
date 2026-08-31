@@ -23,7 +23,8 @@ A description of the transaction.
 .PARAMETER Rows
 An array of hashtables, each with 'Account' (account number) and 'Amount'
 (positive for debit, negative for credit). The sum of all amounts must be zero.
-Rows can be supplied as an array or piped in (for example from
+Each row may optionally include a 'Comment' key with free-text describing that
+specific row. Rows can be supplied as an array or piped in (for example from
 New-LedgerEntryRow); piped rows are collected into a single verification.
 
 .PARAMETER Attachment
@@ -203,6 +204,13 @@ function Add-LedgerEntry {
                         }
                     }
                     $line += "`t$(Format-ObjectTag -Objects $Row.Objects)"
+                }
+                if ($Row.ContainsKey('Comment') -and $null -ne $Row.Comment) {
+                    $commentText = ([string]$Row.Comment) -replace "[`t`r`n]+", ' '
+                    $commentText = $commentText.Trim()
+                    if ($commentText) {
+                        $line += "`t$commentText"
+                    }
                 }
                 $Lines += $line
             }

@@ -31,10 +31,20 @@ Optional hashtable of dimension-to-object references for this row
 (e.g. @{ 1 = 'sthlm'; 2 = 'proj-a' }), matching the Objects key used by
 Add-LedgerEntry.
 
+.PARAMETER Comment
+Optional free-text comment describing this specific row (e.g. a note about what
+the amount refers to). Stored alongside the row and returned as the row's
+Comment property by Get-LedgerEntry.
+
 .EXAMPLE
 New-LedgerEntryRow -Debit '1910' 5000
 
 Builds a row that debits account 1910 (Kassa) with 5000.
+
+.EXAMPLE
+New-LedgerEntryRow -Debit '5010' 8000 -Comment 'Hyra mars, lokal Sveavägen'
+
+Builds a debit row with a per-row comment describing what the amount refers to.
 
 .EXAMPLE
 $rows = @(
@@ -68,7 +78,10 @@ function New-LedgerEntryRow {
         [decimal]$Amount,
 
         [Parameter()]
-        [hashtable]$Objects
+        [hashtable]$Objects,
+
+        [Parameter()]
+        [string]$Comment
     )
 
     if ($Amount -le 0) {
@@ -91,6 +104,10 @@ function New-LedgerEntryRow {
 
     if ($Objects -and $Objects.Count -gt 0) {
         $Row.Objects = $Objects
+    }
+
+    if ($PSBoundParameters.ContainsKey('Comment')) {
+        $Row.Comment = $Comment
     }
 
     $Row

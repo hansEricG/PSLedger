@@ -5,8 +5,8 @@ Retrieves verifications (journal entries) from a fiscal year.
 .DESCRIPTION
 Reads verification files from the specified fiscal year and returns
 PSCustomObjects with VerificationNumber, Date, Description, and Rows
-(each row having Account and Amount properties). Supports filtering by
-verification number, account, and date range.
+(each row having Account, Amount, Objects and Comment properties). Supports
+filtering by verification number, account, and date range.
 
 .PARAMETER JournalPath
 The path to an existing journal directory.
@@ -96,14 +96,29 @@ function Get-LedgerEntry {
                 elseif ($Line -match '^Description:\s*(.+)$') {
                     $EntryDesc = $Matches[1]
                 }
-                elseif ($Line -match '^(\d+)\t([^\t]+)(?:\t(.+))?$') {
+                elseif ($Line -match '^\d+\t') {
+                    $Parts = $Line -split "`t"
                     $rowObj = [PSCustomObject]@{
-                        Account = $Matches[1]
-                        Amount  = [decimal]$Matches[2]
+                        Account = $Parts[0]
+                        Amount  = [decimal]$Parts[1]
                         Objects = $null
+                        Comment = $null
                     }
-                    if ($Matches[3]) {
-                        $rowObj.Objects = ConvertFrom-ObjectTag -Tag $Matches[3]
+                    for ($i = 2; $i -lt $Parts.Count; $i++) {
+                        $Field = $Parts[$i]
+                        if ($null -eq $rowObj.Objects -and $Field -match '^\{.*\}$') {
+                            $ParsedTag = ConvertFrom-ObjectTag -Tag $Field
+                            if ($ParsedTag) {
+                                $rowObj.Objects = $ParsedTag
+                                continue
+                            }
+                        }
+                        if ($null -eq $rowObj.Comment) {
+                            $rowObj.Comment = $Field
+                        }
+                        else {
+                            $rowObj.Comment += " $Field"
+                        }
                     }
                     $EntryRows += $rowObj
                 }

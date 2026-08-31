@@ -81,6 +81,16 @@ Describe 'New-LedgerEntryRow' {
             $row.ContainsKey('Objects') | Should -BeFalse
         }
 
+        It 'Should include a Comment when supplied' {
+            $row = New-LedgerEntryRow -Debit '5010' 8000 -Comment 'Hyra mars'
+            $row.Comment | Should -Be 'Hyra mars'
+        }
+
+        It 'Should not include a Comment key when not supplied' {
+            $row = New-LedgerEntryRow -Debit '5010' 8000
+            $row.ContainsKey('Comment') | Should -BeFalse
+        }
+
         It 'Should throw when amount is zero' {
             { New-LedgerEntryRow -Debit '1910' 0 } | Should -Throw '*positive*'
         }
