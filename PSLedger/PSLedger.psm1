@@ -51,6 +51,7 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Import-LedgerSie.ps1
 . $PSScriptRoot\Public\Get-LedgerLedger.ps1
 . $PSScriptRoot\Public\Get-LedgerVatReport.ps1
+. $PSScriptRoot\Public\Export-LedgerVatDeclaration.ps1
 . $PSScriptRoot\Public\Add-LedgerDimension.ps1
 . $PSScriptRoot\Public\Get-LedgerDimension.ps1
 . $PSScriptRoot\Public\Add-LedgerObject.ps1
@@ -125,7 +126,8 @@ $script:BuiltInFunctions = @(
     'Get-LedgerIncomeStatement', 'Get-LedgerBalanceSheet', 'Copy-LedgerOpeningBalance',
     'Update-LedgerJournal',
     'Add-LedgerReversal', 'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie',
-    'Get-LedgerLedger', 'Get-LedgerVatReport', 'Add-LedgerDimension', 'Get-LedgerDimension',
+    'Get-LedgerLedger', 'Get-LedgerVatReport', 'Export-LedgerVatDeclaration',
+    'Add-LedgerDimension', 'Get-LedgerDimension',
     'Add-LedgerObject', 'Get-LedgerObject', 'Add-LedgerAccrual', 'Add-LedgerDepreciation',
     'Get-LedgerTaxEstimate', 'Add-LedgerTaxEntry', 'Add-LedgerAppropriation',
     'Get-LedgerAnnualReport', 'Export-LedgerAnnualReport',

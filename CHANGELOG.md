@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+- **VAT declaration export (momsdeklaration).** `Export-LedgerVatDeclaration`
+  writes a period's VAT report as a Skatteverket eSKD file
+  (`<eSKDUpload Version="6.0">`) that can be uploaded in the e-service *Lämna
+  momsdeklaration via fil*. It reuses `Get-LedgerVatReport`, reads the company
+  organisation number from the journal metadata and emits one XML element per
+  declaration box — ruta 05 (`ForsMomsEjAnnan`), 10 (`MomsUtgHog`), 11
+  (`MomsUtgMedel`), 12 (`MomsUtgLag`), 48 (`MomsIngaende`) and the derived 49
+  (`MomsBetala`, output − input VAT). Amounts are reported in whole kronor and the
+  file is written with ISO-8859-1 encoding as the format requires. The reporting
+  period defaults to the month of `-ToDate` and can be overridden with `-Period`
+  (YYYYMM); `-Force` overwrites an existing file.
+
 ## [0.9.0] - 2026-08-31
 
 ### Added

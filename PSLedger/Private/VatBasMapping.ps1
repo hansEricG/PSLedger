@@ -38,3 +38,21 @@ function Get-VatBoxMapping {
         [PSCustomObject]@{ Box = 48; Name = 'Ingående moms';                 AccountPattern = '^2649$' }
     )
 }
+
+# VAT declaration box number to Skatteverket eSKD XML element name.
+# Used when exporting a momsdeklaration as an eSKD upload file
+# (<eSKDUpload Version="6.0">). Each declaration box (ruta) maps to a specific
+# XML tag inside the <Moms> element.
+function Get-VatEskdTagMap {
+    [CmdletBinding()]
+    param()
+
+    @(
+        [PSCustomObject]@{ Box = 5;  Tag = 'ForsMomsEjAnnan' }  # Ruta 05 — Momspliktig försäljning som inte ingår i ruta 06, 07 eller 08
+        [PSCustomObject]@{ Box = 10; Tag = 'MomsUtgHog' }       # Ruta 10 — Utgående moms 25 %
+        [PSCustomObject]@{ Box = 11; Tag = 'MomsUtgMedel' }     # Ruta 11 — Utgående moms 12 %
+        [PSCustomObject]@{ Box = 12; Tag = 'MomsUtgLag' }       # Ruta 12 — Utgående moms 6 %
+        [PSCustomObject]@{ Box = 48; Tag = 'MomsIngaende' }     # Ruta 48 — Ingående moms att dra av
+        [PSCustomObject]@{ Box = 49; Tag = 'MomsBetala' }       # Ruta 49 — Moms att betala eller få tillbaka
+    )
+}
