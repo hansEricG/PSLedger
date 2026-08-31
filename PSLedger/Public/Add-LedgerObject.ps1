@@ -30,7 +30,7 @@ Add-LedgerObject -JournalPath .\MinFirma.ledger -DimensionNumber 2 -ObjectNumber
 Adds project 'proj-a' to dimension 2 (Projekt).
 #>
 function Add-LedgerObject {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -66,5 +66,7 @@ function Add-LedgerObject {
         }
     }
 
-    "$DimensionNumber`t$ObjectNumber`t$Name" | Add-Content -Path $ObjFile -Encoding UTF8
+    if ($PSCmdlet.ShouldProcess($ObjectNumber, 'Add object')) {
+        "$DimensionNumber`t$ObjectNumber`t$Name" | Add-Content -Path $ObjFile -Encoding UTF8
+    }
 }

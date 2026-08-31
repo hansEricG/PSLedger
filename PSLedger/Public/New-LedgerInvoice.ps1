@@ -70,7 +70,7 @@ Creates an invoice with a VAT-liable service row and a VAT-free expense row, an
 explicit due date, and returns the created invoice object.
 #>
 function New-LedgerInvoice {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -175,9 +175,11 @@ function New-LedgerInvoice {
         FilePath           = $filePath
     }
 
-    Save-LedgerInvoiceFile -Invoice $invoice
+    if ($PSCmdlet.ShouldProcess("Customer $CustomerNumber", "Create invoice $nextNum")) {
+        Save-LedgerInvoiceFile -Invoice $invoice
 
-    if ($PassThru) {
-        Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $nextNum
+        if ($PassThru) {
+            Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $nextNum
+        }
     }
 }

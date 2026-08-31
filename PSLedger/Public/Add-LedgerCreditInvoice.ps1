@@ -46,7 +46,7 @@ Add-LedgerCreditInvoice -InvoiceNumber 5 -Date '2024-04-30' -PassThru
 Credits invoice 5 as of 30 April 2024 and returns the created credit note.
 #>
 function Add-LedgerCreditInvoice {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -122,6 +122,10 @@ function Add-LedgerCreditInvoice {
     }
 
     $description = "Kreditfaktura $creditNumber - kreditering av faktura $InvoiceNumber"
+
+    if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", "Create credit invoice $creditNumber")) {
+        return
+    }
 
     $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
         -Date $Date -Description $description -Rows @($entryRows) -PassThru

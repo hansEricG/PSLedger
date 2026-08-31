@@ -51,7 +51,7 @@ Registers a partial cash payment of 5 000 kr into account 1910 (Kassa), leaving
 the invoice in 'Partial' status.
 #>
 function Add-LedgerInvoicePayment {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -114,6 +114,10 @@ function Add-LedgerInvoicePayment {
         @{ Account = $invoice.ReceivableAccount; Amount = -$Amount }
     )
     $description = "Betalning kundfaktura $InvoiceNumber"
+
+    if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", "Register payment of $Amount")) {
+        return
+    }
 
     $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
         -Date $Date -Description $description -Rows $rows -PassThru

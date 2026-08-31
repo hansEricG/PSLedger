@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Added
+- **`-WhatIf` / `-Confirm` support for all write commands.** Every command that
+  writes persistent journal data now declares `SupportsShouldProcess`, so changes
+  can be previewed with `-WhatIf` or gated with `-Confirm` without touching disk.
+  This covers the register writers (`Add-LedgerAccount`, `Add-LedgerCustomer`,
+  `Add-LedgerSupplier`, `Add-LedgerEmployee`, `Add-LedgerDimension`,
+  `Add-LedgerObject`, `New-LedgerRecurringEntry`, `Import-LedgerChart`), the
+  verification writers (`Add-LedgerEntry`, `Add-LedgerReversal`,
+  `Copy-LedgerOpeningBalance`, `Add-LedgerAccrual`, `Add-LedgerInvoicePayment`,
+  `Add-LedgerSupplierPayment`, `Add-LedgerInvoiceFee`, `Add-LedgerInvoiceInterest`,
+  `Add-LedgerCreditInvoice`, `Add-LedgerInvoiceReminder`), the record creators
+  (`New-LedgerJournal`, `New-LedgerFiscalYear`, `New-LedgerInvoice`,
+  `New-LedgerSupplierInvoice`, `New-LedgerPayslip`, `Add-LedgerAttachment`,
+  `Add-LedgerDocument`) and the orchestrators (`Invoke-LedgerInvoicePosting`,
+  `Invoke-LedgerPayrollPosting`, `Invoke-LedgerSupplierInvoicePosting`,
+  `Invoke-LedgerRecurringEntry`, `Import-LedgerSie`, `Remove-LedgerRecurringEntry`).
+
 ### Fixed
 - **Hardening / stabilization.** `Remove-LedgerAttachment`, `Remove-LedgerDocument`
   and `Remove-LedgerRecurringEntry` now reject file/template names containing path

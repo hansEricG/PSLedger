@@ -42,7 +42,7 @@ Add-LedgerCustomer -JournalPath .\MinFirma.ledger -CustomerNumber 'K012' -Name '
 Adds a customer with full contact details and 20-day payment terms.
 #>
 function Add-LedgerCustomer {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -83,6 +83,8 @@ function Add-LedgerCustomer {
         }
     }
 
-    "$CustomerNumber`t$Name`t$OrgNumber`t$Email`t$PaymentTermsDays" |
-        Add-Content -Path $CustomerFile -Encoding UTF8
+    if ($PSCmdlet.ShouldProcess($CustomerNumber, 'Add customer')) {
+        "$CustomerNumber`t$Name`t$OrgNumber`t$Email`t$PaymentTermsDays" |
+            Add-Content -Path $CustomerFile -Encoding UTF8
+    }
 }

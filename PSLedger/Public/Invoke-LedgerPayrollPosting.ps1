@@ -48,7 +48,7 @@ Get-LedgerPayslip -Status Draft | ForEach-Object { Invoke-LedgerPayrollPosting -
 Posts every draft payslip in the current journal.
 #>
 function Invoke-LedgerPayrollPosting {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -114,6 +114,10 @@ function Invoke-LedgerPayrollPosting {
     }
 
     $description = "Lön $PayslipNumber - $($payslip.Description)"
+
+    if (-not $PSCmdlet.ShouldProcess("Payslip $PayslipNumber", "Post to fiscal year $FiscalYear")) {
+        return
+    }
 
     $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
         -Date $payslip.PayDate -Description $description -Rows @($entryRows) -PassThru

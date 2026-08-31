@@ -66,7 +66,7 @@ Builds rows with New-LedgerEntryRow and pipes them straight into Add-LedgerEntry
 avoiding the signed-amount hashtable syntax.
 #>
 function Add-LedgerEntry {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -224,6 +224,10 @@ function Add-LedgerEntry {
                     }
                 }
                 $Lines += $line
+            }
+
+            if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Add verification $FileName")) {
+                return
             }
 
             $Lines | Set-Content -Path $FilePath -Encoding UTF8

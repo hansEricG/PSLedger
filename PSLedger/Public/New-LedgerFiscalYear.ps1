@@ -27,7 +27,7 @@ New-LedgerFiscalYear -JournalPath .\MinFirma.ledger -StartDate '2024-07-01' -End
 Creates a broken fiscal year (directory: 2024-07_2025-06).
 #>
 function New-LedgerFiscalYear {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -53,6 +53,10 @@ function New-LedgerFiscalYear {
 
     if (Test-Path $YearDir) {
         throw "Fiscal year already exists: $DirName"
+    }
+
+    if (-not $PSCmdlet.ShouldProcess($DirName, 'Create fiscal year')) {
+        return
     }
 
     New-Item -ItemType Directory -Path $YearDir -Force | Out-Null

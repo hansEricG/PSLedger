@@ -86,7 +86,7 @@ New-LedgerPayslip -EmployeeNumber '2' -GrossSalary 42000 -TaxAmount 12600 -Perio
 Creates a payslip with an explicit tax amount and pay period, and returns it.
 #>
 function New-LedgerPayslip {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -218,9 +218,11 @@ function New-LedgerPayslip {
         FilePath                             = $filePath
     }
 
-    Save-LedgerPayslipFile -Payslip $payslip
+    if ($PSCmdlet.ShouldProcess("Employee $EmployeeNumber", "Create payslip $nextNum")) {
+        Save-LedgerPayslipFile -Payslip $payslip
 
-    if ($PassThru) {
-        Get-LedgerPayslip -JournalPath $JournalPath -PayslipNumber $nextNum
+        if ($PassThru) {
+            Get-LedgerPayslip -JournalPath $JournalPath -PayslipNumber $nextNum
+        }
     }
 }

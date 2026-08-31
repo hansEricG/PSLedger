@@ -24,7 +24,7 @@ Get-LedgerRecurringEntry -JournalPath .\ab.ledger | Where-Object { $_.EndDate -l
 Removes all expired recurring entry templates.
 #>
 function Remove-LedgerRecurringEntry {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -43,5 +43,7 @@ function Remove-LedgerRecurringEntry {
         throw "Recurring entry '$Name' not found."
     }
 
-    Remove-Item -Path $filePath -Force
+    if ($PSCmdlet.ShouldProcess($Name, 'Remove recurring entry')) {
+        Remove-Item -Path $filePath -Force
+    }
 }

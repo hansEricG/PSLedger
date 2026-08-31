@@ -44,7 +44,7 @@ Get-LedgerSupplierInvoice -Status Draft | ForEach-Object { Invoke-LedgerSupplier
 Posts every draft supplier invoice in the current journal.
 #>
 function Invoke-LedgerSupplierInvoicePosting {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -108,6 +108,10 @@ function Invoke-LedgerSupplierInvoicePosting {
     }
 
     $description = "Leverantörsfaktura $InvoiceNumber - $($invoice.Description)"
+
+    if (-not $PSCmdlet.ShouldProcess("Supplier invoice $InvoiceNumber", "Post to fiscal year $FiscalYear")) {
+        return
+    }
 
     $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
         -Date $invoice.InvoiceDate -Description $description -Rows @($entryRows) -PassThru

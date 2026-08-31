@@ -61,7 +61,7 @@ any existing document with the same name. Without -Force, files whose name
 collides with an existing document are skipped with a non-terminating error.
 #>
 function Add-LedgerDocument {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -118,6 +118,11 @@ function Add-LedgerDocument {
 
                 if ((Test-Path -LiteralPath $destPath -PathType Leaf) -and -not $Force) {
                     Write-Error "A document named '$($sourceFile.Name)' already exists in fiscal year '$FiscalYear'. Use -Force to overwrite."
+                    continue
+                }
+
+                $verb = if ($Move) { 'Move' } else { 'Copy' }
+                if (-not $PSCmdlet.ShouldProcess($destPath, "$verb document")) {
                     continue
                 }
 

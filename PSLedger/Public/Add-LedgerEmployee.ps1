@@ -44,7 +44,7 @@ Add-LedgerEmployee -JournalPath .\MinFirma.ledger -EmployeeNumber '2' -Name 'Ben
 Adds a salaried employee whose pay is booked to 7010 with a 30% default tax rate.
 #>
 function Add-LedgerEmployee {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -86,6 +86,8 @@ function Add-LedgerEmployee {
     }
 
     $rate = Format-LedgerInvoiceAmount -Value $TaxRate
-    "$EmployeeNumber`t$Name`t$PersonalNumber`t$SalaryAccount`t$rate" |
-        Add-Content -Path $EmployeeFile -Encoding UTF8
+    if ($PSCmdlet.ShouldProcess($EmployeeNumber, 'Add employee')) {
+        "$EmployeeNumber`t$Name`t$PersonalNumber`t$SalaryAccount`t$rate" |
+            Add-Content -Path $EmployeeFile -Encoding UTF8
+    }
 }

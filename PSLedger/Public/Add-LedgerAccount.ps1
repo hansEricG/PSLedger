@@ -27,7 +27,7 @@ Add-LedgerAccount -JournalPath .\MinFirma.ledger -AccountNumber '3010' -AccountN
 Add-LedgerAccount -JournalPath .\MinFirma.ledger -AccountNumber '5010' -AccountName 'Lokalhyra'
 #>
 function Add-LedgerAccount {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -55,6 +55,8 @@ function Add-LedgerAccount {
         }
     }
 
-    $Entry = "$AccountNumber`t$AccountName"
-    $Entry | Add-Content -Path $KontoplanFile -Encoding UTF8
+    if ($PSCmdlet.ShouldProcess($AccountNumber, 'Add account')) {
+        $Entry = "$AccountNumber`t$AccountName"
+        $Entry | Add-Content -Path $KontoplanFile -Encoding UTF8
+    }
 }

@@ -55,7 +55,7 @@ New-LedgerRecurringEntry -JournalPath .\ab.ledger -Name 'Telefon' `
 Creates a monthly recurring entry for a phone subscription with VAT.
 #>
 function New-LedgerRecurringEntry {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -86,9 +86,6 @@ function New-LedgerRecurringEntry {
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
     $recurringDir = Join-Path $JournalPath 'recurring'
-    if (-not (Test-Path $recurringDir)) {
-        New-Item -Path $recurringDir -ItemType Directory | Out-Null
-    }
 
     $filePath = Join-Path $recurringDir "$Name.txt"
     if (Test-Path $filePath) {
@@ -115,5 +112,10 @@ function New-LedgerRecurringEntry {
         $lines += "$($row.Account)`t$($row.Amount)"
     }
 
-    $lines | Set-Content -Path $filePath -Encoding UTF8
+    if ($PSCmdlet.ShouldProcess($Name, 'Create recurring entry')) {
+        if (-not (Test-Path $recurringDir)) {
+            New-Item -Path $recurringDir -ItemType Directory | Out-Null
+        }
+        $lines | Set-Content -Path $filePath -Encoding UTF8
+    }
 }

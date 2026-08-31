@@ -73,7 +73,7 @@ Imports into a journal whose chart of accounts is incomplete, adding any
 referenced accounts on the fly.
 #>
 function Import-LedgerSie {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -112,6 +112,10 @@ function Import-LedgerSie {
 
         $text = Read-SieText -Path $Path
         $records = ConvertFrom-SieText -Text $text
+
+        if (-not $PSCmdlet.ShouldProcess($Path, 'Import SIE file')) {
+            return
+        }
 
         # Resolve fiscal year: use parameter, fall back to #RAR 0, then latest existing
         if (-not $FiscalYear) {

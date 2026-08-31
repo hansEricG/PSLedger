@@ -76,7 +76,7 @@ Creates a supplier invoice recording the supplier's invoice number and payment
 reference, and returns the created object.
 #>
 function New-LedgerSupplierInvoice {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -189,9 +189,11 @@ function New-LedgerSupplierInvoice {
         FilePath           = $filePath
     }
 
-    Save-LedgerSupplierInvoiceFile -Invoice $invoice
+    if ($PSCmdlet.ShouldProcess("Supplier $SupplierNumber", "Create supplier invoice $nextNum")) {
+        Save-LedgerSupplierInvoiceFile -Invoice $invoice
 
-    if ($PassThru) {
-        Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber $nextNum
+        if ($PassThru) {
+            Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber $nextNum
+        }
     }
 }

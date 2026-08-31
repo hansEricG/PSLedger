@@ -32,7 +32,7 @@ Copy-LedgerOpeningBalance -JournalPath .\MinFirma.ledger -FromFiscalYear '2024-0
 Typical year-end workflow: close old year, create new, copy balances.
 #>
 function Copy-LedgerOpeningBalance {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -110,7 +110,9 @@ function Copy-LedgerOpeningBalance {
         $IbRows = foreach ($Acc in $BalanceAccounts) {
             [PSCustomObject]@{ Account = $Acc.AccountNumber; Amount = $Acc.Balance }
         }
-        Write-LedgerOpeningBalance -YearDir $ToDir -Rows $IbRows
+        if ($PSCmdlet.ShouldProcess($ToFiscalYear, "Copy opening balance from $FromFiscalYear")) {
+            Write-LedgerOpeningBalance -YearDir $ToDir -Rows $IbRows
+        }
     }
 }
 

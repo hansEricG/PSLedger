@@ -42,7 +42,7 @@ Import-LedgerChart -JournalPath .\MinFirma.ledger -Path .\min-kontoplan.tsv -For
 Imports a custom chart file, replacing any existing accounts.
 #>
 function Import-LedgerChart {
-    [CmdletBinding(DefaultParameterSetName = 'Template')]
+    [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'Template')]
     param (
         [Parameter(ParameterSetName = 'Template')]
         [Parameter(ParameterSetName = 'File')]
@@ -101,5 +101,7 @@ function Import-LedgerChart {
 
     # Copy content
     $Content = Get-Content $SourceFile
-    $Content | Set-Content -Path $KontoplanFile -Encoding UTF8
+    if ($PSCmdlet.ShouldProcess($KontoplanFile, "Import chart of accounts ($($Content.Count) lines)")) {
+        $Content | Set-Content -Path $KontoplanFile -Encoding UTF8
+    }
 }

@@ -39,7 +39,7 @@ New-LedgerJournal -Path C:\Bokföring\Konsult.ledger -Name 'Konsult AB' -OrgNumb
 Creates a journal with full company details including company form and a VAT number.
 #>
 function New-LedgerJournal {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter(Mandatory)]
         [string]$Path,
@@ -60,6 +60,10 @@ function New-LedgerJournal {
 
     if ($CompanyType) {
         Test-LedgerCompanyType -CompanyType $CompanyType
+    }
+
+    if (-not $PSCmdlet.ShouldProcess($Path, 'Create journal')) {
+        return
     }
 
     New-Item -ItemType Directory -Path $Path -Force | Out-Null

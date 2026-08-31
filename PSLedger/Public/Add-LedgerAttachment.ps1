@@ -40,7 +40,7 @@ Add-LedgerAttachment -VerificationNumber 5 -Path .\faktura.pdf, .\kvitto.jpg, .\
 Attaches three files to verification 5 in a single call.
 #>
 function Add-LedgerAttachment {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -83,13 +83,19 @@ function Add-LedgerAttachment {
 
         # Create attachment directory on demand
         $attachDir = Join-Path $YearDir ('ver' + $VerificationNumber.ToString('0000'))
-        if (-not (Test-Path $attachDir)) {
-            New-Item -ItemType Directory -Path $attachDir -Force | Out-Null
-        }
 
         foreach ($sourcePath in $Path) {
             $sourceFile = Get-Item $sourcePath
             $destPath = Join-Path $attachDir $sourceFile.Name
+
+            $verb = if ($Move) { 'Move' } else { 'Copy' }
+            if (-not $PSCmdlet.ShouldProcess($destPath, "$verb attachment")) {
+                continue
+            }
+
+            if (-not (Test-Path $attachDir)) {
+                New-Item -ItemType Directory -Path $attachDir -Force | Out-Null
+            }
 
             if ($Move) {
                 Move-Item -Path $sourcePath -Destination $destPath -Force

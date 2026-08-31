@@ -61,7 +61,7 @@ Add-LedgerInvoiceInterest -InvoiceNumber 1 -Amount 250
 Books an explicit 250 kr interest charge on invoice 1.
 #>
 function Add-LedgerInvoiceInterest {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -109,6 +109,10 @@ function Add-LedgerInvoiceInterest {
         if ($Amount -le 0) {
             throw "The calculated interest for invoice $InvoiceNumber is zero. Nothing to book."
         }
+    }
+
+    if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", "Book interest of $Amount")) {
+        return
     }
 
     Add-LedgerInvoiceChargeInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `

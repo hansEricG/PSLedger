@@ -57,7 +57,7 @@ Accrues a prepaid rent expense of 8000 kr at year-end with automatic reversal
 in January.
 #>
 function Add-LedgerAccrual {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -99,6 +99,10 @@ function Add-LedgerAccrual {
         $reversalYearDir = Join-Path $JournalPath $ReversalFiscalYear
         if (-not (Test-Path $reversalYearDir)) {
             throw "Reversal fiscal year '$ReversalFiscalYear' does not exist. Create it first with New-LedgerFiscalYear."
+        }
+
+        if (-not $PSCmdlet.ShouldProcess("$FiscalYear -> $ReversalFiscalYear", "Add accrual of $Amount with reversal")) {
+            return
         }
 
         # Create accrual: debit balance sheet account, credit expense account

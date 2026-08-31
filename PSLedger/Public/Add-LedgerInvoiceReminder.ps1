@@ -71,7 +71,7 @@ Records a reminder, books a 60 kr reminder fee on the invoice (debit 1510, credi
 3590) and writes a PDF where the fee is part of the outstanding amount.
 #>
 function Add-LedgerInvoiceReminder {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -125,6 +125,10 @@ function Add-LedgerInvoiceReminder {
 
     if ($BookFee -and $Fee -le 0) {
         throw "-BookFee requires -Fee to be greater than zero."
+    }
+
+    if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", 'Record payment reminder')) {
+        return
     }
 
     $invoice.ReminderCount = [int]$invoice.ReminderCount + 1

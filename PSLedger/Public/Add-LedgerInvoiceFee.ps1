@@ -52,7 +52,7 @@ Books the 450 kr statutory late-payment compensation (förseningsersättning) fo
 business invoice.
 #>
 function Add-LedgerInvoiceFee {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -76,6 +76,10 @@ function Add-LedgerInvoiceFee {
         [switch]$PassThru
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
+
+    if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", "Book fee of $Amount")) {
+        return
+    }
 
     Add-LedgerInvoiceChargeInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
         -Type 'Fee' -Amount $Amount -Account $Account -Date $Date -FiscalYear $FiscalYear

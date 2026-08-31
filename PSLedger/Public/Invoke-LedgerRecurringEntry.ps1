@@ -31,7 +31,7 @@ Invoke-LedgerRecurringEntry -JournalPath .\ab.ledger -Through '2024-06-30' -Name
 Generates pending entries for the 'Hyra' template through June 30, 2024.
 #>
 function Invoke-LedgerRecurringEntry {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -77,10 +77,12 @@ function Invoke-LedgerRecurringEntry {
                 $fiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $entryDate
 
                 if ($fiscalYear) {
-                    Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $fiscalYear `
-                        -Date $entryDate -Description $tmpl.Description -Rows $tmpl.Rows
-                    $lastGen = $entryDate
-                    $generated++
+                    if ($PSCmdlet.ShouldProcess($fiscalYear, "Generate recurring entry '$($tmpl.Name)' for $($entryDate.ToString('yyyy-MM-dd'))")) {
+                        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $fiscalYear `
+                            -Date $entryDate -Description $tmpl.Description -Rows $tmpl.Rows
+                        $lastGen = $entryDate
+                        $generated++
+                    }
                 }
             }
 

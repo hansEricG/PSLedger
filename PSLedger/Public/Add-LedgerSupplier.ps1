@@ -43,7 +43,7 @@ Add-LedgerSupplier -JournalPath .\MinFirma.ledger -SupplierNumber 'L012' -Name '
 Adds a supplier with full contact details and 20-day payment terms.
 #>
 function Add-LedgerSupplier {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -84,6 +84,8 @@ function Add-LedgerSupplier {
         }
     }
 
-    "$SupplierNumber`t$Name`t$OrgNumber`t$Email`t$PaymentTermsDays" |
-        Add-Content -Path $SupplierFile -Encoding UTF8
+    if ($PSCmdlet.ShouldProcess($SupplierNumber, 'Add supplier')) {
+        "$SupplierNumber`t$Name`t$OrgNumber`t$Email`t$PaymentTermsDays" |
+            Add-Content -Path $SupplierFile -Encoding UTF8
+    }
 }

@@ -31,7 +31,7 @@ Add-LedgerReversal -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' 
 Creates a reversal of entry #5 dated 2024-06-30.
 #>
 function Add-LedgerReversal {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -62,7 +62,9 @@ function Add-LedgerReversal {
 
         $Description = "Rättelse ver $VerificationNumber - $($Original.Description)"
 
-        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description -Rows $ReversedRows
+        if ($PSCmdlet.ShouldProcess("$FiscalYear ver $VerificationNumber", 'Add reversal verification')) {
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description -Rows $ReversedRows
+        }
     }
 }
 

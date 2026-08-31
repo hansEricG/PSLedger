@@ -27,7 +27,7 @@ Add-LedgerDimension -JournalPath .\MinFirma.ledger -DimensionNumber 2 -Name 'Pro
 Adds dimension 2 named 'Projekt' for project-based tracking.
 #>
 function Add-LedgerDimension {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -54,5 +54,7 @@ function Add-LedgerDimension {
         }
     }
 
-    "$DimensionNumber`t$Name" | Add-Content -Path $DimFile -Encoding UTF8
+    if ($PSCmdlet.ShouldProcess("$DimensionNumber", 'Add dimension')) {
+        "$DimensionNumber`t$Name" | Add-Content -Path $DimFile -Encoding UTF8
+    }
 }
