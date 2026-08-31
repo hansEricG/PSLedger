@@ -127,7 +127,9 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Get-LedgerPayslip.ps1
 . $PSScriptRoot\Public\Invoke-LedgerPayrollPosting.ps1
 . $PSScriptRoot\Public\Add-LedgerPayrollTaxPayment.ps1
+. $PSScriptRoot\Public\Add-LedgerVacationLiability.ps1
 . $PSScriptRoot\Public\Export-LedgerPayslip.ps1
+. $PSScriptRoot\Public\Export-LedgerEmployerDeclaration.ps1
 
 # Export built-in public functions
 $script:BuiltInFunctions = @(
@@ -174,7 +176,8 @@ $script:BuiltInFunctions = @(
     'Get-LedgerAccountsPayable',
     'Add-LedgerEmployee', 'Get-LedgerEmployee', 'Set-LedgerEmployee',
     'New-LedgerPayslip', 'Get-LedgerPayslip', 'Invoke-LedgerPayrollPosting',
-    'Add-LedgerPayrollTaxPayment', 'Export-LedgerPayslip'
+    'Add-LedgerPayrollTaxPayment', 'Add-LedgerVacationLiability',
+    'Export-LedgerPayslip', 'Export-LedgerEmployerDeclaration'
 )
 
 # Load extensions at module scope (env variable — semicolon-separated paths)

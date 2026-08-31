@@ -3,6 +3,20 @@
 ## [Unreleased]
 
 ### Added
+- **Payroll management (lönehantering), phase 3.** `Add-LedgerVacationLiability`
+  books the change in the vacation pay liability (semesterlöneskuld): it debits
+  7290 (Förändring av semesterlöneskuld) and credits 2920 (Upplupna semesterlöner),
+  reversing the signs for a decrease, and with `-IncludeEmployerContributions` also
+  books the estimated employer contributions on the change (7510 → 2940). Use
+  `-TargetBalance` to book toward a desired closing balance instead of a change.
+  `Export-LedgerEmployerDeclaration` aggregates the booked payslips whose pay date
+  falls in a period (YYYYMM) and writes the employer declaration on individual
+  level (arbetsgivardeklaration på individnivå, AGI) as a Skatteverket XML file:
+  one HU form with the period totals (SummaSkatteavdr 497, SummaArbAvgSlf 487) and
+  one IU form per employee (BetalningsmottagarId 215, Specifikationsnummer 570,
+  KontantErsattningUlagAG 011, AvdrPrelSkatt 001), in whole kronor. Sender and
+  contact details come from the journal's OrgNumber and ContactName/ContactPhone/
+  ContactEmail metadata. See [docs/Lonehantering.md](docs/Lonehantering.md).
 - **Payroll management (lönehantering), phase 2.** `Add-LedgerPayrollTaxPayment`
   books the payment of withheld employee tax (2710 Personalskatt) and employer
   contributions (2730 Arbetsgivaravgift skuld) to the tax account: the liability

@@ -160,7 +160,9 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerPayslip` | List payslips, filter by status or employee |
 | `Invoke-LedgerPayrollPosting` | Post a payslip to the ledger (verification) |
 | `Add-LedgerPayrollTaxPayment` | Book payment of withheld tax and employer contributions |
+| `Add-LedgerVacationLiability` | Book the change in the vacation pay liability (2920/7290) |
 | `Export-LedgerPayslip` | Export a payslip to PDF, Word, Markdown or text |
+| `Export-LedgerEmployerDeclaration` | Export the employer declaration on individual level (AGI) as XML |
 
 ## Annual Report (Årsredovisning)
 
@@ -524,6 +526,14 @@ Export-LedgerPayslip -PayslipNumber 1 -Path .\lonebesked-1.pdf
 #      2730 Arbetsgivaravgift skuld  +9426
 #      1930 Företagskonto           -18426
 Add-LedgerPayrollTaxPayment -Date '2024-04-12'
+
+# 6. Book the change in the vacation pay liability at year end (debit 7290,
+#    credit 2920):
+Add-LedgerVacationLiability -Date '2024-12-31' -Amount 45000
+
+# 7. Export the monthly employer declaration on individual level (AGI) as XML
+#    for upload in Skatteverket's e-service (one IU per employee, HU totals):
+Export-LedgerEmployerDeclaration -Period '202403' -Path .\agi-2024-03.xml
 ```
 
 For a full walkthrough see [docs/Lonehantering.md](docs/Lonehantering.md).

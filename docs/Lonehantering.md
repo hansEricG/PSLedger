@@ -10,8 +10,8 @@ alltid mot huvudboken.
 En lönespecifikation går igenom statusarna **Draft → Booked**.
 
 Fas 1–2 täcker anställningsregister, lönespecifikation, bokföring, lönebesked och
-inbetalning av skatt och arbetsgivaravgifter till skattekontot.
-Arbetsgivardeklaration (AGI) och semesterlöneskuld hanteras i en senare fas.
+inbetalning av skatt och arbetsgivaravgifter till skattekontot. Fas 3 lägger till
+semesterlöneskuld och arbetsgivardeklaration på individnivå (AGI).
 
 ## Datamodell
 
@@ -153,7 +153,80 @@ Ger verifikationen:
 - `-Account` styr betalkontot (standard `1930`) och räkenskapsåret hämtas från
   betalningsdatumet.
 
-### 6. Anställda och personalkostnader i årsredovisningen
+### 6. Bokför förändring av semesterlöneskuld
+
+Semesterlöneskulden (den intjänade men inte uttagna semesterlönen) bokförs
+vanligtvis vid bokslut som en förändring: `Add-LedgerVacationLiability` debiterar
+7290 (Förändring av semesterlöneskuld) och krediterar 2920 (Upplupna
+semesterlöner). En positiv förändring ökar skulden (en kostnad), en negativ
+minskar den.
+
+```powershell
+# Öka skulden med 45 000 kr vid bokslut
+Add-LedgerVacationLiability -Date '2024-12-31' -Amount 45000
+```
+
+Ger verifikationen:
+
+```
+7290 Förändring semesterlöneskuld  +45000
+2920 Upplupna semesterlöner        -45000
+```
+
+- Med `-IncludeEmployerContributions` bokförs även de beräknade
+  arbetsgivaravgifterna på förändringen (7510 → 2940 Upplupna
+  arbetsgivaravgifter) med `-EmployerContributionRate` (standard `0.3142`).
+- Använd `-TargetBalance` för att bokföra mot ett önskat utgående saldo på
+  skuldkontot i stället för en förändring; förändringen räknas ut från det
+  nuvarande saldot.
+- Kontona styrs med `-LiabilityAccount` (2920), `-ChangeAccount` (7290),
+  `-EmployerContributionAccount` (7510) och
+  `-EmployerContributionLiabilityAccount` (2940). Räkenskapsåret hämtas från
+  datumet.
+
+### 7. Exportera arbetsgivardeklaration på individnivå (AGI)
+
+Varje månad ska arbetsgivardeklarationen (AGI) lämnas till Skatteverket.
+`Export-LedgerEmployerDeclaration` sammanställer de bokförda
+lönespecifikationerna vars utbetalningsdatum ligger i perioden (kalendermånad,
+`YYYYMM`) och skriver en XML-fil som kan laddas upp i Skatteverkets e-tjänst
+(Lämna arbetsgivardeklaration via fil).
+
+```powershell
+Export-LedgerEmployerDeclaration -Period '202403' -Path .\agi-2024-03.xml
+```
+
+Filen följer Skatteverkets AGI-schema och innehåller en avsändardel, en
+arbetsgivardel, en huvuduppgift (HU) med periodens summor och en individuppgift
+(IU) per anställd:
+
+- **HU** – `SummaSkatteavdr` (fältkod 497, summa avdragen skatt) och
+  `SummaArbAvgSlf` (487, summa arbetsgivaravgifter).
+- **IU** – `BetalningsmottagarId` (215, personnummer),
+  `Specifikationsnummer` (570), `KontantErsattningUlagAG` (011, bruttolön) och
+  `AvdrPrelSkatt` (001, avdragen skatt).
+
+Belopp rapporteras i hela kronor (avkortade), och HU-summorna är summan av
+individuppgifternas belopp så att deklarationen stämmer. Bara lönespecifikationer
+med status `Booked` tas med, och varje anställd måste ha ett personnummer i
+registret (`Add-LedgerEmployee -PersonalNumber`).
+
+Avsändar- och kontaktuppgifter hämtas från journalens `OrgNumber` och
+metadatafälten `ContactName`, `ContactPhone` och `ContactEmail` (sätts med
+`Set-LedgerJournal`), och kan överstyras med motsvarande parametrar.
+
+```powershell
+Set-LedgerJournal -OrgNumber '556677-8899' -Metadata @{
+    ContactName = 'Anna Andersson'; ContactPhone = '08-123456'; ContactEmail = 'anna@minfirma.se'
+}
+Export-LedgerEmployerDeclaration -Period '202403' -Path .\agi-2024-03.xml -Force
+```
+
+Organisationsnummer och personnummer normaliseras till Skatteverkets
+12-siffriga IDENTITET-format (ett 10-siffrigt organisationsnummer prefixas med
+`16`).
+
+### 8. Anställda och personalkostnader i årsredovisningen
 
 `Get-LedgerEmployeeNote` bygger noten *Anställda och personalkostnader*. Den
 härleder nu medelantalet anställda från antalet distinkta anställda med en
@@ -188,11 +261,9 @@ $b = Get-LedgerBalance
 | `Get-LedgerPayslip` | Lista lönespecifikationer, filtrera på status/anställd |
 | `Invoke-LedgerPayrollPosting` | Bokför en lönespecifikation (skapar verifikation) |
 | `Add-LedgerPayrollTaxPayment` | Bokför inbetalning av skatt och avgifter till skattekontot |
+| `Add-LedgerVacationLiability` | Bokför förändring av semesterlöneskuld (2920/7290) |
 | `Export-LedgerPayslip` | Exportera ett lönebesked till PDF, Word, Markdown eller text |
-
-## Kommande faser
-
-- **Fas 3** – Arbetsgivardeklaration på individnivå (AGI) och semesterlöneskuld.
+| `Export-LedgerEmployerDeclaration` | Exportera arbetsgivardeklaration på individnivå (AGI) som XML |
 
 Se även [Fakturahantering](Fakturahantering.md) och
 [Leverantörsreskontra](Leverantorsreskontra.md) för kund- och
