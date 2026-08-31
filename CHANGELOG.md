@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-31
+
 ### Added
 - **Payroll management (lönehantering), phase 3.** `Add-LedgerVacationLiability`
   books the change in the vacation pay liability (semesterlöneskuld): it debits
