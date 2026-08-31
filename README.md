@@ -107,6 +107,8 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Test-LedgerSie` | Validate a SIE file without importing |
 | `Get-LedgerLedger` | General ledger (huvudbok) per account |
 | `Get-LedgerVatReport` | VAT declaration report (momsdeklaration) |
+| `Export-LedgerVatDeclaration` | Export a VAT declaration to a Skatteverket eSKD file |
+| `Export-LedgerIncomeTaxReturn` | Export an income tax return (INK2) to Skatteverket SRU files |
 | `Add-LedgerDimension` | Add a dimension (e.g. cost centre, project) |
 | `Get-LedgerDimension` | List dimensions |
 | `Add-LedgerObject` | Add an object to a dimension |

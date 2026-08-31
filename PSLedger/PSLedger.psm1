@@ -3,6 +3,7 @@
 . $PSScriptRoot\Private\SieReader.ps1
 . $PSScriptRoot\Private\SieWriter.ps1
 . $PSScriptRoot\Private\VatBasMapping.ps1
+. $PSScriptRoot\Private\SruMapping.ps1
 . $PSScriptRoot\Private\ObjectTagFormat.ps1
 . $PSScriptRoot\Private\ExtensionLoader.ps1
 . $PSScriptRoot\Private\ResolveJournalPath.ps1
@@ -52,6 +53,7 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Get-LedgerLedger.ps1
 . $PSScriptRoot\Public\Get-LedgerVatReport.ps1
 . $PSScriptRoot\Public\Export-LedgerVatDeclaration.ps1
+. $PSScriptRoot\Public\Export-LedgerIncomeTaxReturn.ps1
 . $PSScriptRoot\Public\Add-LedgerDimension.ps1
 . $PSScriptRoot\Public\Get-LedgerDimension.ps1
 . $PSScriptRoot\Public\Add-LedgerObject.ps1
@@ -127,6 +129,7 @@ $script:BuiltInFunctions = @(
     'Update-LedgerJournal',
     'Add-LedgerReversal', 'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie',
     'Get-LedgerLedger', 'Get-LedgerVatReport', 'Export-LedgerVatDeclaration',
+    'Export-LedgerIncomeTaxReturn',
     'Add-LedgerDimension', 'Get-LedgerDimension',
     'Add-LedgerObject', 'Get-LedgerObject', 'Add-LedgerAccrual', 'Add-LedgerDepreciation',
     'Get-LedgerTaxEstimate', 'Add-LedgerTaxEntry', 'Add-LedgerAppropriation',

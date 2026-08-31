@@ -3,6 +3,23 @@
 ## [Unreleased]
 
 ### Added
+- **Income tax return export (inkomstdeklaration 2, SRU).**
+  `Export-LedgerIncomeTaxReturn` writes a fiscal year as a Skatteverket SRU
+  submission — the two files `INFO.SRU` (submitter metadata) and `BLANKETTER.SRU`
+  (declaration blocks) — that can be uploaded in the filöverföringstjänst. It
+  produces the three blankett blocks for an aktiebolag: **INK2R** (räkenskapsschema),
+  derived automatically from the trial balance via the official BAS→SRU mapping;
+  **INK2** (huvudblankett) with the fiscal year dates and the surplus/deficit; and
+  **INK2S** (skattemässiga justeringar) with årets resultat, the non-deductible
+  booked income tax and any adjustments supplied via `-TaxAdjustment`, ending in
+  fields 8020/8021. Balance-sheet assets are reported with their natural sign,
+  equity/liabilities and income-statement lines are negated to SRU sign
+  conventions, and årets resultat is folded into fritt eget kapital so the balance
+  sheet ties out. Amounts are whole kronor (öre truncated), the organisation
+  number is written in 12-digit form and the files use ISO-8859-1 encoding, as the
+  format requires. Submitter postal code/city (mandatory in INFO.SRU) come from
+  `-PostalCode`/`-City` or the journal metadata. See
+  [docs/Inkomstdeklaration.md](docs/Inkomstdeklaration.md).
 - **VAT declaration export (momsdeklaration).** `Export-LedgerVatDeclaration`
   writes a period's VAT report as a Skatteverket eSKD file
   (`<eSKDUpload Version="6.0">`) that can be uploaded in the e-service *Lämna
