@@ -121,6 +121,13 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Add-LedgerDocument` | Add a shared supporting document to a fiscal year |
 | `Get-LedgerDocument` | List a fiscal year's shared documents |
 | `Remove-LedgerDocument` | Remove a fiscal year document |
+| `Add-LedgerCustomer` | Add a customer to the customer register |
+| `Get-LedgerCustomer` | List or look up customers |
+| `Set-LedgerCustomer` | Update customer details |
+| `New-LedgerInvoice` | Create a customer invoice (draft) |
+| `Get-LedgerInvoice` | List invoices, `-Unpaid` for open receivables |
+| `Invoke-LedgerInvoicePosting` | Post an invoice to the ledger (verification) |
+| `Add-LedgerInvoicePayment` | Register a full or partial invoice payment |
 
 ## Annual Report (Årsredovisning)
 
@@ -310,6 +317,54 @@ independent of any verification:
     └── kontoutdrag-feb.pdf
 ```
 
+## Invoicing (Fakturahantering)
+
+Manage a customer register and the full customer-invoice lifecycle — create,
+post to the ledger and register payments. Invoices are layered *on top of* the
+bookkeeping: posting an invoice and registering a payment both create ordinary
+verifications, so open receivables always reconcile against the general ledger.
+
+An invoice moves through the statuses **Draft → Booked → Partial → Paid**.
+
+```powershell
+Set-LedgerCurrentJournal -Path .\MinFirma.ledger
+
+# 1. Register a customer (default payment terms 30 days)
+Add-LedgerCustomer -CustomerNumber '10' -Name 'Volvo AB' `
+    -OrgNumber '556012-5790' -Email 'faktura@volvo.se' -PaymentTermsDays 30
+
+# 2. Create a draft invoice — one row per revenue line (net amount + VAT)
+$rows = @(
+    @{ Account = '3010'; Amount = 10000; VatRate = 0.25; VatAccount = '2610' }
+)
+New-LedgerInvoice -CustomerNumber '10' -Date '2024-03-15' `
+    -Description 'Konsultarvode mars' -Rows $rows
+# DueDate defaults to InvoiceDate + the customer's payment terms
+
+# 3. Post it to the ledger (creates the verification):
+#      1510 Kundfordringar  +12500
+#      3010 Försäljning      -10000
+#      2610 Utgående moms     -2500
+Invoke-LedgerInvoicePosting -InvoiceNumber 1
+
+# 4. Register payment (debit 1930 Bank, credit 1510). Full payment marks it Paid.
+Add-LedgerInvoicePayment -InvoiceNumber 1 -Date '2024-04-10'
+
+# Partial payments are supported and leave the invoice in 'Partial' status
+Add-LedgerInvoicePayment -InvoiceNumber 2 -Amount 5000 -Date '2024-04-10'
+
+# List open receivables (posted but not fully paid)
+Get-LedgerInvoice -Unpaid |
+    Format-Table InvoiceNumber, CustomerName, DueDate, Total, RemainingAmount, Status
+```
+
+A VAT-free row simply omits the VAT (`VatRate = 0` and no `VatAccount`). Override
+the receivable account with `-ReceivableAccount` and the cash/bank account with
+`-Account` on the payment. Each invoice records the verifications it created
+(`BookedVerification`, and one per payment) so it can be traced back to the ledger.
+
+For a full walkthrough see [docs/Fakturahantering.md](docs/Fakturahantering.md).
+
 ## Custom Extensions
 
 Extend PSLedger with your own PowerShell functions. Extensions are `.ps1` files
@@ -410,6 +465,10 @@ MinFirma.ledger/
 ├── accounts.txt             # Tab-separated: 1910\tKassa och bank
 ├── dimensions.txt           # Tab-separated: 1\tKostnadsställe
 ├── objects.txt              # Tab-separated: 1\tsthlm\tStockholm
+├── customers.txt            # Tab-separated: 10\tVolvo AB\t...\t30
+├── invoices/                # Customer invoices
+│   ├── inv0001.txt
+│   └── inv0002.txt
 ├── recurring/               # Recurring entry templates
 │   └── Hyra.txt
 ├── Extensions/              # Per-journal custom extensions (.ps1)

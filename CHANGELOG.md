@@ -3,6 +3,18 @@
 ## [Unreleased]
 
 ### Added
+- **Invoice management (fakturahantering).** A customer register plus a customer
+  invoice workflow layered on top of the ledger. `Add-LedgerCustomer`,
+  `Get-LedgerCustomer` and `Set-LedgerCustomer` manage a `customers.txt` register
+  (kundnummer, namn, org.nr, e-post, betalningsvillkor). `New-LedgerInvoice`
+  creates a draft invoice (stored under `invoices/`), `Invoke-LedgerInvoicePosting`
+  posts it to the ledger (debit 1510 Kundfordringar, credit revenue and output VAT)
+  and `Add-LedgerInvoicePayment` registers full or partial payments (debit 1930/kassa,
+  credit 1510). Each invoice tracks its status (Draft → Booked → Partial → Paid) and
+  the verifications it created, so open receivables always reconcile against the
+  general ledger. `Get-LedgerInvoice` lists invoices with computed totals and an
+  `-Unpaid` filter for open receivables. See
+  [docs/Fakturahantering.md](docs/Fakturahantering.md).
 - **Full årsredovisning (annual report) support.** `Export-LedgerAnnualReport` now
   renders a complete K2 (BFNAR 2016:10) annual report for a small limited company —
   förvaltningsberättelse (verksamhet, väsentliga händelser, flerårsöversikt, förslag

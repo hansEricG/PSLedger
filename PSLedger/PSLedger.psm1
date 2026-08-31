@@ -15,6 +15,7 @@
 . $PSScriptRoot\Private\AnnualReportNotes.ps1
 . $PSScriptRoot\Private\AnnualReportRender.ps1
 . $PSScriptRoot\Private\AnnualReportModel.ps1
+. $PSScriptRoot\Private\InvoiceStore.ps1
 . $PSScriptRoot\Private\Migrations.ps1
 
 # Module-level state
@@ -89,6 +90,13 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Remove-LedgerDocument.ps1
 . $PSScriptRoot\Public\Backup-LedgerJournal.ps1
 . $PSScriptRoot\Public\Restore-LedgerJournal.ps1
+. $PSScriptRoot\Public\Add-LedgerCustomer.ps1
+. $PSScriptRoot\Public\Get-LedgerCustomer.ps1
+. $PSScriptRoot\Public\Set-LedgerCustomer.ps1
+. $PSScriptRoot\Public\New-LedgerInvoice.ps1
+. $PSScriptRoot\Public\Get-LedgerInvoice.ps1
+. $PSScriptRoot\Public\Invoke-LedgerInvoicePosting.ps1
+. $PSScriptRoot\Public\Add-LedgerInvoicePayment.ps1
 
 # Export built-in public functions
 $script:BuiltInFunctions = @(
@@ -120,7 +128,10 @@ $script:BuiltInFunctions = @(
     'Get-LedgerLatestOpenFiscalYear', 'Get-LedgerNextFiscalYear',
     'Add-LedgerAttachment', 'Get-LedgerAttachment', 'Remove-LedgerAttachment',
     'Add-LedgerDocument', 'Get-LedgerDocument', 'Remove-LedgerDocument',
-    'Backup-LedgerJournal', 'Restore-LedgerJournal'
+    'Backup-LedgerJournal', 'Restore-LedgerJournal',
+    'Add-LedgerCustomer', 'Get-LedgerCustomer', 'Set-LedgerCustomer',
+    'New-LedgerInvoice', 'Get-LedgerInvoice', 'Invoke-LedgerInvoicePosting',
+    'Add-LedgerInvoicePayment'
 )
 
 # Load extensions at module scope (env variable — semicolon-separated paths)
