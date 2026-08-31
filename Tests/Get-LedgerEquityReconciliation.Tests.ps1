@@ -2,7 +2,6 @@ BeforeAll {
     $ModulePath = Join-Path $PSScriptRoot '..' 'PSLedger' 'PSLedger.psd1'
     Import-Module $ModulePath -Force
     Import-Module TDDUtils -Force
-    Import-Module TDDSeams -Force
 }
 
 Describe 'Get-LedgerEquityReconciliation' {

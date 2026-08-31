@@ -2,24 +2,19 @@ BeforeAll {
     $ModulePath = Join-Path $PSScriptRoot '..' 'PSLedger' 'PSLedger.psd1'
     Import-Module $ModulePath -Force
     Import-Module TDDUtils -Force
+    . (Join-Path $PSScriptRoot '_LedgerTestHelpers.ps1')
 
     function New-ApTestJournal {
         param([string]$Root)
-        $path = Join-Path $Root "$([System.IO.Path]::GetRandomFileName()).ledger"
-        New-LedgerJournal -Path $path -Name 'Faktura AB' -CompanyType AB | Out-Null
-        Import-LedgerChart -JournalPath $path -Template 'BAS-Smaforetag'
-        New-LedgerFiscalYear -JournalPath $path -StartDate '2024-01-01' -EndDate '2024-12-31'
-        Add-LedgerSupplier -JournalPath $path -SupplierNumber '100' -Name 'Alpha AB' -PaymentTermsDays 30
-        Add-LedgerSupplier -JournalPath $path -SupplierNumber '200' -Name 'Beta AB' -PaymentTermsDays 30
-        return $path
+        return New-TestLedger -Root $Root -Suppliers @(
+            @{ Number = '100'; Name = 'Alpha AB'; PaymentTermsDays = 30 }
+            @{ Number = '200'; Name = 'Beta AB'; PaymentTermsDays = 30 }
+        )
     }
 
     function New-PostedSupplierInvoice {
         param([string]$JournalPath, [string]$Supplier, [string]$Date, [decimal]$Net = 8000)
-        $rows = @(@{ Account = '5010'; Amount = $Net; VatRate = 0.25; VatAccount = '2640' })
-        $inv = New-LedgerSupplierInvoice -JournalPath $JournalPath -SupplierNumber $Supplier -Date $Date -Description 'Kostnad' -Rows $rows -PassThru
-        Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber $inv.InvoiceNumber
-        return $inv.InvoiceNumber
+        return New-TestPostedSupplierInvoice -JournalPath $JournalPath -SupplierNumber $Supplier -Date $Date -Net $Net
     }
 }
 

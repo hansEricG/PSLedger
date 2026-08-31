@@ -2,15 +2,11 @@ BeforeAll {
     $ModulePath = Join-Path $PSScriptRoot '..' 'PSLedger' 'PSLedger.psd1'
     Import-Module $ModulePath -Force
     Import-Module TDDUtils -Force
+    . (Join-Path $PSScriptRoot '_LedgerTestHelpers.ps1')
 
     function New-InvoiceTestJournal {
         param([string]$Root)
-        $path = Join-Path $Root "$([System.IO.Path]::GetRandomFileName()).ledger"
-        New-LedgerJournal -Path $path -Name 'Faktura AB' -CompanyType AB
-        Import-LedgerChart -JournalPath $path -Template 'BAS-Smaforetag'
-        New-LedgerFiscalYear -JournalPath $path -StartDate '2024-01-01' -EndDate '2024-12-31'
-        Add-LedgerCustomer -JournalPath $path -CustomerNumber '10' -Name 'Volvo AB' -PaymentTermsDays 30
-        return $path
+        return New-TestLedger -Root $Root -Customers @(@{ Number = '10'; Name = 'Volvo AB'; PaymentTermsDays = 30 })
     }
 }
 

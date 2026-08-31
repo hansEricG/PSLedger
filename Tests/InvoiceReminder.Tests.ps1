@@ -2,23 +2,17 @@ BeforeAll {
     $ModulePath = Join-Path $PSScriptRoot '..' 'PSLedger' 'PSLedger.psd1'
     Import-Module $ModulePath -Force
     Import-Module TDDUtils -Force
+    . (Join-Path $PSScriptRoot '_LedgerTestHelpers.ps1')
 
     function New-ReminderTestJournal {
         param([string]$Root)
-        $path = Join-Path $Root "$([System.IO.Path]::GetRandomFileName()).ledger"
-        New-LedgerJournal -Path $path -Name 'Faktura AB' -CompanyType AB | Out-Null
-        Import-LedgerChart -JournalPath $path -Template 'BAS-Smaforetag'
-        New-LedgerFiscalYear -JournalPath $path -StartDate '2024-01-01' -EndDate '2024-12-31'
-        Set-LedgerJournal -JournalPath $path -Metadata @{ Bankgiro = '123-4567' } | Out-Null
-        Add-LedgerCustomer -JournalPath $path -CustomerNumber '10' -Name 'Volvo AB' -PaymentTermsDays 30
-        return $path
+        return New-TestLedger -Root $Root -Metadata @{ Bankgiro = '123-4567' } `
+            -Customers @(@{ Number = '10'; Name = 'Volvo AB'; PaymentTermsDays = 30 })
     }
 
     function New-BookedInvoice {
         param([string]$JournalPath)
-        New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2024-03-15' `
-            -Description 'Konsult' -Rows @(@{ Account = '3010'; Amount = 10000; VatRate = 0.25; VatAccount = '2610' }) | Out-Null
-        Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
+        New-TestPostedInvoice -JournalPath $JournalPath -Description 'Konsult' | Out-Null
     }
 }
 

@@ -1,7 +1,6 @@
 BeforeAll {
     Import-Module "$PSScriptRoot/../PSLedger/PSLedger.psd1" -Force
     Import-Module TDDUtils -Force
-    Import-Module TDDSeams -Force
 }
 
 Describe 'Export-LedgerAnnualReport' {

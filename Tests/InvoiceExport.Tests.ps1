@@ -2,15 +2,13 @@ BeforeAll {
     $ModulePath = Join-Path $PSScriptRoot '..' 'PSLedger' 'PSLedger.psd1'
     Import-Module $ModulePath -Force
     Import-Module TDDUtils -Force
+    . (Join-Path $PSScriptRoot '_LedgerTestHelpers.ps1')
 
     function New-ExportTestJournal {
         param([string]$Root)
-        $path = Join-Path $Root "$([System.IO.Path]::GetRandomFileName()).ledger"
-        New-LedgerJournal -Path $path -Name 'Faktura AB' -CompanyType AB | Out-Null
-        Import-LedgerChart -JournalPath $path -Template 'BAS-Smaforetag'
-        New-LedgerFiscalYear -JournalPath $path -StartDate '2024-01-01' -EndDate '2024-12-31'
-        Set-LedgerJournal -JournalPath $path -Metadata @{ Bankgiro = '123-4567'; VatNumber = 'SE556000000001' } | Out-Null
-        Add-LedgerCustomer -JournalPath $path -CustomerNumber '10' -Name 'Volvo AB' -PaymentTermsDays 30 -OrgNumber '556012-5790'
+        $path = New-TestLedger -Root $Root `
+            -Metadata @{ Bankgiro = '123-4567'; VatNumber = 'SE556000000001' } `
+            -Customers @(@{ Number = '10'; Name = 'Volvo AB'; PaymentTermsDays = 30; OrgNumber = '556012-5790' })
         $rows = @(
             @{ Account = '3010'; Amount = 10000; VatRate = 0.25; VatAccount = '2610' }
             @{ Account = '3590'; Amount = 500; VatRate = 0; VatAccount = '' }
