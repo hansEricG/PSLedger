@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-31
+
 ### Added
 - **Invoice management (fakturahantering).** A customer register plus a customer
   invoice workflow layered on top of the ledger. `Add-LedgerCustomer`,
