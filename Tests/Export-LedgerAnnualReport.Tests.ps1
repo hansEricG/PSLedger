@@ -112,6 +112,17 @@ Describe 'Export-LedgerAnnualReport' {
             $content | Should -Match '2023/2024'
         }
 
+        It 'Should present equity and liabilities in the balansräkning as positive amounts' {
+            $content = Get-Content (Join-Path $TestDrive 'report.txt') -Raw
+            $bal = $content.Substring($content.IndexOf('Balansräkning'))
+            $bal = $bal.Substring(0, $bal.IndexOf('Noter'))
+            $bal | Should -Match 'Balanserat resultat\s+\d\s+170.000\s+0'
+            $bal | Should -Match 'Årets resultat\s+\d\s+210.000\s+170.000'
+            $bal | Should -Match 'Summa eget kapital och skulder\s+480.000\s+270.000'
+            $bal | Should -Not -Match '[−-]\d'
+            $bal | Should -Not -Match '(?m)^Resultat\s'
+        }
+
         It 'Should include the notes section with numbered notes' {
             $content = Get-Content (Join-Path $TestDrive 'report.txt') -Raw
             $content | Should -Match 'Redovisnings- och värderingsprinciper'

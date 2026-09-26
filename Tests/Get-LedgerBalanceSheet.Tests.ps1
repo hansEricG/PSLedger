@@ -167,5 +167,18 @@ Describe 'Get-LedgerBalanceSheet' {
             $aggregate = ($Result | Where-Object { $_.Group -eq 'ShortTermLiabilities' }).Amount
             ($tax + $other) | Should -Be $aggregate
         }
+
+        It 'Should report a net debit on the tax accounts as a receivable' {
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-06-01' -Description 'Preliminärskatt' -Rows @(
+                @{ Account = '2510'; Amount = 8000 }, @{ Account = '1910'; Amount = -8000 })
+            $Result = Get-LedgerBalanceSheet -JournalPath $JournalPath -FiscalYear $FiscalYear -Detailed
+            ($Result | Where-Object { $_.Group -eq 'OtherReceivables' }).Amount | Should -Be 3000
+            ($Result | Where-Object { $_.Group -eq 'CurrentTaxLiabilities' }).Amount | Should -Be 0
+            ($Result | Where-Object { $_.Group -eq 'ShortTermLiabilities' }).Amount | Should -Be -3000
+            $assets = ($Result | Where-Object { $_.Group -eq 'TotalAssets' }).Amount
+            $eqLiab = ($Result | Where-Object { $_.Group -eq 'TotalEquityAndLiabilities' }).Amount
+            $assets | Should -Be 110000
+            ($assets + $eqLiab) | Should -Be 0
+        }
     }
 }

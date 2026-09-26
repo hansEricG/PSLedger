@@ -14,7 +14,9 @@ line.
 Amounts are reported with their natural sign: assets carry a debit balance
 (positive) while equity and liabilities carry a credit balance (negative). Each
 section ends with a summary row, and the two summary rows are equal in magnitude
-with opposite signs when the books balance.
+with opposite signs when the books balance. A net debit balance on the tax
+accounts (2500-2599) is a tax receivable (skattefordran) and is reported under
+Övriga kortfristiga fordringar rather than as a negative liability.
 
 .PARAMETER JournalPath
 The path to an existing journal directory.
@@ -78,16 +80,23 @@ function Get-LedgerBalanceSheet {
         $FixedAssets = Get-RangeSum -From 1000 -To 1399
         $Inventory = Get-RangeSum -From 1400 -To 1499
         $Receivables = Get-RangeSum -From 1500 -To 1599
-        $OtherReceivables = Get-RangeSum -From 1600 -To 1799
+
+        # A net debit on the tax accounts (2500-2599), e.g. preliminary tax paid in
+        # excess of the booked tax, is a skattefordran: report it under other
+        # receivables instead of as a negative liability.
+        $TaxBalance = Get-RangeSum -From 2500 -To 2599
+        $TaxReceivable = if ($TaxBalance -gt 0) { $TaxBalance } else { [decimal]0 }
+
+        $OtherReceivables = (Get-RangeSum -From 1600 -To 1799) + $TaxReceivable
         $CashAndBank = Get-RangeSum -From 1800 -To 1999
-        $TotalAssets = Get-RangeSum -From 1000 -To 1999
+        $TotalAssets = (Get-RangeSum -From 1000 -To 1999) + $TaxReceivable
 
         $Equity = Get-RangeSum -From 2000 -To 2099
         $Result = Get-RangeSum -From 3000 -To 8999
         $UntaxedReserves = Get-RangeSum -From 2100 -To 2299
         $LongTermLiabilities = Get-RangeSum -From 2300 -To 2399
-        $ShortTermLiabilities = Get-RangeSum -From 2400 -To 2999
-        $TotalEquityAndLiabilities = Get-RangeSum -From 2000 -To 8999
+        $ShortTermLiabilities = (Get-RangeSum -From 2400 -To 2999) - $TaxReceivable
+        $TotalEquityAndLiabilities = (Get-RangeSum -From 2000 -To 8999) - $TaxReceivable
 
         @(
             [PSCustomObject]@{ Section = 'Assets'; Group = 'FixedAssets'; Label = 'Anläggningstillgångar'; Amount = $FixedAssets }
@@ -118,7 +127,7 @@ function Get-LedgerBalanceSheet {
                 # Split short-term liabilities (2400-2999) so current tax
                 # liabilities are shown on their own line, as in a printed
                 # balansräkning. The two lines sum to ShortTermLiabilities above.
-                $CurrentTaxLiabilities = Get-RangeSum -From 2500 -To 2599
+                $CurrentTaxLiabilities = (Get-RangeSum -From 2500 -To 2599) - $TaxReceivable
                 $OtherShortTermLiabilities = (Get-RangeSum -From 2400 -To 2499) + (Get-RangeSum -From 2600 -To 2999)
                 [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'CurrentTaxLiabilities'; Label = 'Aktuella skatteskulder'; Amount = $CurrentTaxLiabilities }
                 [PSCustomObject]@{ Section = 'EquityAndLiabilities'; Group = 'OtherShortTermLiabilities'; Label = 'Övriga skulder'; Amount = $OtherShortTermLiabilities }

@@ -7,13 +7,16 @@ data behind the "Eget kapital" note in an årsredovisning.
 Reports the opening balance, the change during the year and the closing balance
 for each equity component of a limited company (aktiebolag): Aktiekapital
 (accounts 2081-2084), Bundna reserver (2085-2089), Balanserat resultat
-(2090-2098) and Årets resultat (2099 and the unclosed profit and loss result).
+(2090-2098) and Årets resultat (the year's profit and loss result, accounts
+3000-8998, whether or not it has been closed to 2099).
 
 Amounts are presented as positive equity figures (a profit increases equity).
 The previous year's result carried into the opening balance of account 2099 is
 folded into the Balanserat resultat opening balance, and the current year's
 result is reported on its own Årets resultat line, so the table reads like a
-printed förändring av eget kapital. The rows reconcile to the equity and result
+printed förändring av eget kapital. Moving an earlier result from 2099 to 2091
+during the year (resultatdisposition) is a reclassification within Balanserat
+resultat and does not change it. The rows reconcile to the equity and result
 lines of Get-LedgerBalanceSheet.
 
 Each output object has Component, Label, OpeningBalance, Change and ClosingBalance
@@ -77,20 +80,18 @@ function Get-LedgerEquityReconciliation {
         $ReservesOpen = Get-EquitySum -From 2085 -To 2089 -Property 'OpeningBalance'
         $ReservesClose = Get-EquitySum -From 2085 -To 2089 -Property 'Balance'
 
-        # Retained earnings: opening includes the previous year's result carried
-        # into account 2099's opening balance (it becomes disposable at year start).
-        $RetainedOpenBase = Get-EquitySum -From 2090 -To 2098 -Property 'OpeningBalance'
-        $PriorResultCarried = Get-EquitySum -From 2099 -To 2099 -Property 'OpeningBalance'
-        $RetainedOpen = $RetainedOpenBase + $PriorResultCarried
-        $RetainedCloseBase = Get-EquitySum -From 2090 -To 2098 -Property 'Balance'
-        $RetainedClose = $RetainedCloseBase + $PriorResultCarried
+        # Retained earnings: opening includes any result still standing on 2099 at
+        # year start (it becomes disposable at year start). The closing value is
+        # derived as total free equity less the year's result, so a resultat-
+        # disposition booked during the year (2099 -> 2091) is not counted twice.
+        $RetainedOpen = Get-EquitySum -From 2090 -To 2099 -Property 'OpeningBalance'
 
-        # Current year result: the change in account 2099 during the year plus any
-        # unclosed profit and loss result (classes 3-8), so it is correct whether
-        # or not the year has been closed.
-        $Result2099Change = (Get-EquitySum -From 2099 -To 2099 -Property 'Balance') - $PriorResultCarried
-        $UnclosedResult = Get-EquitySum -From 3000 -To 8999 -Property 'Balance'
-        $YearResult = $Result2099Change + $UnclosedResult
+        # Current year result: the P&L (classes 3-8) excluding 8999 Årets resultat,
+        # which is correct whether or not the year has been closed.
+        $YearResult = Get-EquitySum -From 3000 -To 8998 -Property 'Balance'
+        $FreeEquityClose = (Get-EquitySum -From 2090 -To 2099 -Property 'Balance') +
+            (Get-EquitySum -From 3000 -To 8999 -Property 'Balance')
+        $RetainedClose = $FreeEquityClose - $YearResult
 
         $components = @(
             [PSCustomObject]@{ Component = 'ShareCapital'; Label = 'Aktiekapital'; OpeningBalance = $ShareOpen; ClosingBalance = $ShareClose }

@@ -127,4 +127,46 @@ Describe 'Get-LedgerEquityReconciliation' {
             $retained.ClosingBalance | Should -Be 30000
         }
     }
+
+    Context 'Behavior with resultatdisposition booked during the year' {
+        BeforeAll {
+            $jp = Join-Path $TestDrive 'equitydisp.ledger'
+            New-LedgerJournal -Path $jp -Name 'Disposition AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            foreach ($a in @(@('1910', 'Kassa'), @('2081', 'Aktiekapital'), @('2091', 'Balanserat resultat'),
+                    @('2099', 'Årets resultat'), @('3010', 'Försäljning'), @('5010', 'Lokalhyra'), @('8999', 'Årets resultat'))) {
+                Add-LedgerAccount -JournalPath $jp -AccountNumber $a[0] -AccountName $a[1]
+            }
+
+            New-LedgerFiscalYear -JournalPath $jp -StartDate '2023-01-01' -EndDate '2023-12-31'
+            Add-LedgerEntry -JournalPath $jp -FiscalYear '2023-01_2023-12' -Date '2023-01-02' -Description 'Aktiekapital' -Rows @(
+                @{ Account = '1910'; Amount = 100000 }, @{ Account = '2081'; Amount = -100000 })
+            Add-LedgerEntry -JournalPath $jp -FiscalYear '2023-01_2023-12' -Date '2023-06-01' -Description 'Försäljning' -Rows @(
+                @{ Account = '1910'; Amount = 50000 }, @{ Account = '3010'; Amount = -50000 })
+            Close-LedgerFiscalYear -JournalPath $jp -FiscalYear '2023-01_2023-12'
+
+            New-LedgerFiscalYear -JournalPath $jp -StartDate '2024-01-01' -EndDate '2024-12-31'
+            Copy-LedgerOpeningBalance -JournalPath $jp -FromFiscalYear '2023-01_2023-12' -ToFiscalYear '2024-01_2024-12'
+            Add-LedgerEntry -JournalPath $jp -FiscalYear '2024-01_2024-12' -Date '2024-05-01' -Description 'Resultatdisposition' -Rows @(
+                @{ Account = '2099'; Amount = 50000 }, @{ Account = '2091'; Amount = -50000 })
+            Add-LedgerEntry -JournalPath $jp -FiscalYear '2024-01_2024-12' -Date '2024-06-01' -Description 'Hyra' -Rows @(
+                @{ Account = '5010'; Amount = 10000 }, @{ Account = '1910'; Amount = -10000 })
+        }
+
+        It 'Should not count a disposed prior-year result twice' {
+            $rows = Get-LedgerEquityReconciliation -JournalPath $jp -FiscalYear '2024-01_2024-12'
+            $retained = $rows | Where-Object { $_.Component -eq 'RetainedEarnings' }
+            $result = $rows | Where-Object { $_.Component -eq 'YearResult' }
+            $retained.OpeningBalance | Should -Be 50000
+            $retained.ClosingBalance | Should -Be 50000
+            $result.ClosingBalance | Should -Be -10000
+            ($rows | Where-Object { $_.Component -eq 'Total' }).ClosingBalance | Should -Be 140000
+        }
+
+        It 'Should report the result of a closed year on the Årets resultat line' {
+            Close-LedgerFiscalYear -JournalPath $jp -FiscalYear '2024-01_2024-12'
+            $rows = Get-LedgerEquityReconciliation -JournalPath $jp -FiscalYear '2024-01_2024-12'
+            ($rows | Where-Object { $_.Component -eq 'RetainedEarnings' }).ClosingBalance | Should -Be 50000
+            ($rows | Where-Object { $_.Component -eq 'YearResult' }).ClosingBalance | Should -Be -10000
+        }
+    }
 }

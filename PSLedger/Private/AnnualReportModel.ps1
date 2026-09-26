@@ -52,10 +52,11 @@ function Build-LedgerAnnualReportBlocks {
         @{ Label = 'Byggnader och mark'; CostFrom = 1100; CostTo = 1118; DepFrom = 1119; DepTo = 1119 }
         @{ Label = 'Maskiner och andra tekniska anläggningar'; CostFrom = 1210; CostTo = 1218; DepFrom = 1219; DepTo = 1219 }
         @{ Label = 'Inventarier, verktyg och installationer'; CostFrom = 1220; CostTo = 1228; DepFrom = 1229; DepTo = 1229 }
-        @{ Label = 'Andra långfristiga värdepappersinnehav'; CostFrom = 1350; CostTo = 1359; DepFrom = $null; DepTo = $null }
+        @{ Label = 'Andra långfristiga värdepappersinnehav'; CostFrom = 1350; CostTo = 1358; DepFrom = 1359; DepTo = 1359; DepLabel = 'nedskrivningar' }
     )
 
     $fixedAssetNotes = @()
+    $fixedAssetDepLabels = @()
     foreach ($g in $assetGroups) {
         $params = @{
             JournalPath = $JournalPath
@@ -71,6 +72,7 @@ function Build-LedgerAnnualReportBlocks {
         $note = Get-LedgerFixedAssetNote @params
         if ($note -and ($note.ClosingAcquisition -ne 0 -or $note.OpeningAcquisition -ne 0)) {
             $fixedAssetNotes += $note
+            $fixedAssetDepLabels += if ($g.DepLabel) { $g.DepLabel } else { 'avskrivningar' }
         }
     }
 
@@ -160,10 +162,10 @@ function Build-LedgerAnnualReportBlocks {
     $blocks += (New-LedgerStatementTable -Rows $income -CurrentLabel $currentLabel -ComparisonLabel $comparisonLabel -Fmt $fmt -NoteMap @{})
 
     # ---- Balansräkning (detailed) ----------------------------------------------
-    $balCurrent = @(Get-LedgerBalanceSheet -JournalPath $JournalPath -FiscalYear $FiscalYear -Detailed)
+    $balCurrent = @(Get-LedgerBalanceSheetPresentation -JournalPath $JournalPath -FiscalYear $FiscalYear)
     $balPrev = @{}
     if ($comparisonYear) {
-        foreach ($r in @(Get-LedgerBalanceSheet -JournalPath $JournalPath -FiscalYear $comparisonYear -Detailed)) {
+        foreach ($r in @(Get-LedgerBalanceSheetPresentation -JournalPath $JournalPath -FiscalYear $comparisonYear)) {
             $balPrev[$r.Group] = $r.Amount
         }
     }
@@ -178,7 +180,7 @@ function Build-LedgerAnnualReportBlocks {
     $balNoteMap = @{}
     if ($firstFixedAssetNoteNo) { $balNoteMap['FixedAssets'] = $firstFixedAssetNoteNo }
     if ($equityNoteNo) {
-        foreach ($eg in 'Equity', 'ShareCapital', 'RestrictedReserves', 'RetainedEarnings', 'BookedYearResult') {
+        foreach ($eg in 'Equity', 'ShareCapital', 'RestrictedReserves', 'RetainedEarnings', 'YearResult') {
             $balNoteMap[$eg] = $equityNoteNo
         }
     }
@@ -211,9 +213,10 @@ function Build-LedgerAnnualReportBlocks {
         $rows += , @('Årets avyttringar', (& $fmt $n.Disposals))
         $rows += , @('Utgående anskaffningsvärde', (& $fmt $n.ClosingAcquisition))
         if ($n.HasDepreciation) {
-            $rows += , @('Ingående avskrivningar', (& $fmt $n.OpeningDepreciation))
-            $rows += , @('Årets avskrivningar', (& $fmt $n.YearDepreciation))
-            $rows += , @('Utgående avskrivningar', (& $fmt $n.ClosingDepreciation))
+            $depLabel = $fixedAssetDepLabels[$i]
+            $rows += , @("Ingående $depLabel", (& $fmt $n.OpeningDepreciation))
+            $rows += , @("Årets $depLabel", (& $fmt $n.YearDepreciation))
+            $rows += , @("Utgående $depLabel", (& $fmt $n.ClosingDepreciation))
         }
         $rows += , @('Redovisat värde', (& $fmt $n.BookValue))
         $blocks += @{ Type = 'Table'; Header = @('', $currentLabel); Align = @('left', 'right'); Rows = $rows }
@@ -257,6 +260,56 @@ function Build-LedgerAnnualReportBlocks {
     $blocks += @{ Type = 'Paragraph'; Text = 'Undertecknad intygar att resultaträkningen och balansräkningen har fastställts på årsstämma och att stämman beslutade godkänna styrelsens förslag till resultatdisposition.' }
 
     $blocks
+}
+
+function Get-LedgerBalanceSheetPresentation {
+    <#
+        Private helper: the balansräkning rows as printed in an årsredovisning.
+        Unlike Get-LedgerBalanceSheet (natural signs), equity and liabilities are
+        shown as positive amounts, and equity is split into Aktiekapital, Bundna
+        reserver, Balanserat resultat and Årets resultat using
+        Get-LedgerEquityReconciliation, so the unclosed result and any
+        resultatdisposition booked during the year are presented correctly.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string]$JournalPath,
+
+        [Parameter(Mandatory)]
+        [string]$FiscalYear
+    )
+
+    $bs = @(Get-LedgerBalanceSheet -JournalPath $JournalPath -FiscalYear $FiscalYear -Detailed)
+    if (-not $bs) { return }
+    $amount = @{}
+    foreach ($r in $bs) { $amount[$r.Group] = [decimal]$r.Amount }
+
+    $eq = @{}
+    foreach ($c in @(Get-LedgerEquityReconciliation -JournalPath $JournalPath -FiscalYear $FiscalYear)) {
+        $eq[$c.Component] = [decimal]$c.ClosingBalance
+    }
+    $get = { param($h, $k) if ($h.ContainsKey($k)) { $h[$k] } else { [decimal]0 } }
+
+    $row = { param($section, $group, $label, $value) [PSCustomObject]@{ Section = $section; Group = $group; Label = $label; Amount = [decimal]$value } }
+
+    & $row 'Assets' 'FixedAssets' 'Anläggningstillgångar' (& $get $amount 'FixedAssets')
+    & $row 'Assets' 'Inventory' 'Lager och pågående arbeten' (& $get $amount 'Inventory')
+    & $row 'Assets' 'AccountsReceivable' 'Kundfordringar' (& $get $amount 'AccountsReceivable')
+    & $row 'Assets' 'OtherReceivables' 'Övriga kortfristiga fordringar' (& $get $amount 'OtherReceivables')
+    & $row 'Assets' 'CashAndBank' 'Likvida medel' (& $get $amount 'CashAndBank')
+    & $row 'Assets' 'TotalAssets' 'Summa tillgångar' (& $get $amount 'TotalAssets')
+
+    & $row 'EquityAndLiabilities' 'ShareCapital' 'Aktiekapital' (& $get $eq 'ShareCapital')
+    & $row 'EquityAndLiabilities' 'RestrictedReserves' 'Bundna reserver' (& $get $eq 'RestrictedReserves')
+    & $row 'EquityAndLiabilities' 'RetainedEarnings' 'Balanserat resultat' (& $get $eq 'RetainedEarnings')
+    & $row 'EquityAndLiabilities' 'YearResult' 'Årets resultat' (& $get $eq 'YearResult')
+    & $row 'EquityAndLiabilities' 'Equity' 'Summa eget kapital' (& $get $eq 'Total')
+    & $row 'EquityAndLiabilities' 'UntaxedReserves' 'Obeskattade reserver och avsättningar' (-(& $get $amount 'UntaxedReserves'))
+    & $row 'EquityAndLiabilities' 'LongTermLiabilities' 'Långfristiga skulder' (-(& $get $amount 'LongTermLiabilities'))
+    & $row 'EquityAndLiabilities' 'CurrentTaxLiabilities' 'Aktuella skatteskulder' (-(& $get $amount 'CurrentTaxLiabilities'))
+    & $row 'EquityAndLiabilities' 'OtherShortTermLiabilities' 'Övriga kortfristiga skulder' (-(& $get $amount 'OtherShortTermLiabilities'))
+    & $row 'EquityAndLiabilities' 'TotalEquityAndLiabilities' 'Summa eget kapital och skulder' (-(& $get $amount 'TotalEquityAndLiabilities'))
 }
 
 function New-LedgerStatementTable {
