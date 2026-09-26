@@ -139,6 +139,33 @@ Describe 'Export-LedgerAnnualReport' {
             $content | Should -Match 'Fastställelseintyg'
         }
 
+        It 'Should place the fastställelseintyg on the cover, before the förvaltningsberättelse' {
+            $content = Get-Content (Join-Path $TestDrive 'report.txt') -Raw
+            $content.IndexOf('Fastställelseintyg') | Should -BeLessThan $content.IndexOf('Förvaltningsberättelse')
+            # Defaults: place from RegisteredOffice, signer is the first board member, no meeting date yet.
+            $content | Should -Match 'Gävle den ____________'
+            $content | Should -Match 'årsstämma den ____________\.'
+            $cert = $content.Substring(0, $content.IndexOf('Förvaltningsberättelse'))
+            $cert | Should -Match 'Anna Andersson'
+            $cert | Should -Not -Match 'Bertil Bengtsson'
+        }
+
+        It 'Should use the meeting date, place and signer from the report input in the fastställelseintyg' {
+            Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy2 -AnnualMeetingDate '2025-12-01' -CertificatePlace 'Sandviken' -CertificateSigner 'Bertil Bengtsson'
+            try {
+                $out = Join-Path $TestDrive 'cert.txt'
+                Export-LedgerAnnualReport -JournalPath $jp -FiscalYear $fy2 -Path $out
+                $content = Get-Content $out -Raw
+                $cert = $content.Substring(0, $content.IndexOf('Förvaltningsberättelse'))
+                $cert | Should -Match 'årsstämma den 1 december 2025\.'
+                $cert | Should -Match 'Sandviken den ____________'
+                $cert | Should -Match 'Bertil Bengtsson'
+            }
+            finally {
+                Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy2 -AnnualMeetingDate '' -CertificatePlace '' -CertificateSigner ''
+            }
+        }
+
         It 'Should write a Markdown report with headings and tables' {
             $out = Join-Path $TestDrive 'report.md'
             Export-LedgerAnnualReport -JournalPath $jp -FiscalYear $fy2 -Path $out -Format Markdown

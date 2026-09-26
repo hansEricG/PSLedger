@@ -6,7 +6,8 @@ data) stored in report.txt for a fiscal year.
 .DESCRIPTION
 Returns the values recorded with Set-LedgerReportInput as a PSCustomObject with
 the SignificantEvents, ProposedDividend, AverageEmployees, SecuritiesMarketValue,
-SigningPlace and SigningDate properties. Fields that have not been set are $null.
+SigningPlace, SigningDate, AnnualMeetingDate, CertificatePlace and
+CertificateSigner properties. Fields that have not been set are $null.
 Numeric-looking fields (ProposedDividend, AverageEmployees, SecuritiesMarketValue)
 are returned as their text value; convert with [decimal]/[int] as needed.
 
@@ -59,6 +60,9 @@ function Get-LedgerReportInput {
             SecuritiesMarketValue = if ($fields.Contains('SecuritiesMarketValue')) { $fields['SecuritiesMarketValue'] } else { $null }
             SigningPlace          = if ($fields.Contains('SigningPlace')) { $fields['SigningPlace'] } else { $null }
             SigningDate           = if ($fields.Contains('SigningDate')) { $fields['SigningDate'] } else { $null }
+            AnnualMeetingDate     = if ($fields.Contains('AnnualMeetingDate')) { $fields['AnnualMeetingDate'] } else { $null }
+            CertificatePlace      = if ($fields.Contains('CertificatePlace')) { $fields['CertificatePlace'] } else { $null }
+            CertificateSigner     = if ($fields.Contains('CertificateSigner')) { $fields['CertificateSigner'] } else { $null }
         }
     }
 }

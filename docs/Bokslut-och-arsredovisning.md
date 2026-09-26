@@ -161,6 +161,9 @@ Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear $fy `
 | `AverageEmployees` | Personalnoten (medelantal anställda) |
 | `SecuritiesMarketValue` | Not för aktier och andelar (marknadsvärde). Om satt tas noten med automatiskt |
 | `SigningPlace` / `SigningDate` | Ort och datum vid underskrifterna |
+| `AnnualMeetingDate` | Årsstämmans datum i fastställelseintyget på försättsbladet (tom linje om det saknas) |
+| `CertificatePlace` | Ort i fastställelseintyget. Standard är bolagets säte (`RegisteredOffice`) |
+| `CertificateSigner` | Styrelseledamot som skriver under fastställelseintyget. Standard är den första i `BoardMembers` |
 
 Läs tillbaka värdena:
 

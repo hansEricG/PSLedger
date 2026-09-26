@@ -12,6 +12,7 @@
                              Rows   = @( @('...','..','..'), ... );
                              RowStyles = @('Normal'|'Sum'|'Section', ...) }
       @{ Type = 'Signatures'; Names = @('...', ...) }
+      @{ Type = 'Certificate'; Heading = '...'; Text = '...'; Place = '...'; Signer = '...' }
       @{ Type = 'PageBreak' }
       @{ Type = 'Spacer' }
 
@@ -63,6 +64,18 @@ function ConvertTo-LedgerReportText {
                     & $append ('_' * [Math]::Max(30, $name.Length))
                     & $append $name
                 }
+                & $append ''
+            }
+            'Certificate' {
+                & $append $b.Heading
+                & $append ''
+                & $append $b.Text
+                & $append ''
+                & $append $b.Place
+                & $append ''
+                & $append ''
+                & $append ('_' * [Math]::Max(30, ([string]$b.Signer).Length))
+                & $append $b.Signer
                 & $append ''
             }
             'Table' {
@@ -132,6 +145,13 @@ function ConvertTo-LedgerReportMarkdown {
                     & $append $name
                     & $append ''
                 }
+            }
+            'Certificate' {
+                & $append "### $($b.Heading)"; & $append ''
+                & $append $b.Text; & $append ''
+                & $append $b.Place; & $append ''
+                & $append '_________________________'; & $append ''
+                & $append $b.Signer; & $append ''
             }
             'Table' {
                 $cols = $b.Header.Count
@@ -221,7 +241,7 @@ function ConvertTo-LedgerReportDocx {
         switch ($b.Type) {
             'Title' {
                 if ($b.Cover) {
-                    [void]$body.Append((New-Paragraph -Text $b.Text -Style 'Title' -Align 'center' -ExtraPPr '<w:spacing w:before="4800" w:after="480"/>'))
+                    [void]$body.Append((New-Paragraph -Text $b.Text -Style 'Title' -Align 'center' -ExtraPPr '<w:spacing w:before="2400" w:after="480"/>'))
                 }
                 else {
                     [void]$body.Append((New-Paragraph -Text $b.Text -Style 'Title'))
@@ -243,6 +263,14 @@ function ConvertTo-LedgerReportDocx {
             }
             'Spacer' { [void]$body.Append('<w:p/>') }
             'PageBreak' { [void]$body.Append('<w:p><w:r><w:br w:type="page"/></w:r></w:p>') }
+            'Certificate' {
+                # Lower part of the cover page, left-aligned like a form to fill in.
+                [void]$body.Append((New-Paragraph -Text $b.Heading -Style 'Heading2' -ExtraPPr '<w:keepNext/><w:spacing w:before="3600" w:after="120"/>'))
+                [void]$body.Append((New-Paragraph -Text $b.Text -ExtraPPr '<w:keepNext/>'))
+                [void]$body.Append((New-Paragraph -Text $b.Place -ExtraPPr '<w:keepNext/><w:spacing w:before="240"/>'))
+                [void]$body.Append('<w:p><w:pPr><w:keepNext/><w:spacing w:before="720" w:after="0"/></w:pPr></w:p>')
+                [void]$body.Append((New-Paragraph -Text $b.Signer -ExtraPPr ("<w:pBdr>$(& $border 'top' 6)</w:pBdr><w:ind w:right=""$([int]($textWidth / 2 + 720))""/>")))
+            }
             'Signatures' {
                 # Two signatures per row in a borderless table with a line to sign on.
                 $names = @($b.Names)
@@ -265,7 +293,8 @@ function ConvertTo-LedgerReportDocx {
                     }
                     [void]$tbl.Append('</w:tr>')
                 }
-                [void]$tbl.Append('</w:tbl><w:p/>')
+                # Word needs a paragraph after a table; keep it tiny so it cannot spill onto a new page.
+                [void]$tbl.Append('</w:tbl><w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/></w:pPr></w:p>')
                 [void]$body.Append($tbl.ToString())
             }
             'Table' {

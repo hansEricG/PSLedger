@@ -66,6 +66,14 @@ Describe 'Set-LedgerReportInput' {
             $result.SigningDate | Should -Be '2025-10-01'
         }
 
+        It 'Should persist the fastställelseintyg fields' {
+            Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy -AnnualMeetingDate '2025-10-01' -CertificatePlace 'Gävle' -CertificateSigner 'Hans-Eric Grönlund'
+            $result = Get-LedgerReportInput -JournalPath $jp -FiscalYear $fy
+            $result.AnnualMeetingDate | Should -Be '2025-10-01'
+            $result.CertificatePlace | Should -Be 'Gävle'
+            $result.CertificateSigner | Should -Be 'Hans-Eric Grönlund'
+        }
+
         It 'Should persist a multi-line SignificantEvents field with Swedish characters' {
             $text = "Under bolagets femtonde räkenskapsår.`nInga väsentliga händelser."
             Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy -SignificantEvents $text

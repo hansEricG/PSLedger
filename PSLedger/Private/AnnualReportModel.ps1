@@ -105,6 +105,19 @@ function Build-LedgerAnnualReportBlocks {
     $blocks += @{ Type = 'Title'; Text = 'Årsredovisning'; Cover = $true }
     $blocks += @{ Type = 'Paragraph'; Text = $heading; Cover = $true }
     $blocks += @{ Type = 'Paragraph'; Text = "för räkenskapsåret $dateRange"; Cover = $true }
+
+    # Fastställelseintyg on the cover, as Bolagsverket recommends. It is signed
+    # after the årsstämma, so the signing date is always left blank.
+    $meetingDate = if ($reportInput.AnnualMeetingDate) { Format-LedgerSwedishDate -Date $reportInput.AnnualMeetingDate } else { '____________' }
+    $certPlace = if ($reportInput.CertificatePlace) { $reportInput.CertificatePlace } elseif ($profile.RegisteredOffice) { $profile.RegisteredOffice } else { '____________' }
+    $certSigner = if ($reportInput.CertificateSigner) { $reportInput.CertificateSigner } elseif ($profile.BoardMembers.Count -gt 0) { @($profile.BoardMembers)[0] } else { '' }
+    $blocks += @{
+        Type    = 'Certificate'
+        Heading = 'Fastställelseintyg'
+        Text    = "Undertecknad styrelseledamot intygar härmed, dels att denna kopia av årsredovisningen överensstämmer med originalet, dels att resultat- och balansräkningen fastställts på årsstämma den $meetingDate. Årsstämman beslöt tillika att godkänna styrelsens förslag till resultatdisposition."
+        Place   = "$certPlace den ____________"
+        Signer  = $certSigner
+    }
     $blocks += @{ Type = 'PageBreak' }
 
     # Förvaltningsberättelse
@@ -270,10 +283,20 @@ function Build-LedgerAnnualReportBlocks {
         $blocks += @{ Type = 'Signatures'; Names = @($profile.BoardMembers) }
     }
 
-    $blocks += @{ Type = 'Heading'; Level = 2; Text = 'Fastställelseintyg' }
-    $blocks += @{ Type = 'Paragraph'; Text = 'Undertecknad intygar att resultaträkningen och balansräkningen har fastställts på årsstämma och att stämman beslutade godkänna styrelsens förslag till resultatdisposition.' }
-
     $blocks
+}
+
+function Format-LedgerSwedishDate {
+    <#
+        Private helper: format an ISO date as '1 oktober 2025'. Text that is not a
+        date is returned unchanged.
+    #>
+    param ([string]$Date)
+    $parsed = [datetime]::MinValue
+    if ([datetime]::TryParseExact($Date, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$parsed)) {
+        return $parsed.ToString('d MMMM yyyy', [Globalization.CultureInfo]::GetCultureInfo('sv-SE'))
+    }
+    $Date
 }
 
 function Get-LedgerBalanceSheetPresentation {

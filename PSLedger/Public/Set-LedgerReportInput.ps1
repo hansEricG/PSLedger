@@ -46,6 +46,18 @@ The place (ort) where the annual report is signed, e.g. 'Gävle'.
 .PARAMETER SigningDate
 The date the annual report is signed, e.g. '2025-10-01'.
 
+.PARAMETER AnnualMeetingDate
+The date of the årsstämma that adopts the report, e.g. '2025-10-01'. Shown in
+the fastställelseintyg on the cover page; when omitted a blank line is printed.
+
+.PARAMETER CertificatePlace
+The place (ort) printed on the fastställelseintyg. Defaults to the company's
+registered office (RegisteredOffice in the journal metadata).
+
+.PARAMETER CertificateSigner
+The board member who signs the fastställelseintyg. Defaults to the first board
+member in the journal metadata.
+
 .EXAMPLE
 Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' `
     -SignificantEvents 'Inga väsentliga händelser.' -SigningPlace 'Gävle'
@@ -58,6 +70,12 @@ Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' `
 
 Records the vinstdisposition, personnel and securities figures used by the notes
 together with the signing date.
+
+.EXAMPLE
+Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' `
+    -AnnualMeetingDate '2025-10-01' -CertificateSigner 'Hans-Eric Grönlund'
+
+Records the årsstämma date and who signs the fastställelseintyg on the cover page.
 #>
 function Set-LedgerReportInput {
     [CmdletBinding(SupportsShouldProcess)]
@@ -85,7 +103,16 @@ function Set-LedgerReportInput {
         [string]$SigningPlace,
 
         [Parameter()]
-        [string]$SigningDate
+        [string]$SigningDate,
+
+        [Parameter()]
+        [string]$AnnualMeetingDate,
+
+        [Parameter()]
+        [string]$CertificatePlace,
+
+        [Parameter()]
+        [string]$CertificateSigner
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
@@ -100,7 +127,8 @@ function Set-LedgerReportInput {
         # string removes the field; SignificantEvents keeps its newlines.
         $order = @(
             'ProposedDividend', 'AverageEmployees', 'SecuritiesMarketValue',
-            'SigningPlace', 'SigningDate', 'SignificantEvents'
+            'SigningPlace', 'SigningDate', 'AnnualMeetingDate', 'CertificatePlace',
+            'CertificateSigner', 'SignificantEvents'
         )
         $supplied = @{
             ProposedDividend      = $PSBoundParameters.ContainsKey('ProposedDividend')
@@ -108,6 +136,9 @@ function Set-LedgerReportInput {
             SecuritiesMarketValue = $PSBoundParameters.ContainsKey('SecuritiesMarketValue')
             SigningPlace          = $PSBoundParameters.ContainsKey('SigningPlace')
             SigningDate           = $PSBoundParameters.ContainsKey('SigningDate')
+            AnnualMeetingDate     = $PSBoundParameters.ContainsKey('AnnualMeetingDate')
+            CertificatePlace      = $PSBoundParameters.ContainsKey('CertificatePlace')
+            CertificateSigner     = $PSBoundParameters.ContainsKey('CertificateSigner')
             SignificantEvents     = $PSBoundParameters.ContainsKey('SignificantEvents')
         }
         $values = @{
@@ -116,6 +147,9 @@ function Set-LedgerReportInput {
             SecuritiesMarketValue = $SecuritiesMarketValue
             SigningPlace          = $SigningPlace
             SigningDate           = $SigningDate
+            AnnualMeetingDate     = $AnnualMeetingDate
+            CertificatePlace      = $CertificatePlace
+            CertificateSigner     = $CertificateSigner
             SignificantEvents     = $SignificantEvents
         }
 
