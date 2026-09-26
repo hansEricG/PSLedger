@@ -364,6 +364,6 @@
 8860	Förändring av ersättningsfond
 8890	Övriga bokslutsdispositioner
 8910	Skatt på årets resultat
-8920	Skatt föregående år
+8920	Skatt på grund av ändrad beskattning
 8980	Övriga skatter
 8999	Årets resultat
