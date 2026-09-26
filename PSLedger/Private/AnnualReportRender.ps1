@@ -7,7 +7,7 @@
       @{ Type = 'Title';     Text = '...'; Cover = $true }
       @{ Type = 'Heading';   Level = 1|2; Text = '...' }
       @{ Type = 'Paragraph'; Text = '...'; Cover = $true }
-      @{ Type = 'Table';     Header = @('Post','2024','2023');
+      @{ Type = 'Table';     Header = @('Post','2024','2023'); KeepNext = $true (optional);
                              Align  = @('left','right','right');
                              Rows   = @( @('...','..','..'), ... );
                              RowStyles = @('Normal'|'Sum'|'Section', ...) }
@@ -338,12 +338,14 @@ function ConvertTo-LedgerReportDocx {
                 for ($i = 0; $i -lt $b.Rows.Count; $i++) {
                     $style = Get-LedgerReportRowStyle -Block $b -Index $i
                     # Keep a table on one page where possible.
-                    $keep = $i -lt $b.Rows.Count - 1
+                    # KeepNext on the block also keeps the last row with what follows.
+                    $keep = $b.KeepNext -or $i -lt $b.Rows.Count - 1
                     [void]$tbl.Append((& $makeRow $b.Rows[$i] -RowStyle $style -KeepNext:$keep))
                 }
                 [void]$tbl.Append('</w:tbl>')
                 # A table must be followed by a paragraph in Word; a 6 pt one gives just enough air.
-                [void]$tbl.Append('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="120" w:lineRule="exact"/></w:pPr></w:p>')
+                $spacerKeep = if ($b.KeepNext) { '<w:keepNext/>' } else { '' }
+                [void]$tbl.Append("<w:p><w:pPr>$spacerKeep<w:spacing w:before=""0"" w:after=""0"" w:line=""120"" w:lineRule=""exact""/></w:pPr></w:p>")
                 [void]$body.Append($tbl.ToString())
             }
         }

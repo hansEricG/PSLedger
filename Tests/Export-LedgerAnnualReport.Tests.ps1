@@ -295,6 +295,28 @@ Describe 'Export-LedgerAnnualReport' {
             finally { $zip.Dispose() }
         }
 
+        It 'Should keep the vinstdisposition together in the Word document' {
+            $out = Join-Path $TestDrive 'keep.docx'
+            Export-LedgerAnnualReport -JournalPath $jp -FiscalYear $fy2 -Path $out -Format Word
+            Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
+            $zip = [System.IO.Compression.ZipFile]::OpenRead($out)
+            try {
+                $r = New-Object System.IO.StreamReader($zip.GetEntry('word/document.xml').Open())
+                try { $doc = [xml]$r.ReadToEnd() } finally { $r.Dispose() }
+            }
+            finally { $zip.Dispose() }
+            $ns = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
+            $ns.AddNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main')
+            $paras = @($doc.SelectNodes('//w:body//w:p', $ns))
+            $texts = $paras | ForEach-Object { $_.InnerText }
+            $start = [array]::IndexOf($texts, 'Till årsstämmans förfogande står följande medel (kronor):')
+            $end = (0..($texts.Count - 1) | Where-Object { $texts[$_] -like 'Föreslagen utdelning per aktie*' } | Select-Object -First 1)
+            $start | Should -BeGreaterThan 0
+            $end | Should -BeGreaterThan $start
+            for ($i = $start; $i -lt $end; $i++) {
+                $paras[$i].SelectSingleNode('w:pPr/w:keepNext', $ns) | Should -Not -BeNullOrEmpty -Because "paragraph $i ('$($texts[$i])') must keep with next"
+            }
+        }
         It 'Should give the Word document styles, a page-numbered footer and page breaks' {
             $out = Join-Path $TestDrive 'layout.docx'
             Export-LedgerAnnualReport -JournalPath $jp -FiscalYear $fy2 -Path $out -Format Word

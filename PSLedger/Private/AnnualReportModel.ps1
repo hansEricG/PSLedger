@@ -221,18 +221,19 @@ function Build-LedgerAnnualReportBlocks {
     $disp = Get-LedgerProfitDisposition -JournalPath $JournalPath -FiscalYear $FiscalYear
     if ($disp) {
         $blocks += @{ Type = 'Heading'; Level = 2; Text = 'Förslag till vinstdisposition' }
-        $blocks += @{ Type = 'Paragraph'; Text = 'Till årsstämmans förfogande står följande medel (kronor):' }
+        $blocks += @{ Type = 'Paragraph'; Text = 'Till årsstämmans förfogande står följande medel (kronor):'; KeepNext = $true }
         $dispRows = @()
         $dispRows += , @('Balanserat resultat', (& $fmt $disp.RetainedEarnings))
         $dispRows += , @('Årets resultat', (& $fmt $disp.YearResult))
         $dispRows += , @('Summa', (& $fmt $disp.TotalDisposable))
-        $blocks += @{ Type = 'Table'; Header = @('', $currentLabel); Align = @('left', 'right'); Rows = $dispRows; RowStyles = @('Normal', 'Normal', 'Sum') }
-        $blocks += @{ Type = 'Paragraph'; Text = 'Styrelsen föreslår att medlen disponeras så att:' }
+        $blocks += @{ Type = 'Table'; Header = @('', $currentLabel); Align = @('left', 'right'); Rows = $dispRows; RowStyles = @('Normal', 'Normal', 'Sum'); KeepNext = $true }
+        $blocks += @{ Type = 'Paragraph'; Text = 'Styrelsen föreslår att medlen disponeras så att:'; KeepNext = $true }
+        # The whole vinstdisposition is kept on one page.
         $propRows = @()
         $propRows += , @('Utdelning', (& $fmt $disp.ProposedDividend))
         $propRows += , @('Balanseras i ny räkning', (& $fmt $disp.CarriedForward))
         $propRows += , @('Summa', (& $fmt $disp.TotalDisposable))
-        $blocks += @{ Type = 'Table'; Header = @('', $currentLabel); Align = @('left', 'right'); Rows = $propRows; RowStyles = @('Normal', 'Normal', 'Sum') }
+        $blocks += @{ Type = 'Table'; Header = @('', $currentLabel); Align = @('left', 'right'); Rows = $propRows; RowStyles = @('Normal', 'Normal', 'Sum'); KeepNext = ($null -ne $disp.DividendPerShare) }
         if ($null -ne $disp.DividendPerShare) {
             $blocks += @{ Type = 'Paragraph'; Text = ("Föreslagen utdelning per aktie: {0} kr (antal aktier: {1})." -f (& $fmt $disp.DividendPerShare), $disp.NumberOfShares) }
         }
