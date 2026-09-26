@@ -26,7 +26,10 @@ if an unusual account is not classified onto a specific räkenskapsschema line.
 The surplus/deficit (INK2S 8020/8021 and INK2 7113/7114) defaults to
 årets resultat plus the booked income tax. Supply -TaxAdjustment to add further
 INK2S fields; each entry is written verbatim and, unless you specify 8020 or
-8021 yourself, is added (with the sign you give) when computing the surplus.
+8021 yourself, is included when computing the surplus: 76xx fields (additions,
+e.g. 7652 = 4.3b) are added and 77xx fields (deductions, e.g. 7754 = 4.5c) are
+subtracted. An explicit 8020/8021 overrides the computed surplus on both INK2S
+and the INK2 huvudblankett (7113/7114).
 
 Run this on a fiscal year whose result has not yet been appropriated into equity
 (the normal workflow), the same way Get-LedgerIncomeStatement reports the
@@ -62,9 +65,10 @@ field 'Email'.
 
 .PARAMETER TaxAdjustment
 Optional hashtable of additional INK2S fields as SRU code to whole-krona amount,
-e.g. @{ '7654' = 1200; '7663' = -5000 }. Each entry is written as an INK2S
-#UPPGIFT line. Unless you include 8020 or 8021 yourself, the amounts are summed
-(with their sign) into the surplus/deficit computation.
+e.g. @{ '7654' = 1200; '7754' = 395 }. Each entry is written as an INK2S
+#UPPGIFT line. Give amounts as they appear on the form (normally positive).
+Unless you include 8020 or 8021 yourself, 76xx amounts are added to and 77xx
+amounts are subtracted from the surplus/deficit computation.
 
 .PARAMETER Force
 Overwrite existing INFO.SRU / BLANKETTER.SRU files in the destination directory.
@@ -191,8 +195,17 @@ function Export-LedgerIncomeTaxReturn {
         }
         $surplus = $netResult + $tax
         $explicitSurplus = $userAdjustments.Contains(8020) -or $userAdjustments.Contains(8021)
-        if (-not $explicitSurplus) {
-            foreach ($k in $userAdjustments.Keys) { $surplus += $userAdjustments[$k] }
+        if ($explicitSurplus) {
+            $surplus = [decimal]0
+            if ($userAdjustments.Contains(8020)) { $surplus += $userAdjustments[8020] }
+            if ($userAdjustments.Contains(8021)) { $surplus -= $userAdjustments[8021] }
+        }
+        else {
+            # INK2S 77xx fields are deductions (e.g. 7754 = 4.5c); 76xx fields are additions.
+            foreach ($k in $userAdjustments.Keys) {
+                if ($k -ge 7700 -and $k -le 7799) { $surplus -= $userAdjustments[$k] }
+                else { $surplus += $userAdjustments[$k] }
+            }
         }
 
         # Whole kronor, öre truncated toward zero.
@@ -270,14 +283,8 @@ function Export-LedgerIncomeTaxReturn {
             if ($code -eq 8020 -or $code -eq 8021) { continue }
             & $addUppgift $code $userAdjustments[$code]
         }
-        if ($explicitSurplus) {
-            if ($userAdjustments.Contains(8020)) { & $addUppgift 8020 $userAdjustments[8020] }
-            if ($userAdjustments.Contains(8021)) { & $addUppgift 8021 $userAdjustments[8021] }
-        }
-        else {
-            if ($surplus -gt 0) { & $addUppgift 8020 $surplus }
-            elseif ($surplus -lt 0) { & $addUppgift 8021 (-$surplus) }
-        }
+        if ($surplus -gt 0) { & $addUppgift 8020 $surplus }
+        elseif ($surplus -lt 0) { & $addUppgift 8021 (-$surplus) }
         & $addBlk '#BLANKETTSLUT'
         & $addBlk '#FIL_SLUT'
 

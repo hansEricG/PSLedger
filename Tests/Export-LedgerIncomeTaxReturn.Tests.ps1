@@ -169,11 +169,34 @@ Describe 'Export-LedgerIncomeTaxReturn' {
             $r.SurplusDeficit | Should -Be 80940
         }
 
+        It 'Should subtract supplied 77xx deduction fields from the surplus' {
+            $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                -TaxAdjustment @{ '7654' = 940; '7754' = 395 }
+            $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+            Get-Uppgift $blk 'INK2S-2024P4' 7754 | Should -Be 395
+            Get-Uppgift $blk 'INK2S-2024P4' 8020 | Should -Be 80545
+            Get-Uppgift $blk 'INK2-2024P4' 7113 | Should -Be 80545
+            $r.SurplusDeficit | Should -Be 80545
+        }
+
         It 'Should let an explicit 8020 override the computed surplus' {
-            Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
-                -TaxAdjustment @{ '8020' = 12345 } | Out-Null
+            $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                -TaxAdjustment @{ '8020' = 12345 }
             $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
             Get-Uppgift $blk 'INK2S-2024P4' 8020 | Should -Be 12345
+            Get-Uppgift $blk 'INK2-2024P4' 7113 | Should -Be 12345
+            Get-Uppgift $blk 'INK2-2024P4' 7114 | Should -BeNullOrEmpty
+            $r.SurplusDeficit | Should -Be 12345
+        }
+
+        It 'Should let an explicit 8021 override the computed surplus with a deficit' {
+            $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                -TaxAdjustment @{ '8021' = 500 }
+            $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+            Get-Uppgift $blk 'INK2S-2024P4' 8021 | Should -Be 500
+            Get-Uppgift $blk 'INK2S-2024P4' 8020 | Should -BeNullOrEmpty
+            Get-Uppgift $blk 'INK2-2024P4' 7114 | Should -Be 500
+            $r.SurplusDeficit | Should -Be -500
         }
 
         It 'Should write the files with ISO-8859-1 encoding preserving Swedish characters' {
