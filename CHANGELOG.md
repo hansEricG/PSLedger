@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-26
+
 ### Added
 - **K3 (BFNAR 2012:1) annual reports.** `Set-LedgerReportInput -Framework K3` switches
   a fiscal year to K3: K3 accounting principles (`Get-LedgerAccountingPrinciples
