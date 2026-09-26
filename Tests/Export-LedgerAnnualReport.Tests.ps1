@@ -171,6 +171,44 @@ Describe 'Export-LedgerAnnualReport' {
             finally { $zip.Dispose() }
         }
 
+        It 'Should give the Word document styles, a page-numbered footer and page breaks' {
+            $out = Join-Path $TestDrive 'layout.docx'
+            Export-LedgerAnnualReport -JournalPath $jp -FiscalYear $fy2 -Path $out -Format Word
+
+            Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
+            $zip = [System.IO.Compression.ZipFile]::OpenRead($out)
+            try {
+                $read = {
+                    param($name)
+                    $r = New-Object System.IO.StreamReader($zip.GetEntry($name).Open())
+                    try { $r.ReadToEnd() } finally { $r.Dispose() }
+                }
+                $zip.Entries.FullName | Should -Contain 'word/styles.xml'
+                $zip.Entries.FullName | Should -Contain 'word/footer1.xml'
+                foreach ($part in 'word/document.xml', 'word/styles.xml', 'word/footer1.xml', 'word/_rels/document.xml.rels', '[Content_Types].xml') {
+                    { [xml](& $read $part) } | Should -Not -Throw
+                }
+                $footer = & $read 'word/footer1.xml'
+                $footer | Should -Match 'PAGE'
+                $footer | Should -Match 'NUMPAGES'
+                $doc = & $read 'word/document.xml'
+                $doc | Should -Match '<w:br w:type="page"/>'
+                $doc | Should -Match 'footerReference'
+                $doc | Should -Match '<w:titlePg/>'
+            }
+            finally { $zip.Dispose() }
+        }
+
+        It 'Should render sum rows in bold in Markdown and include the board introduction in text' {
+            $md = Join-Path $TestDrive 'layout.md'
+            Export-LedgerAnnualReport -JournalPath $jp -FiscalYear $fy2 -Path $md -Format Markdown
+            (Get-Content $md -Raw) | Should -Match '\*\*Summa tillgångar\*\*'
+
+            $txt = Join-Path $TestDrive 'layout.txt'
+            Export-LedgerAnnualReport -JournalPath $jp -FiscalYear $fy2 -Path $txt
+            (Get-Content $txt -Raw) | Should -Match 'Styrelsen för .+ avger följande årsredovisning'
+        }
+
         It 'Should omit the comparison column from the statements with -NoComparison' {
             $out = Join-Path $TestDrive 'nocomp.txt'
             Export-LedgerAnnualReport -JournalPath $jp -FiscalYear $fy2 -Path $out -NoComparison

@@ -102,12 +102,14 @@ function Build-LedgerAnnualReportBlocks {
     if ($profile.OrgNumber) { $heading = "$heading, org.nr $($profile.OrgNumber)" }
 
     # Cover
-    $blocks += @{ Type = 'Title'; Text = 'Årsredovisning' }
-    $blocks += @{ Type = 'Paragraph'; Text = $heading }
-    $blocks += @{ Type = 'Paragraph'; Text = "för räkenskapsåret $dateRange" }
+    $blocks += @{ Type = 'Title'; Text = 'Årsredovisning'; Cover = $true }
+    $blocks += @{ Type = 'Paragraph'; Text = $heading; Cover = $true }
+    $blocks += @{ Type = 'Paragraph'; Text = "för räkenskapsåret $dateRange"; Cover = $true }
+    $blocks += @{ Type = 'PageBreak' }
 
     # Förvaltningsberättelse
     $blocks += @{ Type = 'Heading'; Level = 1; Text = 'Förvaltningsberättelse' }
+    $blocks += @{ Type = 'Paragraph'; Text = "Styrelsen för $($profile.Name) avger följande årsredovisning för räkenskapsåret $dateRange. Om inte annat särskilt anges, redovisas alla belopp i hela kronor." }
     $blocks += @{ Type = 'Heading'; Level = 2; Text = 'Verksamheten' }
     if ($profile.BusinessObject) {
         $blocks += @{ Type = 'Paragraph'; Text = "Allmänt om verksamheten: $($profile.BusinessObject)" }
@@ -143,13 +145,13 @@ function Build-LedgerAnnualReportBlocks {
         $dispRows += , @('Balanserat resultat', (& $fmt $disp.RetainedEarnings))
         $dispRows += , @('Årets resultat', (& $fmt $disp.YearResult))
         $dispRows += , @('Summa', (& $fmt $disp.TotalDisposable))
-        $blocks += @{ Type = 'Table'; Header = @('', $currentLabel); Align = @('left', 'right'); Rows = $dispRows }
+        $blocks += @{ Type = 'Table'; Header = @('', $currentLabel); Align = @('left', 'right'); Rows = $dispRows; RowStyles = @('Normal', 'Normal', 'Sum') }
         $blocks += @{ Type = 'Paragraph'; Text = 'Styrelsen föreslår att medlen disponeras så att:' }
         $propRows = @()
         $propRows += , @('Utdelning', (& $fmt $disp.ProposedDividend))
         $propRows += , @('Balanseras i ny räkning', (& $fmt $disp.CarriedForward))
         $propRows += , @('Summa', (& $fmt $disp.TotalDisposable))
-        $blocks += @{ Type = 'Table'; Header = @('', $currentLabel); Align = @('left', 'right'); Rows = $propRows }
+        $blocks += @{ Type = 'Table'; Header = @('', $currentLabel); Align = @('left', 'right'); Rows = $propRows; RowStyles = @('Normal', 'Normal', 'Sum') }
         if ($null -ne $disp.DividendPerShare) {
             $blocks += @{ Type = 'Paragraph'; Text = ("Föreslagen utdelning per aktie: {0} kr (antal aktier: {1})." -f (& $fmt $disp.DividendPerShare), $disp.NumberOfShares) }
         }
@@ -158,8 +160,10 @@ function Build-LedgerAnnualReportBlocks {
     # ---- Resultaträkning --------------------------------------------------------
     $income = @(Get-LedgerAnnualReport -JournalPath $JournalPath -FiscalYear $FiscalYear -NoComparison:$NoComparison |
             Where-Object { $_.Statement -eq 'IncomeStatement' })
+    $blocks += @{ Type = 'PageBreak' }
     $blocks += @{ Type = 'Heading'; Level = 1; Text = 'Resultaträkning' }
-    $blocks += (New-LedgerStatementTable -Rows $income -CurrentLabel $currentLabel -ComparisonLabel $comparisonLabel -Fmt $fmt -NoteMap @{})
+    $blocks += (New-LedgerStatementTable -Rows $income -CurrentLabel $currentLabel -ComparisonLabel $comparisonLabel -Fmt $fmt -NoteMap @{} `
+            -SumGroups @('OperatingResult', 'ResultAfterFinancialItems', 'NetResult') -HideZero)
 
     # ---- Balansräkning (detailed) ----------------------------------------------
     $balCurrent = @(Get-LedgerBalanceSheetPresentation -JournalPath $JournalPath -FiscalYear $FiscalYear)
@@ -184,10 +188,20 @@ function Build-LedgerAnnualReportBlocks {
             $balNoteMap[$eg] = $equityNoteNo
         }
     }
+    $balSections = @(
+        @{ Before = 'FixedAssets'; Label = 'TILLGÅNGAR' }
+        @{ Before = 'Inventory'; Label = 'Omsättningstillgångar'; Groups = @('Inventory', 'AccountsReceivable', 'OtherReceivables', 'CashAndBank') }
+        @{ Before = 'ShareCapital'; Label = 'EGET KAPITAL OCH SKULDER' }
+        @{ Before = 'ShareCapital'; Label = 'Eget kapital' }
+        @{ Before = 'CurrentTaxLiabilities'; Label = 'Kortfristiga skulder'; Groups = @('CurrentTaxLiabilities', 'OtherShortTermLiabilities') }
+    )
+    $blocks += @{ Type = 'PageBreak' }
     $blocks += @{ Type = 'Heading'; Level = 1; Text = 'Balansräkning' }
-    $blocks += (New-LedgerStatementTable -Rows $balRows -CurrentLabel $currentLabel -ComparisonLabel $comparisonLabel -Fmt $fmt -NoteMap $balNoteMap)
+    $blocks += (New-LedgerStatementTable -Rows $balRows -CurrentLabel $currentLabel -ComparisonLabel $comparisonLabel -Fmt $fmt -NoteMap $balNoteMap `
+            -SumGroups @('TotalAssets', 'Equity', 'TotalEquityAndLiabilities') -Sections $balSections -HideZero)
 
     # ---- Noter / Tilläggsupplysningar ------------------------------------------
+    $blocks += @{ Type = 'PageBreak' }
     $blocks += @{ Type = 'Heading'; Level = 1; Text = 'Noter' }
 
     $blocks += @{ Type = 'Heading'; Level = 2; Text = 'Redovisnings- och värderingsprinciper' }
@@ -219,7 +233,8 @@ function Build-LedgerAnnualReportBlocks {
             $rows += , @("Utgående $depLabel", (& $fmt $n.ClosingDepreciation))
         }
         $rows += , @('Redovisat värde', (& $fmt $n.BookValue))
-        $blocks += @{ Type = 'Table'; Header = @('', $currentLabel); Align = @('left', 'right'); Rows = $rows }
+        $styles = foreach ($r in $rows) { if ($r[0] -like 'Utgående *' -or $r[0] -eq 'Redovisat värde') { 'Sum' } else { 'Normal' } }
+        $blocks += @{ Type = 'Table'; Header = @('', $currentLabel); Align = @('left', 'right'); Rows = $rows; RowStyles = @($styles) }
     }
 
     # Shareholding note (numbered)
@@ -239,7 +254,8 @@ function Build-LedgerAnnualReportBlocks {
         foreach ($c in $equityNote) {
             $eqRows += , @($c.Label, (& $fmt $c.OpeningBalance), (& $fmt $c.Change), (& $fmt $c.ClosingBalance))
         }
-        $blocks += @{ Type = 'Table'; Header = @('', 'Ingående balans', 'Förändring', 'Utgående balans'); Align = @('left', 'right', 'right', 'right'); Rows = $eqRows }
+        $eqStyles = foreach ($c in $equityNote) { if ($c.Component -eq 'Total') { 'Sum' } else { 'Normal' } }
+        $blocks += @{ Type = 'Table'; Header = @('', 'Ingående balans', 'Förändring', 'Utgående balans'); Align = @('left', 'right', 'right', 'right'); Rows = $eqRows; RowStyles = @($eqStyles) }
     }
 
     # ---- Underskrifter och fastställelseintyg -----------------------------------
@@ -251,9 +267,7 @@ function Build-LedgerAnnualReportBlocks {
         $blocks += @{ Type = 'Paragraph'; Text = ($signLine -join ' ') }
     }
     if ($profile.BoardMembers.Count -gt 0) {
-        foreach ($m in $profile.BoardMembers) {
-            $blocks += @{ Type = 'Paragraph'; Text = $m }
-        }
+        $blocks += @{ Type = 'Signatures'; Names = @($profile.BoardMembers) }
     }
 
     $blocks += @{ Type = 'Heading'; Level = 2; Text = 'Fastställelseintyg' }
@@ -329,7 +343,21 @@ function New-LedgerStatementTable {
         [scriptblock]$Fmt,
 
         [Parameter()]
-        [hashtable]$NoteMap = @{}
+        [hashtable]$NoteMap = @{},
+
+        # Groups rendered as summary rows (bold with a rule above).
+        [Parameter()]
+        [string[]]$SumGroups = @(),
+
+        # Caption rows inserted before a group: @{ Before = 'Group'; Label = '...';
+        # Groups = @(...) }. With Groups, the caption is only shown when at least
+        # one of those groups is shown.
+        [Parameter()]
+        [object[]]$Sections = @(),
+
+        # Omit non-summary rows whose amounts are zero in every year shown.
+        [Parameter()]
+        [switch]$HideZero
     )
 
     $hasComparison = -not [string]::IsNullOrEmpty($ComparisonLabel)
@@ -342,8 +370,23 @@ function New-LedgerStatementTable {
         $align = @('left', 'left', 'right')
     }
 
-    $tableRows = @()
+    $isShown = @{}
     foreach ($r in $Rows) {
+        $isSum = $SumGroups -contains $r.Group
+        $zero = ([decimal]$r.Amount -eq 0) -and (-not $hasComparison -or $null -eq $r.ComparisonAmount -or [decimal]$r.ComparisonAmount -eq 0)
+        $isShown[$r.Group] = $isSum -or -not ($HideZero -and $zero)
+    }
+
+    $tableRows = @()
+    $rowStyles = @()
+    foreach ($r in $Rows) {
+        foreach ($s in $Sections) {
+            if ($s.Before -ne $r.Group) { continue }
+            if ($s.Groups -and -not ($s.Groups | Where-Object { $isShown[$_] })) { continue }
+            $tableRows += , @(@($s.Label) + (@('') * ($header.Count - 1)))
+            $rowStyles += 'Section'
+        }
+        if (-not $isShown[$r.Group]) { continue }
         $noteRef = if ($NoteMap.ContainsKey($r.Group)) { [string]$NoteMap[$r.Group] } else { '' }
         if ($hasComparison) {
             $tableRows += , @($r.Label, $noteRef, (& $Fmt $r.Amount), (& $Fmt $r.ComparisonAmount))
@@ -351,7 +394,8 @@ function New-LedgerStatementTable {
         else {
             $tableRows += , @($r.Label, $noteRef, (& $Fmt $r.Amount))
         }
+        $rowStyles += if ($SumGroups -contains $r.Group) { 'Sum' } else { 'Normal' }
     }
 
-    @{ Type = 'Table'; Header = $header; Align = $align; Rows = $tableRows }
+    @{ Type = 'Table'; Header = $header; Align = $align; Rows = $tableRows; RowStyles = $rowStyles }
 }
