@@ -35,7 +35,7 @@ Describe 'Get-LedgerReportInput' {
     Context 'Behavior' {
         BeforeEach {
             $jp = Join-Path $TestDrive ([guid]::NewGuid().ToString('N') + '.ledger')
-            New-LedgerJournal -Path $jp -Name 'Rapport AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $jp -Name 'Rapport AB' -OrgNumber '556000-0004' -CompanyType 'AB'
             New-LedgerFiscalYear -JournalPath $jp -StartDate '2024-09-01' -EndDate '2025-08-31'
             $fy = '2024-09_2025-08'
         }

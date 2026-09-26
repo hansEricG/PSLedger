@@ -31,7 +31,7 @@ Describe 'Get-LedgerProfitDisposition' {
     Context 'Behavior' {
         BeforeAll {
             $jp = Join-Path $TestDrive 'disp.ledger'
-            New-LedgerJournal -Path $jp -Name 'Disposition AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $jp -Name 'Disposition AB' -OrgNumber '556000-0004' -CompanyType 'AB'
             Set-LedgerJournal -JournalPath $jp -Metadata @{ NumberOfShares = '1000' }
             Add-LedgerAccount -JournalPath $jp -AccountNumber '1910' -AccountName 'Kassa'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '2081' -AccountName 'Aktiekapital'

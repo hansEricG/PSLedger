@@ -87,9 +87,9 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerIncomeStatement` | Income statement (resultaträkning) |
 | `Get-LedgerBalanceSheet` | Balance sheet (balansräkning), `-Detailed` for equity split |
 | `Get-LedgerAnnualReport` | Combined income statement + balance sheet with comparison year |
-| `Export-LedgerAnnualReport` | Write a full K2 årsredovisning to Text, Markdown or Word (.docx) |
+| `Export-LedgerAnnualReport` | Write a full K2 or K3 årsredovisning to Text, Markdown or Word (.docx) |
 | `Get-LedgerMultiYearOverview` | Flerårsöversikt (multi-year key figures) |
-| `Get-LedgerEquityReconciliation` | Förändring av eget kapital (equity note) |
+| `Get-LedgerEquityReconciliation` | Förändringar i eget kapital (förvaltningsberättelse) |
 | `Get-LedgerProfitDisposition` | Förslag till vinstdisposition |
 | `Get-LedgerFixedAssetNote` | Anläggningsregisternot (roll-forward) |
 | `Get-LedgerShareholdingNote` | Not för aktier och andelar (bokfört + marknadsvärde) |

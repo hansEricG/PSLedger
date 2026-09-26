@@ -35,7 +35,7 @@ Describe 'Get-LedgerFixedAssetNote' {
     Context 'Behavior' {
         BeforeAll {
             $jp = Join-Path $TestDrive 'assets.ledger'
-            New-LedgerJournal -Path $jp -Name 'Anläggning AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $jp -Name 'Anläggning AB' -OrgNumber '556000-0004' -CompanyType 'AB'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '1210' -AccountName 'Inventarier'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '1219' -AccountName 'Ack avskrivningar inventarier'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '1930' -AccountName 'Företagskonto'

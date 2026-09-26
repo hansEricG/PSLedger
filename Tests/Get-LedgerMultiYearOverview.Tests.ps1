@@ -35,7 +35,7 @@ Describe 'Get-LedgerMultiYearOverview' {
     Context 'Behavior' {
         BeforeAll {
             $jp = Join-Path $TestDrive 'multiyear.ledger'
-            New-LedgerJournal -Path $jp -Name 'Flerår AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $jp -Name 'Flerår AB' -OrgNumber '556000-0004' -CompanyType 'AB'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '1910' -AccountName 'Kassa'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '3010' -AccountName 'Försäljning'
 
@@ -90,7 +90,7 @@ Describe 'Get-LedgerMultiYearOverview' {
     Context 'Behavior with broken fiscal year' {
         BeforeAll {
             $jp = Join-Path $TestDrive 'broken.ledger'
-            New-LedgerJournal -Path $jp -Name 'Brutet AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $jp -Name 'Brutet AB' -OrgNumber '556000-0004' -CompanyType 'AB'
             New-LedgerFiscalYear -JournalPath $jp -StartDate '2024-09-01' -EndDate '2025-08-31'
         }
 

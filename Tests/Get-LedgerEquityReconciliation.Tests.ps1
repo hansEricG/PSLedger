@@ -34,7 +34,7 @@ Describe 'Get-LedgerEquityReconciliation' {
     Context 'Behavior' {
         BeforeAll {
             $jp = Join-Path $TestDrive 'equity.ledger'
-            New-LedgerJournal -Path $jp -Name 'Eget Kapital AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $jp -Name 'Eget Kapital AB' -OrgNumber '556000-0004' -CompanyType 'AB'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '1910' -AccountName 'Kassa'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '2081' -AccountName 'Aktiekapital'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '2091' -AccountName 'Balanserat resultat'
@@ -97,7 +97,7 @@ Describe 'Get-LedgerEquityReconciliation' {
     Context 'Behavior with dividend' {
         BeforeAll {
             $jp = Join-Path $TestDrive 'equitydiv.ledger'
-            New-LedgerJournal -Path $jp -Name 'Utdelning AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $jp -Name 'Utdelning AB' -OrgNumber '556000-0004' -CompanyType 'AB'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '1910' -AccountName 'Kassa'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '2081' -AccountName 'Aktiekapital'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '2091' -AccountName 'Balanserat resultat'
@@ -131,7 +131,7 @@ Describe 'Get-LedgerEquityReconciliation' {
     Context 'Behavior with resultatdisposition booked during the year' {
         BeforeAll {
             $jp = Join-Path $TestDrive 'equitydisp.ledger'
-            New-LedgerJournal -Path $jp -Name 'Disposition AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $jp -Name 'Disposition AB' -OrgNumber '556000-0004' -CompanyType 'AB'
             foreach ($a in @(@('1910', 'Kassa'), @('2081', 'Aktiekapital'), @('2091', 'Balanserat resultat'),
                     @('2099', 'Årets resultat'), @('3010', 'Försäljning'), @('5010', 'Lokalhyra'), @('8999', 'Årets resultat'))) {
                 Add-LedgerAccount -JournalPath $jp -AccountNumber $a[0] -AccountName $a[1]

@@ -48,7 +48,7 @@ Describe 'Set-LedgerReportInput' {
     Context 'Behavior' {
         BeforeEach {
             $jp = Join-Path $TestDrive ([guid]::NewGuid().ToString('N') + '.ledger')
-            New-LedgerJournal -Path $jp -Name 'Rapport AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $jp -Name 'Rapport AB' -OrgNumber '556000-0003' -CompanyType 'AB'
             New-LedgerFiscalYear -JournalPath $jp -StartDate '2024-09-01' -EndDate '2025-08-31'
             $fy = '2024-09_2025-08'
         }
@@ -67,11 +67,11 @@ Describe 'Set-LedgerReportInput' {
         }
 
         It 'Should persist the fastställelseintyg fields' {
-            Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy -AnnualMeetingDate '2025-10-01' -CertificatePlace 'Gävle' -CertificateSigner 'Hans-Eric Grönlund'
+            Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy -AnnualMeetingDate '2025-10-01' -CertificatePlace 'Gävle' -CertificateSigner 'Anna Andersson'
             $result = Get-LedgerReportInput -JournalPath $jp -FiscalYear $fy
             $result.AnnualMeetingDate | Should -Be '2025-10-01'
             $result.CertificatePlace | Should -Be 'Gävle'
-            $result.CertificateSigner | Should -Be 'Hans-Eric Grönlund'
+            $result.CertificateSigner | Should -Be 'Anna Andersson'
         }
 
         It 'Should persist a multi-line SignificantEvents field with Swedish characters' {
@@ -96,6 +96,23 @@ Describe 'Set-LedgerReportInput' {
             $result.SigningPlace | Should -BeNullOrEmpty
         }
 
+        It 'Should persist the K3 fields' {
+            Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy -Framework K3 -TransitionNote 'Omklassificering.' `
+                -DeferredTaxStatement 'Ingen uppskjuten skatt.' -PledgedAssets 'Inga' -ContingentLiabilities 'Inga' `
+                -EventsAfterBalanceDate 'Inga.' -Ownership 'Anna Andersson äger samtliga aktier.'
+            $result = Get-LedgerReportInput -JournalPath $jp -FiscalYear $fy
+            $result.Framework | Should -Be 'K3'
+            $result.TransitionNote | Should -Be 'Omklassificering.'
+            $result.DeferredTaxStatement | Should -Be 'Ingen uppskjuten skatt.'
+            $result.PledgedAssets | Should -Be 'Inga'
+            $result.ContingentLiabilities | Should -Be 'Inga'
+            $result.EventsAfterBalanceDate | Should -Be 'Inga.'
+            $result.Ownership | Should -Be 'Anna Andersson äger samtliga aktier.'
+        }
+
+        It 'Should reject an unknown framework' {
+            { Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy -Framework 'K4' } | Should -Throw
+        }
         It 'Should throw when no field is supplied' {
             { Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy } | Should -Throw '*Nothing to update*'
         }

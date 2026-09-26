@@ -48,6 +48,12 @@ Describe 'Get-LedgerAccountingPrinciples' {
             ($result | Where-Object { $_.Trim() -eq '' }).Count | Should -Be 0
         }
 
+        It 'Should return the K3 principles with -Framework K3' {
+            $result = @(Get-LedgerAccountingPrinciples -Framework K3 -AsLines)
+            $result[0] | Should -Match 'BFNAR 2012:1'
+            $result[0] | Should -Match 'K3'
+            ($result -join ' ') | Should -Not -Match 'K2'
+        }
         It 'Should preserve Swedish characters (UTF-8)' {
             $result = Get-LedgerAccountingPrinciples
             $result | Should -Match 'Fordringar'

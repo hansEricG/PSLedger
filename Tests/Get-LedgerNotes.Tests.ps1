@@ -26,7 +26,7 @@ Describe 'Get-LedgerShareholdingNote' {
     Context 'Behavior' {
         BeforeAll {
             $jp = Join-Path $TestDrive 'shares.ledger'
-            New-LedgerJournal -Path $jp -Name 'Aktier AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $jp -Name 'Aktier AB' -OrgNumber '556000-0004' -CompanyType 'AB'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '1350' -AccountName 'Andelar i värdepapper'
             Add-LedgerAccount -JournalPath $jp -AccountNumber '1930' -AccountName 'Företagskonto'
             New-LedgerFiscalYear -JournalPath $jp -StartDate '2024-01-01' -EndDate '2024-12-31'
@@ -75,7 +75,7 @@ Describe 'Get-LedgerEmployeeNote' {
     Context 'Behavior' {
         BeforeAll {
             $jp = Join-Path $TestDrive 'emp.ledger'
-            New-LedgerJournal -Path $jp -Name 'Personal AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $jp -Name 'Personal AB' -OrgNumber '556000-0004' -CompanyType 'AB'
             New-LedgerFiscalYear -JournalPath $jp -StartDate '2024-01-01' -EndDate '2024-12-31'
         }
 
@@ -101,7 +101,7 @@ Describe 'Get-LedgerEmployeeNote' {
     Context 'Payroll integration' {
         BeforeAll {
             $pj = Join-Path $TestDrive 'payrollnote.ledger'
-            New-LedgerJournal -Path $pj -Name 'Personal AB' -OrgNumber '556726-5342' -CompanyType 'AB'
+            New-LedgerJournal -Path $pj -Name 'Personal AB' -OrgNumber '556000-0004' -CompanyType 'AB'
             Import-LedgerChart -JournalPath $pj -Template 'BAS-Smaforetag'
             New-LedgerFiscalYear -JournalPath $pj -StartDate '2024-01-01' -EndDate '2024-12-31'
             Add-LedgerEmployee -JournalPath $pj -EmployeeNumber '1' -Name 'Anna' -TaxRate 0.30

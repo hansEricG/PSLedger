@@ -116,8 +116,8 @@ Describe 'Export-LedgerAnnualReport' {
             $content = Get-Content (Join-Path $TestDrive 'report.txt') -Raw
             $bal = $content.Substring($content.IndexOf('Balansräkning'))
             $bal = $bal.Substring(0, $bal.IndexOf('Noter'))
-            $bal | Should -Match 'Balanserat resultat\s+\d\s+170.000\s+0'
-            $bal | Should -Match 'Årets resultat\s+\d\s+210.000\s+170.000'
+            $bal | Should -Match 'Balanserat resultat\s+170.000\s+0'
+            $bal | Should -Match 'Årets resultat\s+210.000\s+170.000'
             $bal | Should -Match 'Summa eget kapital och skulder\s+480.000\s+270.000'
             $bal | Should -Not -Match '(?<!\d)[−-]\d'
             $bal | Should -Not -Match '(?m)^Resultat\s'
@@ -128,7 +128,13 @@ Describe 'Export-LedgerAnnualReport' {
             $content | Should -Match 'Redovisnings- och värderingsprinciper'
             $content | Should -Match 'Not 1'
             $content | Should -Match 'Marknadsvärde'
-            $content | Should -Match 'Förändring av eget kapital'
+        }
+
+        It 'Should show the changes in equity in the förvaltningsberättelse, not as a note' {
+            $content = Get-Content (Join-Path $TestDrive 'report.txt') -Raw
+            $fb = $content.Substring(0, $content.IndexOf('Resultaträkning'))
+            $fb | Should -Match 'Förändringar i eget kapital'
+            $content | Should -Not -Match 'Not \d+\s+Förändring'
         }
 
         It 'Should include the signatures and fastställelseintyg' {
@@ -207,6 +213,29 @@ Describe 'Export-LedgerAnnualReport' {
             $content | Should -Not -Match 'Resultat före skatt'
         }
 
+        It 'Should use the K3 financial lines with impairments on a line of their own' {
+            $fp = Join-Path $TestDrive 'fink3.ledger'
+            New-LedgerJournal -Path $fp -Name 'Finans K3 AB' -OrgNumber '556000-0002' -CompanyType 'AB'
+            foreach ($a in @(@('1930', 'Företagskonto'), @('2081', 'Aktiekapital'), @('8210', 'Utdelning'), @('8271', 'Nedskrivning'), @('8311', 'Ränteintäkter'), @('8410', 'Räntekostnader'))) {
+                Add-LedgerAccount -JournalPath $fp -AccountNumber $a[0] -AccountName $a[1]
+            }
+            New-LedgerFiscalYear -JournalPath $fp -StartDate '2025-01-01' -EndDate '2025-12-31'
+            $ffy = '2025-01_2025-12'
+            Add-LedgerEntry -JournalPath $fp -FiscalYear $ffy -Date '2025-06-01' -Description 'Finansiellt' -Rows @(
+                @{ Account = '1930'; Amount = 2000 }, @{ Account = '8210'; Amount = -5000 }, @{ Account = '8271'; Amount = 3500 },
+                @{ Account = '8311'; Amount = -700 }, @{ Account = '8410'; Amount = 200 })
+            Set-LedgerReportInput -JournalPath $fp -FiscalYear $ffy -Framework K3
+            $out = Join-Path $TestDrive 'fink3.txt'
+            Export-LedgerAnnualReport -JournalPath $fp -FiscalYear $ffy -Path $out
+            $content = Get-Content $out -Raw
+            $content | Should -Match 'Intäkter från övriga värdepapper och fordringar som är anläggningstillgångar\s+5.000'
+            $content | Should -Match 'Nedskrivningar av finansiella anläggningstillgångar och kortfristiga placeringar\s+−3.500'
+            $content | Should -Match 'Övriga ränteintäkter och liknande intäkter\s+700'
+            $content | Should -Match 'Räntekostnader och liknande kostnader\s+−200'
+            $content | Should -Match 'Resultat efter finansiella poster\s+2.000'
+            # No earlier year, so no transition note.
+            $content | Should -Not -Match 'Övergång till K3'
+        }
         It 'Should place the fastställelseintyg on the cover, before the förvaltningsberättelse' {
             $content = Get-Content (Join-Path $TestDrive 'report.txt') -Raw
             $content.IndexOf('Fastställelseintyg') | Should -BeLessThan $content.IndexOf('Förvaltningsberättelse')
@@ -325,6 +354,115 @@ Describe 'Export-LedgerAnnualReport' {
             Export-LedgerAnnualReport -JournalPath $jp -FiscalYear $fy2 -Path $out
             { Export-LedgerAnnualReport -JournalPath $jp -FiscalYear $fy2 -Path $out -Force } |
                 Should -Not -Throw
+        }
+    }
+
+    Context 'K3' {
+        BeforeAll {
+            $kp = Join-Path $TestDrive 'k3.ledger'
+            New-LedgerJournal -Path $kp -Name 'Krypto AB' -OrgNumber '556111-2222' -CompanyType 'AB'
+            Set-LedgerJournal -JournalPath $kp -Metadata @{ RegisteredOffice = 'Gävle'; BoardMembers = 'Anna Andersson' }
+            foreach ($a in @(
+                    @('1090', 'Kryptotillgångar'),
+                    @('1098', 'Ackumulerade nedskrivningar kryptotillgångar'),
+                    @('1350', 'Andra långfristiga värdepappersinnehav'),
+                    @('1930', 'Företagskonto'),
+                    @('2081', 'Aktiekapital'),
+                    @('2091', 'Balanserad vinst'),
+                    @('2099', 'Årets resultat'),
+                    @('2510', 'Skatteskulder'),
+                    @('3011', 'Försäljning'),
+                    @('7710', 'Nedskrivningar av immateriella anläggningstillgångar'),
+                    @('8999', 'Årets resultat'))) {
+                Add-LedgerAccount -JournalPath $kp -AccountNumber $a[0] -AccountName $a[1]
+            }
+
+            New-LedgerFiscalYear -JournalPath $kp -StartDate '2023-09-01' -EndDate '2024-08-31'
+            $k1 = '2023-09_2024-08'
+            Add-LedgerEntry -JournalPath $kp -FiscalYear $k1 -Date '2023-09-01' -Description 'Aktiekapital' -Rows @(
+                @{ Account = '1930'; Amount = 100000 }, @{ Account = '2081'; Amount = -100000 })
+            Add-LedgerEntry -JournalPath $kp -FiscalYear $k1 -Date '2023-10-01' -Description 'Köp bitcoin' -Rows @(
+                @{ Account = '1350'; Amount = 50000 }, @{ Account = '1930'; Amount = -50000 })
+            Close-LedgerFiscalYear -JournalPath $kp -FiscalYear $k1
+
+            New-LedgerFiscalYear -JournalPath $kp -StartDate '2024-09-01' -EndDate '2025-08-31'
+            $k2 = '2024-09_2025-08'
+            Copy-LedgerOpeningBalance -JournalPath $kp -FromFiscalYear $k1 -ToFiscalYear $k2
+            Add-LedgerEntry -JournalPath $kp -FiscalYear $k2 -Date '2024-09-01' -Description 'Omklassificering vid övergång till K3' -Rows @(
+                @{ Account = '1090'; Amount = 50000 }, @{ Account = '1350'; Amount = -50000 })
+            Add-LedgerEntry -JournalPath $kp -FiscalYear $k2 -Date '2025-01-15' -Description 'Försäljning' -Rows @(
+                @{ Account = '1930'; Amount = 20000 }, @{ Account = '3011'; Amount = -20000 })
+            Add-LedgerEntry -JournalPath $kp -FiscalYear $k2 -Date '2025-08-31' -Description 'Nedskrivning bitcoin' -Rows @(
+                @{ Account = '7710'; Amount = 8000 }, @{ Account = '1098'; Amount = -8000 })
+            Add-LedgerEntry -JournalPath $kp -FiscalYear $k2 -Date '2025-08-31' -Description 'Inbetald preliminärskatt' -Rows @(
+                @{ Account = '2510'; Amount = 500 }, @{ Account = '1930'; Amount = -500 })
+            Set-LedgerReportInput -JournalPath $kp -FiscalYear $k2 -Framework K3 `
+                -TransitionNote 'Kryptotillgångar har omklassificerats från finansiella till immateriella anläggningstillgångar.' `
+                -DeferredTaxStatement 'Uppskjuten skattefordran på underskottsavdrag redovisas inte.' `
+                -Ownership 'Anna Andersson äger samtliga aktier.' -EventsAfterBalanceDate 'Inga väsentliga händelser.'
+
+            $out = Join-Path $TestDrive 'k3.txt'
+            Export-LedgerAnnualReport -JournalPath $kp -FiscalYear $k2 -Path $out
+            $k3Content = Get-Content $out -Raw
+        }
+
+        It 'Should state K3 in the accounting principles with principles for crypto assets and income taxes' {
+            $k3Content | Should -Match 'upprättats enligt årsredovisningslagen och Bokföringsnämndens allmänna råd BFNAR 2012:1 Årsredovisning och koncernredovisning \(K3\)'
+            $k3Content | Should -Not -Match 'upprättats enligt årsredovisningslagen och Bokföringsnämndens allmänna råd BFNAR 2016:10'
+            $k3Content | Should -Match 'Kryptotillgångar: Innehav som bolaget avser att behålla långsiktigt'
+            $k3Content | Should -Match 'skrivs därför inte av'
+            $k3Content | Should -Match 'Inkomstskatter: .+Uppskjuten skattefordran på underskottsavdrag redovisas inte\.'
+        }
+
+        It 'Should include a transition note in the first K3 year' {
+            $k3Content | Should -Match 'Övergång till K3'
+            $k3Content | Should -Match 'Tidpunkten för övergången är den 1 september 2024\.'
+            $k3Content | Should -Match 'har inte räknats om enligt K3'
+            $k3Content | Should -Match 'Kryptotillgångar har omklassificerats'
+        }
+
+        It 'Should not include a transition note once the previous year is K3' {
+            New-LedgerFiscalYear -JournalPath $kp -StartDate '2025-09-01' -EndDate '2026-08-31'
+            Set-LedgerReportInput -JournalPath $kp -FiscalYear '2025-09_2026-08' -Framework K3
+            $out = Join-Path $TestDrive 'k3-second.txt'
+            Export-LedgerAnnualReport -JournalPath $kp -FiscalYear '2025-09_2026-08' -Path $out
+            (Get-Content $out -Raw) | Should -Not -Match 'Övergång till K3'
+        }
+
+        It 'Should present crypto assets and current tax receivables as K3 balance sheet posts' {
+            $bal = $k3Content.Substring($k3Content.IndexOf('Balansräkning'))
+            $bal = $bal.Substring(0, $bal.IndexOf('Noter'))
+            $bal | Should -Match 'Immateriella anläggningstillgångar'
+            $bal | Should -Match 'Kryptotillgångar\s+\d\s+42.000\s+0'
+            $bal | Should -Match 'Andra långfristiga värdepappersinnehav\s+\d\s+0\s+50.000'
+            $bal | Should -Match 'Aktuella skattefordringar\s+500'
+        }
+
+        It 'Should use the K3 depreciation line in the resultaträkning' {
+            $k3Content | Should -Match 'Avskrivningar och nedskrivningar av materiella och immateriella anläggningstillgångar\s+−8.000'
+        }
+
+        It 'Should include a movement schedule for the crypto assets with impairments' {
+            $k3Content | Should -Match 'Not \d\s+Kryptotillgångar'
+            $k3Content | Should -Match 'Årets inköp\s+50.000'
+            $k3Content | Should -Match 'Årets nedskrivningar\s+−8.000'
+        }
+
+        It 'Should state pledged assets, contingent liabilities, events after the balance date and ownership' {
+            $k3Content | Should -Match 'Ställda säkerheter: Inga'
+            $k3Content | Should -Match 'Eventualförpliktelser: Inga'
+            $k3Content | Should -Match 'Väsentliga händelser efter räkenskapsårets slut\s+Inga väsentliga händelser\.'
+            $fb = $k3Content.Substring(0, $k3Content.IndexOf('Resultaträkning'))
+            $fb | Should -Match 'Ägarförhållanden\s+Anna Andersson äger samtliga aktier\.'
+        }
+
+        It 'Should keep the K2 layout for the K2 year' {
+            $out = Join-Path $TestDrive 'k3-prev.txt'
+            Export-LedgerAnnualReport -JournalPath $kp -FiscalYear $k1 -Path $out
+            $content = Get-Content $out -Raw
+            $content | Should -Match 'BFNAR 2016:10'
+            $content | Should -Not -Match 'Ställda säkerheter'
+            $content | Should -Not -Match 'Kryptotillgångar'
         }
     }
 }

@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Added
+- **K3 (BFNAR 2012:1) annual reports.** `Set-LedgerReportInput -Framework K3` switches
+  a fiscal year to K3: K3 accounting principles (`Get-LedgerAccountingPrinciples
+  -Framework K3`) plus principles for crypto assets, intangible, tangible and
+  financial fixed assets and income taxes; a transition note in the first K3 year;
+  the ÅRL bilaga 1/2 posts (immateriella per kind, with 1090–1099 named after the
+  account, e.g. Kryptotillgångar; uppskjuten skattefordran; aktuella
+  skattefordringar; nedskrivningar av finansiella anläggningstillgångar on a line
+  of their own); one fixed-asset note per BAS group; and ställda säkerheter /
+  eventualförpliktelser. New report input fields: `Framework`, `TransitionNote`,
+  `DeferredTaxStatement`, `PledgedAssets`, `ContingentLiabilities`,
+  `EventsAfterBalanceDate` and `Ownership` (the last four also work under K2).
 - **`-WhatIf` / `-Confirm` support for all write commands.** Every command that
   writes persistent journal data now declares `SupportsShouldProcess`, so changes
   can be previewed with `-WhatIf` or gated with `-Confirm` without touching disk.
@@ -18,6 +29,11 @@
   `Add-LedgerDocument`) and the orchestrators (`Invoke-LedgerInvoicePosting`,
   `Invoke-LedgerPayrollPosting`, `Invoke-LedgerSupplierInvoicePosting`,
   `Invoke-LedgerRecurringEntry`, `Import-LedgerSie`, `Remove-LedgerRecurringEntry`).
+
+### Changed
+- **Förändringar i eget kapital moved to the förvaltningsberättelse.** ÅRL 6 kap. 2 §
+  requires the changes in equity in the förvaltningsberättelse or a statement of
+  their own, so the annual report no longer shows them as a numbered note.
 
 ### Fixed
 - **Hardening / stabilization.** `Remove-LedgerAttachment`, `Remove-LedgerDocument`

@@ -7,7 +7,9 @@ data) stored in report.txt for a fiscal year.
 Returns the values recorded with Set-LedgerReportInput as a PSCustomObject with
 the SignificantEvents, ProposedDividend, AverageEmployees, SecuritiesMarketValue,
 SigningPlace, SigningDate, AnnualMeetingDate, CertificatePlace,
-CertificateSigner and ComparativeFiguresNote properties. Fields that have not been set are $null.
+CertificateSigner, ComparativeFiguresNote, Framework, TransitionNote,
+DeferredTaxStatement, PledgedAssets, ContingentLiabilities, EventsAfterBalanceDate
+and Ownership properties. Fields that have not been set are $null.
 Numeric-looking fields (ProposedDividend, AverageEmployees, SecuritiesMarketValue)
 are returned as their text value; convert with [decimal]/[int] as needed.
 
@@ -64,6 +66,13 @@ function Get-LedgerReportInput {
             CertificatePlace      = if ($fields.Contains('CertificatePlace')) { $fields['CertificatePlace'] } else { $null }
             CertificateSigner     = if ($fields.Contains('CertificateSigner')) { $fields['CertificateSigner'] } else { $null }
             ComparativeFiguresNote = if ($fields.Contains('ComparativeFiguresNote')) { $fields['ComparativeFiguresNote'] } else { $null }
+            Framework = if ($fields.Contains('Framework')) { $fields['Framework'] } else { $null }
+            TransitionNote = if ($fields.Contains('TransitionNote')) { $fields['TransitionNote'] } else { $null }
+            DeferredTaxStatement = if ($fields.Contains('DeferredTaxStatement')) { $fields['DeferredTaxStatement'] } else { $null }
+            PledgedAssets = if ($fields.Contains('PledgedAssets')) { $fields['PledgedAssets'] } else { $null }
+            ContingentLiabilities = if ($fields.Contains('ContingentLiabilities')) { $fields['ContingentLiabilities'] } else { $null }
+            EventsAfterBalanceDate = if ($fields.Contains('EventsAfterBalanceDate')) { $fields['EventsAfterBalanceDate'] } else { $null }
+            Ownership = if ($fields.Contains('Ownership')) { $fields['Ownership'] } else { $null }
         }
     }
 }

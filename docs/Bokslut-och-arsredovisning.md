@@ -165,6 +165,12 @@ Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear $fy `
 | `CertificatePlace` | Ort i fastställelseintyget. Standard är bolagets säte (`RegisteredOffice`) |
 | `CertificateSigner` | Styrelseledamot som skriver under fastställelseintyget. Standard är den första i `BoardMembers` |
 | `ComparativeFiguresNote` | Upplysning under rubriken Jämförelsetal i noterna, t.ex. när jämförelsetalen har rättats |
+| `Framework` | Regelverk: `K2` (standard) eller `K3`. Se [K3](#k3-bfnar-20121) nedan |
+| `Ownership` | Rubriken "Ägarförhållanden" i förvaltningsberättelsen, t.ex. ägare med mer än 10 % av aktierna |
+| `EventsAfterBalanceDate` | Not om väsentliga händelser efter räkenskapsårets slut (ÅRL 5 kap. 22 §) |
+| `PledgedAssets` / `ContingentLiabilities` | Ställda säkerheter och eventualförpliktelser. Under K3 skrivs "Inga" om de saknas |
+| `TransitionNote` | Extra text i K3-övergångsnoten, t.ex. omklassificeringar eller tillämpade lättnadsregler i K3 kap. 35 |
+| `DeferredTaxStatement` | Extra text om uppskjuten skatt i K3-principerna, t.ex. varför ingen skattefordran på underskott redovisas |
 
 Läs tillbaka värdena:
 
@@ -193,7 +199,7 @@ Get-LedgerAnnualReport -JournalPath .\HEG.ledger -FiscalYear $fy |
     Format-Table Statement, Label, Amount, ComparisonAmount
 ```
 
-**Kontrollpunkt:** i eget kapital-noten ska `Utgående balans` för raden
+**Kontrollpunkt:** i tabellen Förändringar i eget kapital ska `Utgående balans` för raden
 `Summa eget kapital` stämma med eget kapital + årets resultat i balansräkningen.
 
 ---
@@ -202,10 +208,16 @@ Get-LedgerAnnualReport -JournalPath .\HEG.ledger -FiscalYear $fy |
 
 `Export-LedgerAnnualReport` sätter ihop hela K2-årsredovisningen:
 försättsblad, förvaltningsberättelse (verksamhet, väsentliga händelser,
-flerårsöversikt, förslag till vinstdisposition), resultaträkning och balansräkning
-med Not-kolumn och jämförelseår, noter (redovisningsprinciper, medelantal anställda,
-samt de auto-detekterade noterna för anläggningstillgångar, aktier och andelar och
-eget kapital) samt underskrifter med fastställelseintyg.
+flerårsöversikt, förändringar i eget kapital, förslag till vinstdisposition),
+resultaträkning och balansräkning med Not-kolumn och jämförelseår, noter
+(redovisningsprinciper, medelantal anställda samt de auto-detekterade noterna för
+anläggningstillgångar och aktier och andelar) samt underskrifter med
+fastställelseintyg. Med `Framework = K3` i `report.txt` blir det i stället en
+K3-årsredovisning (se nedan).
+
+Förändringar i eget kapital redovisas i förvaltningsberättelsen, inte som en not,
+eftersom ÅRL 6 kap. 2 § kräver att de anges i förvaltningsberättelsen eller i en egen
+räkning.
 
 ```powershell
 # Word-dokument (.docx)
@@ -241,7 +253,44 @@ BAS-kontoplanen. En not tas bara med när relevanta konton har saldo:
 | Inventarier, verktyg och installationer | 1220–1229 |
 | Andra långfristiga värdepappersinnehav | 1350–1359 |
 | Aktier och andelar (bokfört + marknadsvärde) | tas med om `SecuritiesMarketValue` är satt |
-| Förändring av eget kapital | alltid (AB) |
+
+### K3 (BFNAR 2012:1)
+
+Ett företag som inte får eller vill tillämpa K2 (t.ex. vid direkta innehav av
+kryptotillgångar från räkenskapsår som börjar efter 2025-12-31, BFNAR 2025:2) sätter
+regelverket per räkenskapsår:
+
+```powershell
+Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear '2026-09_2027-08' -Framework K3 `
+    -Ownership 'Anna Andersson äger samtliga aktier.' `
+    -TransitionNote 'Innehavet av kryptotillgångar har omklassificerats från andra långfristiga värdepappersinnehav till kryptotillgångar.'
+```
+
+Med K3 ändras årsredovisningen så här:
+
+- **Principer:** K3-texten från `Get-LedgerAccountingPrinciples -Framework K3` samt
+  principer för de poster bolaget har: kryptotillgångar (anskaffningsvärde, ingen
+  avskrivning, nedskrivningsprövning), övriga immateriella och materiella
+  anläggningstillgångar, finansiella anläggningstillgångar och inkomstskatter
+  (aktuell och uppskjuten skatt, plus `DeferredTaxStatement`).
+- **Övergång till K3:** första K3-året (föregående år är inte K3) får en not med
+  övergångstidpunkt (årets första dag) och upplysning om att jämförelsetalen inte
+  räknats om (ÅRL 3 kap. 5 § fjärde stycket), plus `TransitionNote`.
+- **Resultaträkning:** ÅRL bilaga 2:s rubriker för finansiella poster, med
+  "Nedskrivningar av finansiella anläggningstillgångar och kortfristiga placeringar"
+  (8070–8089, 8170–8189, 8270–8289, 8370–8389) på egen rad.
+- **Balansräkning:** immateriella anläggningstillgångar uppdelade enligt ÅRL bilaga 1.
+  1090–1099 får namnet på det första kontot i intervallet (t.ex. `1090
+  Kryptotillgångar`). Kontonamn som innehåller "krypto" eller "bitcoin" ger
+  kryptoprincipen. Maskiner (1200–1219) och inventarier (1220–1279, 1290–1299) redovisas separat,
+  liksom uppskjuten skattefordran (1370–1379), aktuella skattefordringar (1640–1649 och
+  debetsaldo på 2500–2599) och avsättningar för skatter (2240–2259).
+- **Noter:** en anläggningsnot per BAS-kontogrupp (x0–x7 anskaffning, x8–x9 av- och
+  nedskrivningar), och alltid ställda säkerheter och eventualförpliktelser.
+
+Övergången bokförs genom att flytta tillgången till rätt konto i det nya årets
+ingående balans eller med en verifikation på årets första dag. Jämförelsetalen
+redovisas oförändrade.
 
 ---
 
@@ -282,7 +331,7 @@ som ingående balans. Föregående års resultat ligger kvar i 2099:s ingående 
 
 ## Att tänka på
 
-- **Omföring 2099 → 2091:** eget kapital-noten och vinstdispositionen förutsätter att
+- **Omföring 2099 → 2091:** eget kapital-tabellen och vinstdispositionen förutsätter att
   du **inte** bokför en manuell omföring av föregående års resultat (2099 → 2091) mitt
   i året. Föregående års resultat behandlas som ingående balanserat resultat via 2099:s
   ingående balans. Bokför du en manuell omföring dubbelräknas beloppet.
@@ -316,7 +365,7 @@ som ingående balans. Föregående års resultat ligger kvar i 2099:s ingående 
 | `Get-LedgerFixedAssetNote` | Anläggningsnot (rörelse) |
 | `Get-LedgerShareholdingNote` | Not för aktier och andelar |
 | `Get-LedgerEmployeeNote` | Not för medelantal anställda |
-| `Get-LedgerAccountingPrinciples` | K2 redovisnings- och värderingsprinciper |
+| `Get-LedgerAccountingPrinciples` | K2- eller K3-redovisningsprinciper (`-Framework`) |
 | `Get-LedgerAnnualReport` | Kombinerad resultat + balans med jämförelseår |
 | `Export-LedgerAnnualReport` | Exportera hela årsredovisningen (Text/Markdown/Word) |
 | `Close-LedgerFiscalYear` | Stäng och lås räkenskapsåret |
