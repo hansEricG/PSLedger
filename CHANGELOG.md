@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+- Help examples for `New-LedgerEntryRow` and `Add-LedgerEntry`: the pipeline
+  example only piped the last row (so the entry did not balance), and the office
+  rent example credited input VAT (2640) instead of debiting it. The README
+  quick-start now books the consulting invoice against 1510 with output VAT, and
+  the row-comment example pays rent from 1930 instead of the cash account.
+
 ## [0.11.0] - 2026-09-26
 
 ### Added

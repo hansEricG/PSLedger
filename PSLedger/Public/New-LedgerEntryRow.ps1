@@ -49,20 +49,26 @@ Builds a debit row with a per-row comment describing what the amount refers to.
 .EXAMPLE
 $rows = @(
     New-LedgerEntryRow -Debit  '5010' 8000 -Objects @{ 1 = 'sthlm' }
-    New-LedgerEntryRow -Credit '2440' 6400
-    New-LedgerEntryRow -Credit '2640' 1600
+    New-LedgerEntryRow -Debit  '2640' 2000
+    New-LedgerEntryRow -Credit '2440' 10000
 )
 Add-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Date '2024-03-20' -Description 'Hyra kontor' -Rows $rows
 
-Records an office rent invoice with VAT split across accounts, tagging the cost
-row with a cost-centre object, without juggling minus signs.
+Records a supplier invoice for office rent (8000 plus 25 % VAT): the rent and
+the input VAT (2640) are debited, the total is credited to accounts payable
+(2440), and the cost row is tagged with a cost-centre object, without juggling
+minus signs.
 
 .EXAMPLE
-New-LedgerEntryRow -Debit '1910' 5000
-New-LedgerEntryRow -Credit '3010' 5000 |
+@(
+    New-LedgerEntryRow -Debit  '1910' 5000
+    New-LedgerEntryRow -Credit '3010' 5000
+) |
     Add-LedgerEntry -FiscalYear '2024-01_2024-12' -Date '2024-03-15' -Description 'Kontantförsäljning'
 
-Pipes rows straight into Add-LedgerEntry to record a cash sale.
+Pipes both rows into Add-LedgerEntry, which collects them into a single
+verification recording a cash sale. Both rows must be in the same pipeline;
+a row written on a line of its own is not passed to Add-LedgerEntry.
 #>
 function New-LedgerEntryRow {
     [CmdletBinding(DefaultParameterSetName = 'Debit')]

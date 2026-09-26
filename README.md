@@ -42,16 +42,18 @@ New-LedgerFiscalYear -StartDate '2024-01-01' -EndDate '2024-12-31'
 
 # 5. Add entries — either as hashtables...
 $rows = @(
-    @{ Account = '1910'; Amount = 50000 }
+    @{ Account = '1510'; Amount = 62500 }
     @{ Account = '3040'; Amount = -50000 }
+    @{ Account = '2610'; Amount = -12500 }
 )
 Add-LedgerEntry -FiscalYear '2024-01_2024-12' `
     -Date '2024-03-15' -Description 'Konsultarvode faktura #101' -Rows $rows
 
 # ...or with New-LedgerEntryRow so you never juggle the debit/credit sign
 $rows = @(
-    New-LedgerEntryRow -Debit  '1910' 50000
+    New-LedgerEntryRow -Debit  '1510' 62500
     New-LedgerEntryRow -Credit '3040' 50000
+    New-LedgerEntryRow -Credit '2610' 12500
 )
 Add-LedgerEntry -FiscalYear '2024-01_2024-12' `
     -Date '2024-03-15' -Description 'Konsultarvode faktura #101' -Rows $rows
@@ -266,7 +268,7 @@ amount refers to. Comments round-trip through `Get-LedgerEntry` as the row's
 # Via New-LedgerEntryRow
 $rows = @(
     New-LedgerEntryRow -Debit  '5010' 8000 -Comment 'Hyra mars, Sveavägen'
-    New-LedgerEntryRow -Credit '1910' 8000
+    New-LedgerEntryRow -Credit '1930' 8000
 )
 Add-LedgerEntry -FiscalYear '2024-01_2024-12' -Date '2024-03-01' `
     -Description 'Hyra' -Rows $rows
@@ -274,7 +276,7 @@ Add-LedgerEntry -FiscalYear '2024-01_2024-12' -Date '2024-03-01' `
 # ...or as a Comment key on a row hashtable
 $rows = @(
     @{ Account = '5010'; Amount = 8000; Comment = 'Hyra mars' }
-    @{ Account = '1910'; Amount = -8000 }
+    @{ Account = '1930'; Amount = -8000 }
 )
 
 # Read the comment back

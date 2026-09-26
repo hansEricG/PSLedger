@@ -49,17 +49,20 @@ Records a cash sale: debit 1910 (Kassa), credit 3010 (Försäljning).
 .EXAMPLE
 $rows = @(
     @{ Account = '5010'; Amount = 8000 }
-    @{ Account = '2440'; Amount = -6400 }
-    @{ Account = '2640'; Amount = -1600 }
+    @{ Account = '2640'; Amount = 2000 }
+    @{ Account = '2440'; Amount = -10000 }
 )
 Add-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Date '2024-03-20' -Description 'Hyra kontor' -Rows $rows -Attachment .\hyresfaktura.pdf, .\betalbevis.pdf -PassThru
 
-Records an office rent invoice with VAT split across multiple accounts, attaches
-two files to the verification, and returns the created verification object.
+Records a supplier invoice for office rent (8000 plus 25 % VAT): debit 5010
+(Lokalhyra) and 2640 (Ingående moms), credit 2440 (Leverantörsskulder). Attaches
+two files to the verification and returns the created verification object.
 
 .EXAMPLE
-New-LedgerEntryRow -Debit '1910' 5000
-New-LedgerEntryRow -Credit '3010' 5000 |
+@(
+    New-LedgerEntryRow -Debit  '1910' 5000
+    New-LedgerEntryRow -Credit '3010' 5000
+) |
     Add-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Date '2024-03-15' -Description 'Kontantförsäljning'
 
 Builds rows with New-LedgerEntryRow and pipes them straight into Add-LedgerEntry,
