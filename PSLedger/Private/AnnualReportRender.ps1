@@ -80,8 +80,9 @@ function ConvertTo-LedgerReportText {
             }
             'Table' {
                 $cols = $b.Header.Count
+                $headerCells = @($b.Header | ForEach-Object { ([string]$_) -replace "`n", ' ' })
                 $widths = New-Object 'int[]' $cols
-                for ($c = 0; $c -lt $cols; $c++) { $widths[$c] = ([string]$b.Header[$c]).Length }
+                for ($c = 0; $c -lt $cols; $c++) { $widths[$c] = $headerCells[$c].Length }
                 foreach ($row in $b.Rows) {
                     for ($c = 0; $c -lt $cols; $c++) {
                         $len = ([string]$row[$c]).Length
@@ -103,7 +104,7 @@ function ConvertTo-LedgerReportText {
                     }
                     $line.TrimEnd()
                 }
-                & $append (& $formatLine $b.Header)
+                & $append (& $formatLine $headerCells)
                 for ($i = 0; $i -lt $b.Rows.Count; $i++) {
                     $style = Get-LedgerReportRowStyle -Block $b -Index $i
                     if ($style -eq 'Section' -and $i -gt 0) { & $append '' }
@@ -155,7 +156,7 @@ function ConvertTo-LedgerReportMarkdown {
             }
             'Table' {
                 $cols = $b.Header.Count
-                & $append ('| ' + ($b.Header -join ' | ') + ' |')
+                & $append ('| ' + (($b.Header | ForEach-Object { ([string]$_) -replace "`n", ' ' }) -join ' | ') + ' |')
                 $divider = @()
                 for ($c = 0; $c -lt $cols; $c++) {
                     $align = if ($b.Align) { $b.Align[$c] } else { 'left' }
@@ -202,7 +203,9 @@ function ConvertTo-LedgerReportDocx {
     function New-Run {
         param ([string]$Text, [switch]$Bold)
         $rPr = if ($Bold) { '<w:rPr><w:b/><w:bCs/></w:rPr>' } else { '' }
-        "<w:r>$rPr<w:t xml:space=""preserve"">$(Escape-Xml $Text)</w:t></w:r>"
+        # A newline in the text becomes a line break (used for period column headers).
+        $parts = foreach ($line in ($Text -split "`n")) { "<w:t xml:space=""preserve"">$(Escape-Xml $line)</w:t>" }
+        "<w:r>$rPr$($parts -join '<w:br/>')</w:r>"
     }
 
     function New-Paragraph {
@@ -257,6 +260,9 @@ function ConvertTo-LedgerReportDocx {
                     $isFirstCover = $false
                     [void]$body.Append((New-Paragraph -Text $b.Text -Style $style -Align 'center'))
                 }
+                elseif ($b.KeepNext) {
+                    [void]$body.Append((New-Paragraph -Text $b.Text -ExtraPPr '<w:keepNext/>'))
+                }
                 else {
                     [void]$body.Append((New-Paragraph -Text $b.Text))
                 }
@@ -283,7 +289,7 @@ function ConvertTo-LedgerReportDocx {
                     foreach ($name in @($names[$i], $(if ($i + 1 -lt $names.Count) { $names[$i + 1] } else { $null }))) {
                         [void]$tbl.Append("<w:tc><w:tcPr><w:tcW w:w=""$cellWidth"" w:type=""dxa""/></w:tcPr>")
                         if ($name) {
-                            [void]$tbl.Append('<w:p><w:pPr><w:spacing w:before="720" w:after="0"/></w:pPr></w:p>')
+                            [void]$tbl.Append('<w:p><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="0" w:line="720" w:lineRule="exact"/></w:pPr></w:p>')
                             [void]$tbl.Append((New-Paragraph -Text $name -ExtraPPr ("<w:pBdr>$(& $border 'top' 6)</w:pBdr><w:ind w:right=""720""/>")))
                         }
                         else {
@@ -336,8 +342,8 @@ function ConvertTo-LedgerReportDocx {
                     [void]$tbl.Append((& $makeRow $b.Rows[$i] -RowStyle $style -KeepNext:$keep))
                 }
                 [void]$tbl.Append('</w:tbl>')
-                # A table must be followed by a paragraph in Word.
-                [void]$tbl.Append('<w:p/>')
+                # A table must be followed by a paragraph in Word; a 6 pt one gives just enough air.
+                [void]$tbl.Append('<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="120" w:lineRule="exact"/></w:pPr></w:p>')
                 [void]$body.Append($tbl.ToString())
             }
         }

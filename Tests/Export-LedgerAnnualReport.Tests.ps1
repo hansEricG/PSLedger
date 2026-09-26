@@ -119,7 +119,7 @@ Describe 'Export-LedgerAnnualReport' {
             $bal | Should -Match 'Balanserat resultat\s+\d\s+170.000\s+0'
             $bal | Should -Match 'Årets resultat\s+\d\s+210.000\s+170.000'
             $bal | Should -Match 'Summa eget kapital och skulder\s+480.000\s+270.000'
-            $bal | Should -Not -Match '[−-]\d'
+            $bal | Should -Not -Match '(?<!\d)[−-]\d'
             $bal | Should -Not -Match '(?m)^Resultat\s'
         }
 
@@ -137,6 +137,74 @@ Describe 'Export-LedgerAnnualReport' {
             $content | Should -Match 'Anna Andersson'
             $content | Should -Match 'Bertil Bengtsson'
             $content | Should -Match 'Fastställelseintyg'
+        }
+
+        It 'Should use the K2 line items, subtotals and equity split in the statements' {
+            $content = Get-Content (Join-Path $TestDrive 'report.txt') -Raw
+            $inc = $content.Substring($content.IndexOf('Resultaträkning'))
+            $inc = $inc.Substring(0, $inc.IndexOf('Balansräkning'))
+            $inc | Should -Match '2024-09-01 – 2025-08-31\s+2023-09-01 – 2024-08-31'
+            $inc | Should -Match 'Övriga externa kostnader\s+−40.000\s+−30.000'
+            $inc | Should -Match '(?m)^Rörelseresultat\s+210.000\s+170.000'
+
+            $bal = $content.Substring($content.IndexOf('Balansräkning'))
+            $bal = $bal.Substring(0, $bal.IndexOf('Noter'))
+            $bal | Should -Match 'Not\s+2025-08-31\s+2024-08-31'
+            $bal | Should -Match 'Finansiella anläggningstillgångar'
+            $bal | Should -Match 'Andra långfristiga värdepappersinnehav\s+1, 2\s+80.000\s+80.000'
+            $bal | Should -Match 'Summa anläggningstillgångar\s+80.000\s+80.000'
+            $bal | Should -Match 'Kassa och bank\s+400.000\s+190.000'
+            $bal | Should -Match 'Summa omsättningstillgångar\s+400.000\s+190.000'
+            $bal | Should -Match 'Bundet eget kapital'
+            $bal | Should -Match 'Fritt eget kapital'
+            $bal | Should -Not -Match 'Summa kortfristiga skulder'
+        }
+
+        It 'Should show soliditet in the flerårsöversikt and the closing sentence of the förvaltningsberättelse' {
+            $content = Get-Content (Join-Path $TestDrive 'report.txt') -Raw
+            $content | Should -Match 'Soliditet \(%\)\s+100,0\s+100,0'
+            $content | Should -Match 'Bolagets resultat och ställning i övrigt framgår av efterföljande resultat- och balansräkning'
+        }
+
+        It 'Should show comparison figures in the fixed-asset note' {
+            $content = Get-Content (Join-Path $TestDrive 'report.txt') -Raw
+            $content | Should -Match 'Ingående anskaffningsvärde\s+80.000\s+0'
+            $content | Should -Match 'Årets inköp\s+0\s+80.000'
+        }
+
+        It 'Should include the comparative figures note when recorded' {
+            Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy2 -ComparativeFiguresNote 'Jämförelsetalen har rättats.'
+            try {
+                $out = Join-Path $TestDrive 'comparatives.txt'
+                Export-LedgerAnnualReport -JournalPath $jp -FiscalYear $fy2 -Path $out
+                (Get-Content $out -Raw) | Should -Match 'Jämförelsetal\s+Jämförelsetalen har rättats\.'
+            }
+            finally {
+                Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy2 -ComparativeFiguresNote ''
+            }
+        }
+
+        It 'Should split the financial items into the statutory lines' {
+            $fp = Join-Path $TestDrive 'fin.ledger'
+            New-LedgerJournal -Path $fp -Name 'Finans AB' -OrgNumber '556000-0001' -CompanyType 'AB'
+            foreach ($a in @(@('1930', 'Företagskonto'), @('2081', 'Aktiekapital'), @('8210', 'Utdelning'), @('8271', 'Nedskrivning'), @('8311', 'Ränteintäkter'), @('8410', 'Räntekostnader'))) {
+                Add-LedgerAccount -JournalPath $fp -AccountNumber $a[0] -AccountName $a[1]
+            }
+            New-LedgerFiscalYear -JournalPath $fp -StartDate '2025-01-01' -EndDate '2025-12-31'
+            $ffy = '2025-01_2025-12'
+            Add-LedgerEntry -JournalPath $fp -FiscalYear $ffy -Date '2025-01-01' -Description 'Aktiekapital' -Rows @(
+                @{ Account = '1930'; Amount = 50000 }, @{ Account = '2081'; Amount = -50000 })
+            Add-LedgerEntry -JournalPath $fp -FiscalYear $ffy -Date '2025-06-01' -Description 'Finansiellt' -Rows @(
+                @{ Account = '1930'; Amount = 2000 }, @{ Account = '8210'; Amount = -5000 }, @{ Account = '8271'; Amount = 3500 },
+                @{ Account = '8311'; Amount = -700 }, @{ Account = '8410'; Amount = 200 })
+            $out = Join-Path $TestDrive 'fin.txt'
+            Export-LedgerAnnualReport -JournalPath $fp -FiscalYear $ffy -Path $out
+            $content = Get-Content $out -Raw
+            $content | Should -Match 'Resultat från övriga finansiella anläggningstillgångar\s+1.500'
+            $content | Should -Match 'Övriga ränteintäkter och liknande resultatposter\s+700'
+            $content | Should -Match 'Räntekostnader och liknande resultatposter\s+−200'
+            $content | Should -Match 'Resultat efter finansiella poster\s+2.000'
+            $content | Should -Not -Match 'Resultat före skatt'
         }
 
         It 'Should place the fastställelseintyg on the cover, before the förvaltningsberättelse' {

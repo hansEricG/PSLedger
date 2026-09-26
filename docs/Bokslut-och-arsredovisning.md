@@ -164,6 +164,7 @@ Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear $fy `
 | `AnnualMeetingDate` | Årsstämmans datum i fastställelseintyget på försättsbladet (tom linje om det saknas) |
 | `CertificatePlace` | Ort i fastställelseintyget. Standard är bolagets säte (`RegisteredOffice`) |
 | `CertificateSigner` | Styrelseledamot som skriver under fastställelseintyget. Standard är den första i `BoardMembers` |
+| `ComparativeFiguresNote` | Upplysning under rubriken Jämförelsetal i noterna, t.ex. när jämförelsetalen har rättats |
 
 Läs tillbaka värdena:
 
@@ -309,7 +310,7 @@ som ingående balans. Föregående års resultat ligger kvar i 2099:s ingående 
 | `Set-LedgerReportInput` / `Get-LedgerReportInput` | Årsspecifik text och beslut (report.txt) |
 | `Get-LedgerIncomeStatement` | Resultaträkning |
 | `Get-LedgerBalanceSheet -Detailed` | Balansräkning med uppdelat eget kapital |
-| `Get-LedgerMultiYearOverview` | Flerårsöversikt |
+| `Get-LedgerMultiYearOverview` | Flerårsöversikt, inklusive soliditet |
 | `Get-LedgerProfitDisposition` | Förslag till vinstdisposition |
 | `Get-LedgerEquityReconciliation` | Förändring av eget kapital |
 | `Get-LedgerFixedAssetNote` | Anläggningsnot (rörelse) |

@@ -99,4 +99,24 @@ Describe 'Get-LedgerMultiYearOverview' {
             $rows[0].YearLabel | Should -Be '2024/2025'
         }
     }
+
+    Context 'Behavior for soliditet' {
+        BeforeAll {
+            $jp = Join-Path $TestDrive 'soliditet.ledger'
+            New-LedgerJournal -Path $jp -Name 'Soliditet AB' -OrgNumber '556000-0002' -CompanyType 'AB'
+            foreach ($a in @(@('1930', 'Bank'), @('2081', 'Aktiekapital'), @('2110', 'Periodiseringsfond'), @('2440', 'Leverantörsskulder'))) {
+                Add-LedgerAccount -JournalPath $jp -AccountNumber $a[0] -AccountName $a[1]
+            }
+            New-LedgerFiscalYear -JournalPath $jp -StartDate '2025-01-01' -EndDate '2025-12-31'
+            Add-LedgerEntry -JournalPath $jp -FiscalYear '2025-01_2025-12' -Date '2025-01-01' -Description 'Start' -Rows @(
+                @{ Account = '1930'; Amount = 200000 }, @{ Account = '2081'; Amount = -100000 },
+                @{ Account = '2110'; Amount = -50000 }, @{ Account = '2440'; Amount = -50000 })
+        }
+
+        It 'Should report soliditet as adjusted equity in percent of total assets' {
+            $row = Get-LedgerMultiYearOverview -JournalPath $jp -FiscalYear '2025-01_2025-12'
+            # (100 000 + 0.794 * 50 000) / 200 000 = 69.85 %
+            $row.EquityRatio | Should -Be 69.9
+        }
+    }
 }

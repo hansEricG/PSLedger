@@ -7,8 +7,14 @@ Produces one row per fiscal year for the requested number of years, ending with
 the specified fiscal year and reaching back over the immediately preceding years.
 Each row reports the key figures shown in a printed flerårsöversikt:
 Nettoomsättning, Resultat efter finansiella poster and Årets resultat, plus the
-Balansomslutning (total assets). Figures are taken from Get-LedgerIncomeStatement
-and Get-LedgerBalanceSheet, so signs follow the same conventions.
+Balansomslutning (total assets) and Soliditet (EquityRatio). Figures are taken
+from Get-LedgerIncomeStatement and Get-LedgerBalanceSheet, so signs follow the
+same conventions.
+
+Soliditet is justerat eget kapital (equity plus 79.4 % of the untaxed reserves on
+accounts 2100-2199, i.e. net of deferred tax at 20.6 %) as a percentage of total
+assets, rounded to one decimal. K2 (BFNAR 2016:10) requires it in the
+flerårsöversikt. It is $null when total assets are zero.
 
 Rows are returned newest year first, matching how a flerårsöversikt is printed
 (current year in the leftmost column).
@@ -80,6 +86,19 @@ function Get-LedgerMultiYearOverview {
             $netResult = ($Income | Where-Object { $_.Group -eq 'NetResult' }).Amount
             $totalAssets = ($Balance | Where-Object { $_.Group -eq 'TotalAssets' }).Amount
 
+            # Equity in the balance sheet has natural (credit = negative) signs and
+            # the unclosed result sits on the result accounts.
+            $equity = -([decimal](($Balance | Where-Object { $_.Group -eq 'Equity' }).Amount) + [decimal](($Balance | Where-Object { $_.Group -eq 'Result' }).Amount))
+            $untaxed = [decimal]0
+            foreach ($row in @(Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $Name)) {
+                $n = 0
+                if ([int]::TryParse($row.AccountNumber, [ref]$n) -and $n -ge 2100 -and $n -le 2199) { $untaxed -= [decimal]$row.Balance }
+            }
+            $equityRatio = if ($totalAssets) {
+                [Math]::Round(($equity + 0.794 * $untaxed) / [decimal]$totalAssets * 100, 1, [MidpointRounding]::AwayFromZero)
+            }
+            else { $null }
+
             [PSCustomObject]@{
                 FiscalYear                = $Name
                 YearLabel                 = Format-LedgerYearLabel -FiscalYear $Name
@@ -87,6 +106,7 @@ function Get-LedgerMultiYearOverview {
                 ResultAfterFinancialItems = if ($null -ne $resultAfterFinancial) { [decimal]$resultAfterFinancial } else { [decimal]0 }
                 NetResult                 = if ($null -ne $netResult) { [decimal]$netResult } else { [decimal]0 }
                 TotalAssets               = if ($null -ne $totalAssets) { [decimal]$totalAssets } else { [decimal]0 }
+                EquityRatio               = $equityRatio
             }
         }
     }

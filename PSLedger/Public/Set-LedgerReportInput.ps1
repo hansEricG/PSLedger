@@ -58,6 +58,11 @@ registered office (RegisteredOffice in the journal metadata).
 The board member who signs the fastställelseintyg. Defaults to the first board
 member in the journal metadata.
 
+.PARAMETER ComparativeFiguresNote
+An explanation shown under "Jämförelsetal" in the notes, for example when the
+comparison figures differ from the previously adopted annual report because an
+error has been corrected.
+
 .EXAMPLE
 Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' `
     -SignificantEvents 'Inga väsentliga händelser.' -SigningPlace 'Gävle'
@@ -112,7 +117,10 @@ function Set-LedgerReportInput {
         [string]$CertificatePlace,
 
         [Parameter()]
-        [string]$CertificateSigner
+        [string]$CertificateSigner,
+
+        [Parameter()]
+        [string]$ComparativeFiguresNote
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
@@ -128,7 +136,7 @@ function Set-LedgerReportInput {
         $order = @(
             'ProposedDividend', 'AverageEmployees', 'SecuritiesMarketValue',
             'SigningPlace', 'SigningDate', 'AnnualMeetingDate', 'CertificatePlace',
-            'CertificateSigner', 'SignificantEvents'
+            'CertificateSigner', 'ComparativeFiguresNote', 'SignificantEvents'
         )
         $supplied = @{
             ProposedDividend      = $PSBoundParameters.ContainsKey('ProposedDividend')
@@ -139,6 +147,7 @@ function Set-LedgerReportInput {
             AnnualMeetingDate     = $PSBoundParameters.ContainsKey('AnnualMeetingDate')
             CertificatePlace      = $PSBoundParameters.ContainsKey('CertificatePlace')
             CertificateSigner     = $PSBoundParameters.ContainsKey('CertificateSigner')
+            ComparativeFiguresNote = $PSBoundParameters.ContainsKey('ComparativeFiguresNote')
             SignificantEvents     = $PSBoundParameters.ContainsKey('SignificantEvents')
         }
         $values = @{
@@ -150,6 +159,7 @@ function Set-LedgerReportInput {
             AnnualMeetingDate     = $AnnualMeetingDate
             CertificatePlace      = $CertificatePlace
             CertificateSigner     = $CertificateSigner
+            ComparativeFiguresNote = $ComparativeFiguresNote
             SignificantEvents     = $SignificantEvents
         }
 
