@@ -229,7 +229,9 @@ function Get-LedgerHoldingValuation {
     - Holdings    : holdings in the account range, each with Difference and
                     BelowBookValue (only when the holding has a BookValue).
     - Accounts    : one row per account that has holdings, comparing the summed
-                    market value with the account's closing balance, and the
+                    market value with the account's closing balance (including
+                    value adjustment accounts in the same ten-group without
+                    holdings, e.g. 1359 for 1350), and the
                     summed holding BookValue (when every holding has one).
     - MarketValue : total market value of the holdings in the range ($null when
                     there are none).
@@ -262,10 +264,22 @@ function Get-LedgerHoldingValuation {
         foreach ($row in @(Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear)) {
             $balances[[string]$row.AccountNumber] = [decimal]$row.Balance
         }
+        $holdingAccounts = @($holdings | ForEach-Object { $_.Account } | Select-Object -Unique)
         $accountRows = foreach ($group in ($holdings | Group-Object Account | Sort-Object Name)) {
             $acc = $group.Name
             $market = [decimal](($group.Group | Measure-Object -Property MarketValue -Sum).Sum)
-            $ledger = if ($balances.ContainsKey($acc)) { $balances[$acc] } else { [decimal]0 }
+            # Book value includes value adjustment accounts in the same ten-group
+            # that carry no holdings themselves (e.g. 1359 write-downs for 1350).
+            # They are attributed to the group's first holding account only.
+            $prefix = $acc.Substring(0, $acc.Length - 1)
+            $groupHoldingAccounts = @($holdingAccounts | Where-Object { $_.Length -eq $acc.Length -and $_.StartsWith($prefix) } | Sort-Object)
+            $ownsAdjustments = $groupHoldingAccounts[0] -eq $acc
+            $ledger = [decimal]0
+            foreach ($key in $balances.Keys) {
+                if ($key -eq $acc -or ($ownsAdjustments -and $key.Length -eq $acc.Length -and $key.StartsWith($prefix) -and $key -notin $holdingAccounts)) {
+                    $ledger += $balances[$key]
+                }
+            }
             $withBook = @($group.Group | Where-Object { $null -ne $_.BookValue })
             $holdingsBook = if ($withBook.Count -eq $group.Count) {
                 [decimal](($withBook | Measure-Object -Property BookValue -Sum).Sum)

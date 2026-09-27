@@ -212,8 +212,10 @@ Get-LedgerHolding -JournalPath .\HEG.ledger -FiscalYear $fy |
   anläggningstillgångar (13xx) ska du bedöma om värdenedgången är bestående
   (nedskrivning enligt K2); för kortfristiga placeringar (18xx) gäller lägsta värdets
   princip. Nedskrivningen bokförs manuellt.
-- Nedskrivningar som bokförts på ett separat konto (t.ex. 1890) räknas inte in i
-  jämförelsen per konto — ange då `BookValue` per innehav.
+- Kontots bokförda värde inkluderar värderegleringskonton i samma tiotal som inte
+  själva har innehav (t.ex. 1359 för 1350). Nedskrivningar som bokförts på ett konto
+  i ett annat tiotal (t.ex. 1890 för 1810) räknas inte in i jämförelsen per konto —
+  ange då `BookValue` per innehav.
 - `Test-LedgerFiscalYear` innehåller kontrollerna `HoldingsValuation` och
   `HoldingsReconcile` (summan av `BookValue` mot kontosaldot och kursdatum mot
   balansdagen).

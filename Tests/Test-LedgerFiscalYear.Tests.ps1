@@ -245,6 +245,18 @@ Describe 'Test-LedgerFiscalYear' {
             (Get-CheckStatus (Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear) 'HoldingsReconcile') | Should -Be 'Pass'
         }
 
+        It 'Should include a value adjustment account in the same ten-group in the book value' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1359' -AccountName 'Värdereglering värdepapper'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '8271' -AccountName 'Nedskrivning värdepapper'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-12-31' -Description 'Nedskrivning Knowit' -Rows @(
+                @{ Account = '8271'; Amount = 40000 }, @{ Account = '1359'; Amount = -40000 })
+            Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Knowit' `
+                -Quantity 200 -Price 300 -PriceDate '2024-12-31' -BookValue 60000
+            $Results = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+            (Get-CheckStatus $Results 'HoldingsReconcile') | Should -Be 'Pass'
+            (Get-CheckStatus $Results 'HoldingsValuation') | Should -Be 'Pass'
+        }
+
         It 'Should warn when a price date is not the balance date' {
             Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Investor B' `
                 -Quantity 500 -Price 265.40 -PriceDate '2024-12-30'
