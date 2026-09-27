@@ -187,4 +187,70 @@ Describe 'Test-LedgerFiscalYear' {
             (Get-CheckStatus $Results 'OpeningBalanceMatchesPrevious') | Should -Be 'Warning'
         }
     }
+
+    Context 'Holdings' {
+        BeforeEach {
+            $JournalName = [System.IO.Path]::GetRandomFileName()
+            $JournalPath = Join-Path $TestDrive "$JournalName.ledger"
+            $FiscalYear = '2024-01_2024-12'
+            New-CheckJournal -Path $JournalPath
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1350' -AccountName 'Andelar och värdepapper'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1810' -AccountName 'Andelar i börsnoterade företag'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-02-01' -Description 'Köp värdepapper' -Rows @(
+                @{ Account = '1350'; Amount = 100000 }, @{ Account = '1810'; Amount = 10000 }, @{ Account = '1910'; Amount = -110000 })
+        }
+
+        It 'Should report Info when there are no holdings' {
+            $Results = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+            (Get-CheckStatus $Results 'HoldingsValuation') | Should -Be 'Info'
+            (Get-CheckStatus $Results 'HoldingsReconcile') | Should -Be 'Info'
+        }
+
+        It 'Should pass when holdings are above book value and reconcile' {
+            Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Investor B' `
+                -Quantity 500 -Price 265.40 -PriceDate '2024-12-31' -BookValue 100000
+            $Results = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+            (Get-CheckStatus $Results 'HoldingsValuation') | Should -Be 'Pass'
+            (Get-CheckStatus $Results 'HoldingsReconcile') | Should -Be 'Pass'
+        }
+
+        It 'Should warn about a lasting decline for a financial fixed asset below book value' {
+            Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Investor B' -Quantity 300 -Price 265.40
+            $Results = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $Check = $Results | Where-Object Check -eq 'HoldingsValuation'
+            $Check.Status | Should -Be 'Warning'
+            $Check.Detail | Should -Match 'Account 1350.*lasting'
+        }
+
+        It 'Should warn about the lower of cost and market value for a short-term holding' {
+            Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1810 -Name 'Spiltan Räntefond' -Quantity 800 -Price 11.83
+            $Check = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear | Where-Object Check -eq 'HoldingsValuation'
+            $Check.Status | Should -Be 'Warning'
+            $Check.Detail | Should -Match 'Account 1810.*lägsta värdets princip'
+        }
+
+        It 'Should warn when the holdings book values do not match the ledger balance' {
+            Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Investor B' `
+                -Quantity 500 -Price 265.40 -PriceDate '2024-12-31' -BookValue 90000
+            $Check = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear | Where-Object Check -eq 'HoldingsReconcile'
+            $Check.Status | Should -Be 'Warning'
+            $Check.Detail | Should -Match 'does not match the ledger balance'
+        }
+
+        It 'Should not reconcile book values when some holdings on the account lack one' {
+            Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Investor B' `
+                -Quantity 500 -Price 265.40 -PriceDate '2024-12-31' -BookValue 60000
+            Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Atlas Copco A' `
+                -Quantity 100 -Price 150 -PriceDate '2024-12-31'
+            (Get-CheckStatus (Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear) 'HoldingsReconcile') | Should -Be 'Pass'
+        }
+
+        It 'Should warn when a price date is not the balance date' {
+            Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Investor B' `
+                -Quantity 500 -Price 265.40 -PriceDate '2024-12-30'
+            $Check = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear | Where-Object Check -eq 'HoldingsReconcile'
+            $Check.Status | Should -Be 'Warning'
+            $Check.Detail | Should -Match 'not the balance date 2024-12-31'
+        }
+    }
 }

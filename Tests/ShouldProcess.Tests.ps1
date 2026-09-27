@@ -21,7 +21,8 @@ Describe 'SupportsShouldProcess coverage' {
             'New-LedgerPayslip', 'Add-LedgerAttachment', 'Add-LedgerDocument',
             # Orchestrators / removers
             'Invoke-LedgerInvoicePosting', 'Invoke-LedgerPayrollPosting', 'Invoke-LedgerSupplierInvoicePosting',
-            'Invoke-LedgerRecurringEntry', 'Import-LedgerSie', 'Remove-LedgerRecurringEntry'
+            'Invoke-LedgerRecurringEntry', 'Import-LedgerSie', 'Remove-LedgerRecurringEntry',
+            'Set-LedgerHolding', 'Remove-LedgerHolding'
         )
 
         It '<_> supports ShouldProcess' -ForEach $WriteCommands {

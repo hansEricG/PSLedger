@@ -33,6 +33,7 @@ PSLedger is a double-entry bookkeeping system that stores all data as **plain te
 └── <yyyy-MM>_<yyyy-MM>/ # Fiscal year directory
     ├── year.txt         # StartDate, EndDate, Status
     ├── ib.txt           # Opening balance metadata (tab-separated: number\tamount), optional
+    ├── holdings.txt     # Securities holdings at the balance date (tab-separated with header row), optional
     ├── ver0001.txt      # Verification (entry) files
     └── ver0002.txt
 ```

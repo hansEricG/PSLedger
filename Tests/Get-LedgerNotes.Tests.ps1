@@ -54,6 +54,72 @@ Describe 'Get-LedgerShareholdingNote' {
             $note = Get-LedgerShareholdingNote -JournalPath $jp -FiscalYear '2024-01_2024-12' -FromAccount 1800 -ToAccount 1899
             $note.BookValue | Should -Be 0
         }
+
+        It 'Should report ReportInput as the market value source' {
+            $note = Get-LedgerShareholdingNote -JournalPath $jp -FiscalYear '2024-01_2024-12'
+            $note.MarketValueSource | Should -Be 'ReportInput'
+        }
+    }
+
+    Context 'Holdings' {
+        BeforeEach {
+            $hp = Join-Path $TestDrive ([guid]::NewGuid().ToString('N') + '.ledger')
+            $hy = '2024-01_2024-12'
+            New-LedgerJournal -Path $hp -Name 'Aktier AB' -OrgNumber '556000-0004' -CompanyType 'AB'
+            Add-LedgerAccount -JournalPath $hp -AccountNumber '1350' -AccountName 'Andelar i värdepapper'
+            Add-LedgerAccount -JournalPath $hp -AccountNumber '1810' -AccountName 'Andelar i börsnoterade företag'
+            Add-LedgerAccount -JournalPath $hp -AccountNumber '1930' -AccountName 'Företagskonto'
+            New-LedgerFiscalYear -JournalPath $hp -StartDate '2024-01-01' -EndDate '2024-12-31'
+            Add-LedgerEntry -JournalPath $hp -FiscalYear $hy -Date '2024-02-01' -Description 'Köp värdepapper' -Rows @(
+                @{ Account = '1350'; Amount = 200000 }, @{ Account = '1810'; Amount = 10000 }, @{ Account = '1930'; Amount = -210000 })
+            Set-LedgerHolding -JournalPath $hp -FiscalYear $hy -Account 1350 -Name 'Investor B' -Quantity 500 -Price 265.40
+            Set-LedgerHolding -JournalPath $hp -FiscalYear $hy -Account 1350 -Name 'Vanguard FTSE All-World' -Quantity 100 -Price 100 -Currency USD -FxRate 10
+            Set-LedgerHolding -JournalPath $hp -FiscalYear $hy -Account 1810 -Name 'Spiltan Räntefond' -Quantity 1000 -Price 11.83
+        }
+
+        It 'Should use the holdings total within the account range' {
+            $note = Get-LedgerShareholdingNote -JournalPath $hp -FiscalYear $hy
+            $note.MarketValue | Should -Be 232700
+            $note.MarketValueSource | Should -Be 'Holdings'
+        }
+
+        It 'Should use the holdings of a custom account range' {
+            $note = Get-LedgerShareholdingNote -JournalPath $hp -FiscalYear $hy -FromAccount 1800 -ToAccount 1899
+            $note.MarketValue | Should -Be 11830
+            $note.BookValue | Should -Be 10000
+        }
+
+        It 'Should prefer the holdings over SecuritiesMarketValue and warn when they differ' {
+            Set-LedgerReportInput -JournalPath $hp -FiscalYear $hy -SecuritiesMarketValue '300000'
+            $note = Get-LedgerShareholdingNote -JournalPath $hp -FiscalYear $hy -WarningVariable w -WarningAction SilentlyContinue
+            $note.MarketValue | Should -Be 232700
+            ($w -join ' ') | Should -Match 'differs from the holdings total'
+        }
+
+        It 'Should still let -MarketValue override the holdings' {
+            $note = Get-LedgerShareholdingNote -JournalPath $hp -FiscalYear $hy -MarketValue 1
+            $note.MarketValue | Should -Be 1
+            $note.MarketValueSource | Should -Be 'Parameter'
+        }
+
+        It 'Should warn when an account is below book value' {
+            Set-LedgerHolding -JournalPath $hp -FiscalYear $hy -Account 1810 -Name 'Spiltan Räntefond' -Price 9
+            $null = Get-LedgerShareholdingNote -JournalPath $hp -FiscalYear $hy -FromAccount 1800 -ToAccount 1899 -WarningVariable w -WarningAction SilentlyContinue
+            ($w -join ' ') | Should -Match 'Account 1810: market value 9000.00 is below book value 10000.00'
+            ($w -join ' ') | Should -Match 'lägsta värdets princip'
+        }
+
+        It 'Should warn when a single holding is below its book value' {
+            Set-LedgerHolding -JournalPath $hp -FiscalYear $hy -Account 1350 -Name 'Vanguard FTSE All-World' -BookValue 110000
+            $null = Get-LedgerShareholdingNote -JournalPath $hp -FiscalYear $hy -WarningVariable w -WarningAction SilentlyContinue
+            ($w -join ' ') | Should -Match "Holding 'Vanguard FTSE All-World' \(1350\).*nedskrivning, K2"
+            ($w -join ' ') | Should -Not -Match 'Account 1350'
+        }
+
+        It 'Should not warn when all holdings are above book value' {
+            $null = Get-LedgerShareholdingNote -JournalPath $hp -FiscalYear $hy -WarningVariable w -WarningAction SilentlyContinue
+            $w | Should -BeNullOrEmpty
+        }
     }
 }
 

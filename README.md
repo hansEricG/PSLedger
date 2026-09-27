@@ -100,6 +100,9 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerCompanyProfile` | Stable company info for the annual report (säte, aktier, styrelse) |
 | `Set-LedgerReportInput` | Store year-specific annual report input (report.txt) |
 | `Get-LedgerReportInput` | Read year-specific annual report input |
+| `Set-LedgerHolding` | Record or update a securities holding at the balance date (holdings.txt) |
+| `Get-LedgerHolding` | List holdings with market value and comparison to book value |
+| `Remove-LedgerHolding` | Remove a securities holding |
 | `Copy-LedgerOpeningBalance` | Roll over balances to a new year |
 | `Update-LedgerJournal` | Migrate a journal to the current on-disk format |
 | `Backup-LedgerJournal` | Create a timestamped zip backup (with retention) |
@@ -174,7 +177,10 @@ document. Stable company facts (registered office, object of the business, numbe
 of shares, board members) live in the journal metadata; year-specific narrative
 and decisions (significant events, proposed dividend, average employees, market
 value of securities, signing place/date) live in an optional per-year `report.txt`
-set with `Set-LedgerReportInput`.
+set with `Set-LedgerReportInput`. Securities holdings can be recorded per balance
+date with `Set-LedgerHolding` (`holdings.txt`); their total market value then
+replaces the manual `SecuritiesMarketValue`, and holdings below book value are
+flagged for impairment assessment.
 
 Fixed-asset and shareholding notes are auto-detected from the standard BAS account
 ranges — a note is only included when the relevant accounts carry a balance.
@@ -651,6 +657,8 @@ MinFirma.ledger/
 └── 2024-01_2024-12/         # Fiscal year
     ├── year.txt             # StartDate, EndDate, Status
     ├── ib.txt               # Opening balance metadata (optional)
+    ├── report.txt           # Annual report input (optional)
+    ├── holdings.txt         # Securities holdings at the balance date (optional)
     ├── ver0001.txt          # Verification #1
     └── ver0002.txt          # Verification #2
 ```

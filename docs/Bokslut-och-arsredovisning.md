@@ -21,7 +21,7 @@ verifikationer).
 | 1 | Kontrollera att böckerna balanserar | `Get-LedgerBalance` |
 | 2 | Bokför bokslutstransaktioner (avskrivningar, skatt, bokslutsdispositioner) | `Add-LedgerDepreciation`, `Get-LedgerTaxEstimate`, `Add-LedgerTaxEntry`, `Add-LedgerAppropriation` |
 | 3 | Registrera bolagsuppgifter (en gång) | `Set-LedgerJournal -Metadata` |
-| 4 | Registrera årets berättelse och beslut | `Set-LedgerReportInput` |
+| 4 | Registrera årets berättelse och beslut | `Set-LedgerReportInput`, `Set-LedgerHolding` |
 | 5 | Granska rapporterna | `Get-LedgerIncomeStatement`, `Get-LedgerBalanceSheet -Detailed`, `Get-LedgerAnnualReport` |
 | 6 | Exportera årsredovisningen | `Export-LedgerAnnualReport` |
 | 7 | Stäng räkenskapsåret | `Close-LedgerFiscalYear` |
@@ -159,7 +159,7 @@ Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear $fy `
 | `SignificantEvents` | Rubriken "Väsentliga händelser under räkenskapsåret" |
 | `ProposedDividend` | Föreslagen utdelning i vinstdispositionen |
 | `AverageEmployees` | Personalnoten (medelantal anställda) |
-| `SecuritiesMarketValue` | Not för aktier och andelar (marknadsvärde). Om satt tas noten med automatiskt |
+| `SecuritiesMarketValue` | Not för aktier och andelar (marknadsvärde). Om satt tas noten med automatiskt. Används bara om inga innehav är registrerade, se [Innehav och marknadsvärde](#innehav-och-marknadsvärde) |
 | `SigningPlace` / `SigningDate` | Ort och datum vid underskrifterna |
 | `AnnualMeetingDate` | Årsstämmans datum i fastställelseintyget på försättsbladet (tom linje om det saknas) |
 | `CertificatePlace` | Ort i fastställelseintyget. Standard är bolagets säte (`RegisteredOffice`) |
@@ -177,6 +177,48 @@ Läs tillbaka värdena:
 ```powershell
 Get-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear $fy
 ```
+
+### Innehav och marknadsvärde
+
+I stället för ett manuellt beräknat `SecuritiesMarketValue` kan du registrera varje
+värdepappersinnehav per balansdag i en valfri `holdings.txt` (UTF-8, tabbseparerad)
+per räkenskapsår. Ett innehav identifieras av konto + namn; ISIN, kursdatum,
+kurskälla och bokfört värde är valfria. Marknadsvärdet i SEK räknas ut som
+antal × kurs × växelkurs.
+
+```powershell
+Set-LedgerHolding -JournalPath .\HEG.ledger -FiscalYear $fy `
+    -Account 1350 -Name 'Investor B' -Isin 'SE0015811963' `
+    -Quantity 500 -Price 265.40 -PriceDate '2025-08-29' -Source 'Nasdaq Stockholm' -BookValue 98000
+
+# Utländsk valuta: ange kurs i valutan och växelkurs (SEK per enhet) på balansdagen
+Set-LedgerHolding -JournalPath .\HEG.ledger -FiscalYear $fy `
+    -Account 1350 -Name 'Vanguard FTSE All-World' -Isin 'IE00BK5BQT80' `
+    -Quantity 120 -Price 118.20 -Currency USD -FxRate 9.5312 -PriceDate '2025-08-29'
+
+# Underlag per innehav
+Get-LedgerHolding -JournalPath .\HEG.ledger -FiscalYear $fy |
+    Format-Table Account, Name, Quantity, Price, Currency, MarketValue, BookValue, Difference
+```
+
+- När innehav finns används **summan av innehaven** på kontona i notens intervall
+  (1300–1399) som marknadsvärde i noten för aktier och andelar. `SecuritiesMarketValue`
+  används då inte; skiljer de sig åt visas en varning.
+- `BookValue` är innehavets redovisade värde (anskaffningsvärde minus ev.
+  nedskrivningar). Det behövs bara om flera innehav ligger på samma konto och du vill
+  jämföra per innehav — annars jämförs kontots saldo mot summan av innehavens
+  marknadsvärde.
+- Om marknadsvärdet understiger bokfört värde visas en varning. För finansiella
+  anläggningstillgångar (13xx) ska du bedöma om värdenedgången är bestående
+  (nedskrivning enligt K2); för kortfristiga placeringar (18xx) gäller lägsta värdets
+  princip. Nedskrivningen bokförs manuellt.
+- Nedskrivningar som bokförts på ett separat konto (t.ex. 1890) räknas inte in i
+  jämförelsen per konto — ange då `BookValue` per innehav.
+- `Test-LedgerFiscalYear` innehåller kontrollerna `HoldingsValuation` och
+  `HoldingsReconcile` (summan av `BookValue` mot kontosaldot och kursdatum mot
+  balansdagen).
+- Innehav kan inte ändras i ett stängt räkenskapsår. Ta bort ett innehav med
+  `Remove-LedgerHolding`.
 
 ---
 
@@ -252,7 +294,7 @@ BAS-kontoplanen. En not tas bara med när relevanta konton har saldo:
 | Maskiner och andra tekniska anläggningar | 1210–1219 |
 | Inventarier, verktyg och installationer | 1220–1229 |
 | Andra långfristiga värdepappersinnehav | 1350–1359 |
-| Aktier och andelar (bokfört + marknadsvärde) | tas med om `SecuritiesMarketValue` är satt |
+| Aktier och andelar (bokfört + marknadsvärde) | tas med om `SecuritiesMarketValue` är satt eller innehav på 1300–1399 finns i `holdings.txt` |
 
 ### K3 (BFNAR 2012:1)
 
@@ -357,6 +399,7 @@ som ingående balans. Föregående års resultat ligger kvar i 2099:s ingående 
 | `Set-LedgerJournal -Metadata` | Registrera stabila bolagsuppgifter |
 | `Get-LedgerCompanyProfile` | Läs bolagsprofil för årsredovisningen |
 | `Set-LedgerReportInput` / `Get-LedgerReportInput` | Årsspecifik text och beslut (report.txt) |
+| `Set-LedgerHolding` / `Get-LedgerHolding` / `Remove-LedgerHolding` | Värdepappersinnehav och marknadsvärde per balansdag (holdings.txt) |
 | `Get-LedgerIncomeStatement` | Resultaträkning |
 | `Get-LedgerBalanceSheet -Detailed` | Balansräkning med uppdelat eget kapital |
 | `Get-LedgerMultiYearOverview` | Flerårsöversikt, inklusive soliditet |

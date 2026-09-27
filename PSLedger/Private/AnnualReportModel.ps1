@@ -126,13 +126,15 @@ function Build-LedgerAnnualReportBlocks {
         }
     }
 
-    $hasMarketValue = $null -ne $reportInput.SecuritiesMarketValue -and $reportInput.SecuritiesMarketValue -ne ''
+    $hasMarketValue = ($null -ne $reportInput.SecuritiesMarketValue -and $reportInput.SecuritiesMarketValue -ne '') -or
+        (Get-LedgerHoldingValuation -JournalPath $JournalPath -FiscalYear $FiscalYear -FromAccount 1300 -ToAccount 1399).HasHoldings
     $shareholdingNote = $null
     $shareholdingPrev = $null
     if ($hasMarketValue) {
         $shareholdingNote = Get-LedgerShareholdingNote -JournalPath $JournalPath -FiscalYear $FiscalYear
         if ($comparisonYear) {
-            $shareholdingPrev = Get-LedgerShareholdingNote -JournalPath $JournalPath -FiscalYear $comparisonYear
+            # Valuation warnings belong to the reported year, not the comparison year.
+            $shareholdingPrev = Get-LedgerShareholdingNote -JournalPath $JournalPath -FiscalYear $comparisonYear -WarningAction SilentlyContinue
         }
     }
 

@@ -6,8 +6,15 @@ Builds the shares and participations (aktier och andelar) note for an
 .DESCRIPTION
 Reports the carrying amount (bokfört värde) of a range of securities accounts,
 taken from the closing balance, together with the market value (marknadsvärde).
-The market value defaults to the SecuritiesMarketValue recorded with
-Set-LedgerReportInput and can be overridden with -MarketValue.
+The market value is resolved in this order: -MarketValue; otherwise the total
+market value of the holdings recorded with Set-LedgerHolding on accounts in the
+range; otherwise the SecuritiesMarketValue recorded with Set-LedgerReportInput.
+MarketValueSource tells which one was used ('Parameter', 'Holdings' or
+'ReportInput').
+
+When holdings are recorded, a warning is emitted for each account or holding
+whose market value is below its book value (prompting an impairment assessment
+under K2), and when SecuritiesMarketValue differs from the holdings total.
 
 The account range defaults to the financial fixed asset securities accounts
 (1300-1399) and can be changed with -FromAccount/-ToAccount, for example to
@@ -28,8 +35,8 @@ The first account number of the securities range. Defaults to 1300.
 The last account number of the securities range. Defaults to 1399.
 
 .PARAMETER MarketValue
-The market value of the holding. Overrides the SecuritiesMarketValue recorded with
-Set-LedgerReportInput.
+The market value of the holding. Overrides the holdings total and the
+SecuritiesMarketValue recorded with Set-LedgerReportInput.
 
 .PARAMETER Label
 A label for the note. Defaults to 'Aktier och andelar'.
@@ -82,19 +89,42 @@ function Get-LedgerShareholdingNote {
             }
         }
 
+        $Valuation = Get-LedgerHoldingValuation -JournalPath $JournalPath -FiscalYear $FiscalYear -FromAccount $FromAccount -ToAccount $ToAccount
+        $ReportInput = Get-LedgerReportInput -JournalPath $JournalPath -FiscalYear $FiscalYear
+        $RecordedValue = if ($ReportInput.SecuritiesMarketValue) { [decimal]$ReportInput.SecuritiesMarketValue } else { $null }
+
         if ($PSBoundParameters.ContainsKey('MarketValue')) {
             $MarketValueResolved = $MarketValue
+            $MarketValueSource = 'Parameter'
+        }
+        elseif ($Valuation.HasHoldings) {
+            $MarketValueResolved = $Valuation.MarketValue
+            $MarketValueSource = 'Holdings'
+            if ($null -ne $RecordedValue -and $RecordedValue -ne $MarketValueResolved) {
+                Write-Warning "SecuritiesMarketValue ($RecordedValue) differs from the holdings total ($MarketValueResolved) for $FiscalYear; the holdings total is used."
+            }
         }
         else {
-            $ReportInput = Get-LedgerReportInput -JournalPath $JournalPath -FiscalYear $FiscalYear
-            $MarketValueResolved = if ($ReportInput.SecuritiesMarketValue) { [decimal]$ReportInput.SecuritiesMarketValue } else { $null }
+            $MarketValueResolved = $RecordedValue
+            $MarketValueSource = if ($null -ne $RecordedValue) { 'ReportInput' } else { $null }
+        }
+
+        if ($Valuation.HasHoldings) {
+            $findings = @(Get-LedgerHoldingValuationFinding -Valuation $Valuation)
+            foreach ($finding in $findings) {
+                Write-Warning "${FiscalYear}: $finding"
+            }
+            if ($findings.Count -eq 0 -and $MarketValueSource -eq 'Holdings' -and $MarketValueResolved -lt $BookValue) {
+                Write-Warning "${FiscalYear}: total market value $MarketValueResolved of accounts $FromAccount-$ToAccount is below book value $BookValue."
+            }
         }
 
         [PSCustomObject]@{
-            Label       = $Label
-            FiscalYear  = $FiscalYear
-            BookValue   = [decimal]$BookValue
-            MarketValue = $MarketValueResolved
+            Label             = $Label
+            FiscalYear        = $FiscalYear
+            BookValue         = [decimal]$BookValue
+            MarketValue       = $MarketValueResolved
+            MarketValueSource = $MarketValueSource
         }
     }
 }

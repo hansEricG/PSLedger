@@ -15,6 +15,13 @@ properties. Nothing is modified. The checks are:
 - OpeningBalanceMatchesPrevious  - the opening balance reconciles with the previous
   fiscal year's closing balance sheet, including its carried net result (Warning;
   Info when there is no previous fiscal year).
+- HoldingsValuation  - no account or holding recorded with Set-LedgerHolding has a
+  market value below its book value (Warning). For 13xx accounts the decline must
+  be assessed as lasting or not; for 18xx accounts the lower of cost and market
+  value applies. Info when there is no holdings.txt.
+- HoldingsReconcile  - the summed BookValue of an account's holdings (when all have
+  one) matches the ledger balance, and every PriceDate is the balance date
+  (Warning; Info when there is no holdings.txt).
 
 VAT reconciliation is not yet included. Use `Where-Object { $_.Status -eq 'Fail' }`
 to gate an automated close on the hard checks.
@@ -199,6 +206,44 @@ function Test-LedgerFiscalYear {
             }
             else {
                 New-CheckResult 'OpeningBalanceMatchesPrevious' 'Pass' "Opening balance reconciles with $PrevName closing."
+            }
+        }
+
+        # --- HoldingsValuation / HoldingsReconcile ---
+        $Valuation = Get-LedgerHoldingValuation -JournalPath $JournalPath -FiscalYear $FiscalYear
+        if (-not $Valuation.HasHoldings) {
+            New-CheckResult 'HoldingsValuation' 'Info' 'No holdings (holdings.txt) for this fiscal year.'
+            New-CheckResult 'HoldingsReconcile' 'Info' 'No holdings (holdings.txt) for this fiscal year.'
+        }
+        else {
+            $Findings = @(Get-LedgerHoldingValuationFinding -Valuation $Valuation)
+            if ($Findings.Count -gt 0) {
+                New-CheckResult 'HoldingsValuation' 'Warning' ($Findings -join '; ')
+            }
+            else {
+                New-CheckResult 'HoldingsValuation' 'Pass' 'No holding has a market value below its book value.'
+            }
+
+            $YearInfo = $AllYears | Where-Object { $_.Name -eq $FiscalYear } | Select-Object -First 1
+            $BalanceDate = if ($YearInfo -and $YearInfo.EndDate) { ([datetime]$YearInfo.EndDate).ToString('yyyy-MM-dd') } else { $null }
+
+            $Issues = @(
+                foreach ($Acc in $Valuation.Accounts) {
+                    if ($null -ne $Acc.HoldingsBookValue -and [Math]::Round($Acc.HoldingsBookValue, 2) -ne [Math]::Round($Acc.BookValue, 2)) {
+                        "Account $($Acc.Account): holdings book value $($Acc.HoldingsBookValue) does not match the ledger balance $($Acc.BookValue)"
+                    }
+                }
+                foreach ($H in $Valuation.Holdings) {
+                    if ($BalanceDate -and $H.PriceDate -and $H.PriceDate -ne $BalanceDate) {
+                        "Holding '$($H.Name)' ($($H.Account)): price date $($H.PriceDate) is not the balance date $BalanceDate"
+                    }
+                }
+            )
+            if ($Issues.Count -gt 0) {
+                New-CheckResult 'HoldingsReconcile' 'Warning' ($Issues -join '; ')
+            }
+            else {
+                New-CheckResult 'HoldingsReconcile' 'Pass' 'Holdings reconcile with the ledger.'
             }
         }
     }

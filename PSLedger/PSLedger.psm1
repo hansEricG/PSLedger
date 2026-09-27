@@ -11,6 +11,7 @@
 . $PSScriptRoot\Private\PathSafety.ps1
 . $PSScriptRoot\Private\FileWrite.ps1
 . $PSScriptRoot\Private\OpeningBalance.ps1
+. $PSScriptRoot\Private\Holdings.ps1
 . $PSScriptRoot\Private\JournalSchema.ps1
 . $PSScriptRoot\Private\JournalMetadata.ps1
 . $PSScriptRoot\Private\AnnualReportInput.ps1
@@ -70,6 +71,9 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Export-LedgerAnnualReport.ps1
 . $PSScriptRoot\Public\Set-LedgerReportInput.ps1
 . $PSScriptRoot\Public\Get-LedgerReportInput.ps1
+. $PSScriptRoot\Public\Set-LedgerHolding.ps1
+. $PSScriptRoot\Public\Get-LedgerHolding.ps1
+. $PSScriptRoot\Public\Remove-LedgerHolding.ps1
 . $PSScriptRoot\Public\Get-LedgerMultiYearOverview.ps1
 . $PSScriptRoot\Public\Get-LedgerEquityReconciliation.ps1
 . $PSScriptRoot\Public\Get-LedgerProfitDisposition.ps1
@@ -148,6 +152,7 @@ $script:BuiltInFunctions = @(
     'Get-LedgerTaxEstimate', 'Add-LedgerTaxEntry', 'Add-LedgerAppropriation',
     'Get-LedgerAnnualReport', 'Export-LedgerAnnualReport',
     'Set-LedgerReportInput', 'Get-LedgerReportInput',
+    'Set-LedgerHolding', 'Get-LedgerHolding', 'Remove-LedgerHolding',
     'Get-LedgerMultiYearOverview',
     'Get-LedgerEquityReconciliation',
     'Get-LedgerProfitDisposition',

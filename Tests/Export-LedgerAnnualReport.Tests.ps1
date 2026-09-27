@@ -487,4 +487,42 @@ Describe 'Export-LedgerAnnualReport' {
             $content | Should -Not -Match 'Kryptotillgångar'
         }
     }
+
+    Context 'Holdings' {
+        BeforeAll {
+            $hp = Join-Path $TestDrive 'holdings.ledger'
+            New-LedgerJournal -Path $hp -Name 'Innehav AB' -OrgNumber '556222-3333' -CompanyType 'AB'
+            Set-LedgerJournal -JournalPath $hp -Metadata @{ RegisteredOffice = 'Gävle'; BoardMembers = 'Anna Andersson' }
+            foreach ($a in @(
+                    @('1350', 'Andra långfristiga värdepappersinnehav'),
+                    @('1930', 'Företagskonto'),
+                    @('2081', 'Aktiekapital'),
+                    @('2099', 'Årets resultat'),
+                    @('8999', 'Årets resultat'))) {
+                Add-LedgerAccount -JournalPath $hp -AccountNumber $a[0] -AccountName $a[1]
+            }
+            New-LedgerFiscalYear -JournalPath $hp -StartDate '2024-09-01' -EndDate '2025-08-31'
+            $hy = '2024-09_2025-08'
+            Add-LedgerEntry -JournalPath $hp -FiscalYear $hy -Date '2024-09-01' -Description 'Aktiekapital' -Rows @(
+                @{ Account = '1930'; Amount = 100000 }, @{ Account = '2081'; Amount = -100000 })
+            Add-LedgerEntry -JournalPath $hp -FiscalYear $hy -Date '2024-10-01' -Description 'Köp värdepapper' -Rows @(
+                @{ Account = '1350'; Amount = 80000 }, @{ Account = '1930'; Amount = -80000 })
+        }
+
+        It 'Should include the shareholding note with the holdings total when only holdings are recorded' {
+            Set-LedgerHolding -JournalPath $hp -FiscalYear $hy -Account 1350 -Name 'Investor B' -Quantity 400 -Price 250
+            $out = Join-Path $TestDrive 'holdings.txt'
+            Export-LedgerAnnualReport -JournalPath $hp -FiscalYear $hy -Path $out
+            $content = Get-Content $out -Raw
+            $content | Should -Match 'Aktier och andelar'
+            $content | Should -Match 'Marknadsvärde\s+100.000'
+        }
+
+        It 'Should warn when the holdings are below book value' {
+            Set-LedgerHolding -JournalPath $hp -FiscalYear $hy -Account 1350 -Name 'Investor B' -Price 150
+            $out = Join-Path $TestDrive 'holdings-below.txt'
+            Export-LedgerAnnualReport -JournalPath $hp -FiscalYear $hy -Path $out -WarningVariable w -WarningAction SilentlyContinue
+            ($w -join ' ') | Should -Match 'below book value'
+        }
+    }
 }
