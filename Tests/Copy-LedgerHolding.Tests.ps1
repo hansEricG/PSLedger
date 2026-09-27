@@ -43,7 +43,7 @@ Describe 'Copy-LedgerHolding' {
             Add-LedgerEntry -JournalPath $jp -FiscalYear $fy1 -Date '2023-02-01' -Description 'Köp aktier' -Rows @(
                 @{ Account = '1350'; Amount = 130000 }, @{ Account = '1930'; Amount = -130000 })
             Set-LedgerHolding -JournalPath $jp -FiscalYear $fy1 -Account 1350 -Name 'Investor B' -Isin 'SE0015811963' `
-                -Quantity 500 -Price 265.4 -PriceDate '2023-12-29' -Source 'Nasdaq Stockholm' -BookValue 130000
+                -Quantity 500 -Price 265.4 -PriceDate '2023-12-29' -Source 'Nasdaq Stockholm' -BookValue 130000 -Cost 130000
             Set-LedgerHolding -JournalPath $jp -FiscalYear $fy1 -Account 1810 -Name 'Spiltan Räntefond' -Quantity 1000 -Price 11.83 `
                 -WarningAction SilentlyContinue
             Copy-LedgerOpeningBalance -JournalPath $jp -FromFiscalYear $fy1 -ToFiscalYear $fy2
@@ -60,6 +60,7 @@ Describe 'Copy-LedgerHolding' {
             $inv.PriceDate | Should -Be '2023-12-29'
             $inv.Source | Should -Be 'Nasdaq Stockholm'
             $inv.BookValue | Should -Be 130000
+            $inv.Cost | Should -Be 130000
         }
 
         It 'Should return the copied holdings with the target fiscal year' {

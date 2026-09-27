@@ -204,6 +204,52 @@ Describe 'Test-LedgerFiscalYear' {
             $Results = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
             (Get-CheckStatus $Results 'HoldingsValuation') | Should -Be 'Info'
             (Get-CheckStatus $Results 'HoldingsReconcile') | Should -Be 'Info'
+            (Get-CheckStatus $Results 'HoldingsReversal') | Should -Be 'Info'
+        }
+
+        It 'Should report HoldingsReversal Info when no holding records a Cost' {
+            Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Investor B' `
+                -Quantity 500 -Price 265.40 -PriceDate '2024-12-31' -BookValue 100000
+            (Get-CheckStatus (Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear) 'HoldingsReversal') | Should -Be 'Info'
+        }
+
+        Context 'Written-down holding' {
+            BeforeEach {
+                Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1359' -AccountName 'Värdereglering värdepapper'
+                Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '8271' -AccountName 'Nedskrivning värdepapper'
+                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-12-31' -Description 'Nedskrivning Knowit' -Rows @(
+                    @{ Account = '8271'; Amount = 40000 }, @{ Account = '1359'; Amount = -40000 })
+            }
+
+            It 'Should pass HoldingsReversal and reconcile Cost with the account balance when still below book value' {
+                Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Knowit' `
+                    -Quantity 200 -Price 300 -PriceDate '2024-12-31' -BookValue 60000 -Cost 100000
+                $Results = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+                (Get-CheckStatus $Results 'HoldingsReversal') | Should -Be 'Pass'
+                (Get-CheckStatus $Results 'HoldingsReconcile') | Should -Be 'Pass'
+            }
+
+            It 'Should flag a possible reversal when the market value has recovered' {
+                Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Knowit' `
+                    -Quantity 200 -Price 400 -PriceDate '2024-12-31' -BookValue 60000 -Cost 100000
+                $Check = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear | Where-Object Check -eq 'HoldingsReversal'
+                $Check.Status | Should -Be 'Warning'
+                $Check.Detail | Should -Match "Knowit.*up to 20000\.00.*återföring"
+            }
+
+            It 'Should cap the possible reversal at the acquisition cost' {
+                Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Knowit' `
+                    -Quantity 200 -Price 900 -PriceDate '2024-12-31' -BookValue 60000 -Cost 100000
+                (Get-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear).Reversible | Should -Be 40000
+            }
+
+            It 'Should warn when the holdings cost does not match the account balance' {
+                Set-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account 1350 -Name 'Knowit' `
+                    -Quantity 200 -Price 300 -PriceDate '2024-12-31' -BookValue 60000 -Cost 90000
+                $Check = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear | Where-Object Check -eq 'HoldingsReconcile'
+                $Check.Status | Should -Be 'Warning'
+                $Check.Detail | Should -Match 'holdings cost 90000 does not match the account balance 100000'
+            }
         }
 
         It 'Should pass when holdings are above book value and reconcile' {

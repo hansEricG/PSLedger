@@ -5,14 +5,16 @@ Returns the securities holdings (innehav) recorded for a fiscal year.
 .DESCRIPTION
 Reads the holdings stored in the fiscal year's holdings.txt (recorded with
 Set-LedgerHolding) and returns one object per holding with the Account, Name,
-Isin, Quantity, Price, Currency, FxRate, PriceDate, Source and BookValue fields,
-plus the computed MarketValue in SEK (Quantity * Price * FxRate).
+Isin, Quantity, Price, Currency, FxRate, PriceDate, Source, BookValue and Cost
+fields, plus the computed MarketValue in SEK (Quantity * Price * FxRate).
 
 When the holding has a BookValue, Difference (MarketValue - BookValue) and
 BelowBookValue are also set, so the output can be used directly as a supporting
 schedule (underlag) for the shares and participations note and for the
-impairment assessment. Rule is 'FixedAsset' for 13xx accounts, 'Current' for
-18xx accounts and 'Other' otherwise.
+impairment assessment. When it has both BookValue and Cost, Reversible is the
+amount of an earlier write-down that may be reversed (återföring): the lower of
+MarketValue and Cost, less BookValue (never negative). Rule is 'FixedAsset' for
+13xx accounts, 'Current' for 18xx accounts and 'Other' otherwise.
 
 Returns nothing when no holdings are recorded.
 
@@ -84,8 +86,10 @@ function Get-LedgerHolding {
                 Source         = $h.Source
                 MarketValue    = $h.MarketValue
                 BookValue      = $h.BookValue
+                Cost           = $h.Cost
                 Difference     = $h.Difference
                 BelowBookValue = $h.BelowBookValue
+                Reversible     = $h.Reversible
                 Rule           = $h.Rule
             }
         }

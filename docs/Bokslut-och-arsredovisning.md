@@ -97,7 +97,29 @@ Add-LedgerImpairment -JournalPath .\HEG.ledger -FiscalYear $fy `
 - Efter bokningen sätts innehavets `BookValue` till marknadsvärdet.
 - Vanliga konton: 8271/1359 för andelar och värdepapper (13xx), 7710/1098 för
   kryptotillgångar som redovisas som immateriell anläggningstillgång (K3).
-- Återföring av en tidigare nedskrivning bokförs manuellt med `Add-LedgerEntry`.
+- Registrera gärna innehavets anskaffningsvärde (`-Cost`) med `Set-LedgerHolding`,
+  så att en senare återföring kan beräknas.
+
+#### Återföring av nedskrivning
+
+Om marknadsvärdet senare återhämtar sig ska en nedskrivning enligt K3 återföras när
+skälen till den inte längre finns (utom för goodwill). `Test-LedgerFiscalYear` flaggar
+detta i kontrollen `HoldingsReversal`. Bokför återföringen med `-Reverse`; för ett
+innehav blir beloppet det lägsta av marknadsvärde och anskaffningsvärde, minus
+bokfört värde, så att tillgången aldrig tas upp över anskaffningsvärdet.
+
+```powershell
+Add-LedgerImpairment -JournalPath .\HEG.ledger -FiscalYear $fy `
+    -Account 1350 -Name 'Knowit' -ExpenseAccount 8281 -AdjustmentAccount 1359 -Reverse
+```
+
+- Vanliga konton: 8281/1359 för andelar och värdepapper, 7760/1098 för
+  kryptotillgångar.
+- Återföringen kan aldrig bli större än de nedskrivningar som finns på
+  värderegleringskontot. Efter bokningen ökas innehavets `BookValue` med beloppet.
+- Skattemässigt: är nedskrivningen inte avdragsgill (t.ex. kapitalplaceringsaktier)
+  är återföringen normalt inte heller skattepliktig — justera med
+  `Get-LedgerTaxEstimate -NonTaxableIncome`.
 
 ### 2c. Bokslutsdispositioner (periodiseringsfond, överavskrivningar)
 
@@ -235,6 +257,8 @@ Get-LedgerHolding -JournalPath .\HEG.ledger -FiscalYear $fy |
   nedskrivningar). Det behövs bara om flera innehav ligger på samma konto och du vill
   jämföra per innehav — annars jämförs kontots saldo mot summan av innehavens
   marknadsvärde.
+- `Cost` är innehavets anskaffningsvärde. Det används som tak när en nedskrivning
+  återförs (se steg 2b) och stäms av mot kontots eget saldo (t.ex. 1350 utan 1359).
 - Om marknadsvärdet understiger bokfört värde visas en varning. För finansiella
   anläggningstillgångar (13xx) ska du bedöma om värdenedgången är bestående
   (nedskrivning enligt K2); för kortfristiga placeringar (18xx) gäller lägsta värdets
@@ -243,9 +267,10 @@ Get-LedgerHolding -JournalPath .\HEG.ledger -FiscalYear $fy |
   själva har innehav (t.ex. 1359 för 1350). Nedskrivningar som bokförts på ett konto
   i ett annat tiotal (t.ex. 1890 för 1810) räknas inte in i jämförelsen per konto —
   ange då `BookValue` per innehav.
-- `Test-LedgerFiscalYear` innehåller kontrollerna `HoldingsValuation` och
-  `HoldingsReconcile` (summan av `BookValue` mot kontosaldot och kursdatum mot
-  balansdagen).
+- `Test-LedgerFiscalYear` innehåller kontrollerna `HoldingsValuation`,
+  `HoldingsReconcile` (summan av `BookValue` mot kontosaldot, summan av `Cost` mot
+  kontots eget saldo och kursdatum mot balansdagen) och `HoldingsReversal`
+  (nedskrivningar som kan återföras).
 - Innehav kan inte ändras i ett stängt räkenskapsår. Ta bort ett innehav med
   `Remove-LedgerHolding`.
 
@@ -461,7 +486,7 @@ Add-LedgerProfitDisposition -JournalPath .\HEG.ledger -FiscalYear '2025-09_2026-
 | `Backup-LedgerJournal` | Skapa en tidsstämplad zip-backup |
 | `Get-LedgerBalance` | Saldobalans (kontroll före bokslut) |
 | `Add-LedgerDepreciation` | Bokför avskrivning |
-| `Add-LedgerImpairment` | Bokför nedskrivning (belopp eller innehav till marknadsvärde) |
+| `Add-LedgerImpairment` | Bokför nedskrivning eller återföring (`-Reverse`), belopp eller innehav mot marknadsvärde |
 | `Add-LedgerAppropriation` | Bokför/återför periodiseringsfond eller överavskrivning |
 | `Get-LedgerTaxEstimate` | Beräkna bolagsskatt (skattemässigt resultat) |
 | `Add-LedgerTaxEntry` | Bokför årets skatt |

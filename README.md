@@ -105,7 +105,7 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerHolding` | List holdings with market value and comparison to book value |
 | `Remove-LedgerHolding` | Remove a securities holding |
 | `Copy-LedgerHolding` | Roll securities holdings over to a new year |
-| `Add-LedgerImpairment` | Book a write-down (nedskrivning), optionally of a holding to its market value |
+| `Add-LedgerImpairment` | Book a write-down (nedskrivning) or its reversal (`-Reverse`), optionally of a holding against its market value |
 | `Copy-LedgerOpeningBalance` | Roll over balances to a new year |
 | `Update-LedgerJournal` | Migrate a journal to the current on-disk format |
 | `Backup-LedgerJournal` | Create a timestamped zip backup (with retention) |

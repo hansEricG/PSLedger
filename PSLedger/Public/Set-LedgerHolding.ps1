@@ -7,7 +7,7 @@ Stores a holding at the balance date in the fiscal year's holdings.txt (UTF-8,
 tab-separated). A holding is identified by Account and Name: if a holding with
 the same Account and Name exists it is updated, otherwise a new one is added.
 When updating, only the supplied fields are changed; pass an empty string to
-clear Isin, PriceDate or Source, and $null to clear BookValue.
+clear Isin, PriceDate or Source, and $null to clear BookValue or Cost.
 
 The market value in SEK is computed as Quantity * Price * FxRate. It is used by
 Get-LedgerShareholdingNote and the annual report instead of the single
@@ -59,6 +59,12 @@ Optional book value (redovisat värde) of this holding in SEK: acquisition cost
 less any write-downs. Enables a per-holding impairment comparison when several
 holdings share an account.
 
+.PARAMETER Cost
+Optional acquisition cost (anskaffningsvärde) of this holding in SEK. Together
+with BookValue it shows how much of an earlier write-down may be reversed
+(återföring) when the market value recovers; a reversal never takes the book
+value above the cost.
+
 .EXAMPLE
 Set-LedgerHolding -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' `
     -Account 1350 -Name 'Investor B' -Quantity 500 -Price 265.40
@@ -69,9 +75,10 @@ Records 500 Investor B shares at 265.40 SEK.
 Set-LedgerHolding -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' `
     -Account 1350 -Name 'Vanguard FTSE All-World' -Isin 'IE00BK5BQT80' `
     -Quantity 120 -Price 118.20 -Currency USD -FxRate 9.5312 `
-    -PriceDate '2025-08-29' -Source 'Avanza årsbesked' -BookValue 110000
+    -PriceDate '2025-08-29' -Source 'Avanza årsbesked' -BookValue 110000 -Cost 110000
 
-Records a USD-denominated fund with ISIN, price source and book value.
+Records a USD-denominated fund with ISIN, price source, book value and
+acquisition cost.
 #>
 function Set-LedgerHolding {
     [CmdletBinding(SupportsShouldProcess)]
@@ -119,7 +126,11 @@ function Set-LedgerHolding {
 
         [Parameter()]
         [AllowNull()]
-        [Nullable[decimal]]$BookValue
+        [Nullable[decimal]]$BookValue,
+
+        [Parameter()]
+        [AllowNull()]
+        [Nullable[decimal]]$Cost
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
@@ -180,7 +191,12 @@ function Set-LedgerHolding {
             -Currency $newCurrency -FxRate $newFxRate `
             -PriceDate (& $pick 'PriceDate' $current.PriceDate) `
             -Source (& $pick 'Source' $current.Source) `
-            -BookValue (& $pick 'BookValue' $current.BookValue)
+            -BookValue (& $pick 'BookValue' $current.BookValue) `
+            -Cost (& $pick 'Cost' $current.Cost)
+
+        if ($null -ne $record.BookValue -and $null -ne $record.Cost -and $record.BookValue -gt $record.Cost) {
+            Write-Warning "Holding '$Name': book value $($record.BookValue) exceeds the acquisition cost $($record.Cost)."
+        }
 
         if ($record.Isin) {
             $dup = $existing | Where-Object { $_.Isin -eq $record.Isin -and -not ($_.Account -eq $Account -and $_.Name -eq $Name) }

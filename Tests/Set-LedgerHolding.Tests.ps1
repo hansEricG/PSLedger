@@ -62,8 +62,34 @@ Describe 'Set-LedgerHolding' {
         It 'Should create holdings.txt with a header row and the holding' {
             Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' -Quantity 500 -Price 265.40
             $lines = Get-Content $file -Encoding UTF8
-            $lines[0] | Should -Be "Account`tName`tIsin`tQuantity`tPrice`tCurrency`tFxRate`tPriceDate`tSource`tBookValue"
-            $lines[1] | Should -Be "1350`tInvestor B`t`t500`t265.4`tSEK`t1`t`t`t"
+            $lines[0] | Should -Be "Account`tName`tIsin`tQuantity`tPrice`tCurrency`tFxRate`tPriceDate`tSource`tBookValue`tCost"
+            $lines[1] | Should -Be "1350`tInvestor B`t`t500`t265.4`tSEK`t1`t`t`t`t"
+        }
+
+        It 'Should read a holdings file written before the Cost column existed' {
+            New-Item -ItemType File -Path $file -Force | Out-Null
+            Set-Content -Path $file -Encoding UTF8 -Value @(
+                "Account`tName`tIsin`tQuantity`tPrice`tCurrency`tFxRate`tPriceDate`tSource`tBookValue"
+                "1350`tInvestor B`t`t500`t265.4`tSEK`t1`t`t`t100000"
+            )
+            $h = Get-LedgerHolding -JournalPath $jp -FiscalYear $fy
+            $h.BookValue | Should -Be 100000
+            $h.Cost | Should -BeNullOrEmpty
+        }
+
+        It 'Should store, keep and clear Cost' {
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Knowit' -Quantity 200 -Price 94.5 -BookValue 18900 -Cost 43248
+            (Get-LedgerHolding -JournalPath $jp -FiscalYear $fy).Cost | Should -Be 43248
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Knowit' -Price 100
+            (Get-LedgerHolding -JournalPath $jp -FiscalYear $fy).Cost | Should -Be 43248
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Knowit' -Cost $null
+            (Get-LedgerHolding -JournalPath $jp -FiscalYear $fy).Cost | Should -BeNullOrEmpty
+        }
+
+        It 'Should warn when BookValue exceeds Cost' {
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Knowit' -Quantity 200 -Price 94.5 `
+                -BookValue 50000 -Cost 43248 -WarningVariable w -WarningAction SilentlyContinue
+            "$w" | Should -BeLike '*exceeds the acquisition cost*'
         }
 
         It 'Should store all optional fields including Swedish characters' {

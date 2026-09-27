@@ -133,5 +133,97 @@ Describe 'Add-LedgerImpairment' {
             Get-Bal '1359' | Should -Be 0
             (Get-LedgerHolding -JournalPath $jp -FiscalYear $fy).BookValue | Should -Be 120000
         }
+
+        It 'Should warn on a holding write-down when the holding has no Cost' {
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' -Quantity 500 -Price 200 -BookValue 120000
+            Add-LedgerImpairment -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' `
+                -ExpenseAccount 8271 -AdjustmentAccount 1359 -WarningVariable w -WarningAction SilentlyContinue | Out-Null
+            "$w" | Should -BeLike '*no Cost*'
+        }
+    }
+
+    Context 'Reversal' {
+        BeforeEach {
+            $jp = Join-Path $TestDrive ([guid]::NewGuid().ToString('N') + '.ledger')
+            $fy = '2024-01_2024-12'
+            New-LedgerJournal -Path $jp -Name 'Aktier AB' -OrgNumber '556000-0004' -CompanyType 'AB'
+            foreach ($a in @(
+                    @('1350', 'Andelar och värdepapper i andra företag'), @('1359', 'Ackumulerade nedskrivningar'),
+                    @('1930', 'Företagskonto'), @('8271', 'Nedskrivning av andelar i andra företag'),
+                    @('8281', 'Återföringar av nedskrivningar av andelar i andra företag'))) {
+                Add-LedgerAccount -JournalPath $jp -AccountNumber $a[0] -AccountName $a[1]
+            }
+            New-LedgerFiscalYear -JournalPath $jp -StartDate '2024-01-01' -EndDate '2024-12-31'
+            Add-LedgerEntry -JournalPath $jp -FiscalYear $fy -Date '2024-02-01' -Description 'Köp aktier' -Rows @(
+                @{ Account = '1350'; Amount = 150000 }, @{ Account = '1930'; Amount = -150000 })
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' -Quantity 500 -Price 200 `
+                -BookValue 150000 -Cost 150000
+            Add-LedgerImpairment -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' `
+                -ExpenseAccount 8271 -AdjustmentAccount 1359 -Date '2024-06-30' | Out-Null
+
+            function Get-Bal ([string]$Account) {
+                $row = Get-LedgerBalance -JournalPath $jp -FiscalYear $fy | Where-Object AccountNumber -eq $Account
+                if ($row) { [decimal]$row.Balance } else { [decimal]0 }
+            }
+        }
+
+        It 'Should have a Reverse switch' {
+            (Get-Command Add-LedgerImpairment).Parameters['Reverse'].ParameterType.Name | Should -Be 'SwitchParameter'
+        }
+
+        It 'Should reverse a holding up to its recovered market value and raise its BookValue' {
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' -Price 260
+            $r = Add-LedgerImpairment -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' `
+                -ExpenseAccount 8281 -AdjustmentAccount 1359 -Reverse
+
+            $r.Type | Should -Be 'Reversal'
+            $r.Amount | Should -Be 30000
+            Get-Bal '8281' | Should -Be -30000
+            Get-Bal '1359' | Should -Be -20000
+            (Get-LedgerHolding -JournalPath $jp -FiscalYear $fy).BookValue | Should -Be 130000
+            $entry = Get-LedgerEntry -JournalPath $jp -FiscalYear $fy -VerificationNumber $r.VerificationNumber
+            $entry.Description | Should -Be 'Återföring av nedskrivning Investor B'
+        }
+
+        It 'Should never reverse above the acquisition cost' {
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' -Price 400
+            $r = Add-LedgerImpairment -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' `
+                -ExpenseAccount 8281 -AdjustmentAccount 1359 -Reverse
+            $r.Amount | Should -Be 50000
+            Get-Bal '1359' | Should -Be 0
+            (Get-LedgerHolding -JournalPath $jp -FiscalYear $fy).BookValue | Should -Be 150000
+        }
+
+        It 'Should throw when there is nothing to reverse' {
+            { Add-LedgerImpairment -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' `
+                    -ExpenseAccount 8281 -AdjustmentAccount 1359 -Reverse } | Should -Throw '*nothing to reverse*'
+        }
+
+        It 'Should throw when the holding has no Cost' {
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' -Price 260 -Cost $null
+            { Add-LedgerImpairment -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' `
+                    -ExpenseAccount 8281 -AdjustmentAccount 1359 -Reverse } | Should -Throw '*BookValue and Cost*'
+        }
+
+        It 'Should reverse a direct amount' {
+            $r = Add-LedgerImpairment -JournalPath $jp -FiscalYear $fy -ExpenseAccount 8281 -AdjustmentAccount 1359 -Amount 10000 -Reverse
+            $r.Amount | Should -Be 10000
+            Get-Bal '1359' | Should -Be -40000
+            (Get-LedgerEntry -JournalPath $jp -FiscalYear $fy -VerificationNumber $r.VerificationNumber).Description |
+                Should -Be 'Återföring av nedskrivning'
+        }
+
+        It 'Should refuse to reverse more than the accumulated write-downs' {
+            { Add-LedgerImpairment -JournalPath $jp -FiscalYear $fy -ExpenseAccount 8281 -AdjustmentAccount 1359 -Amount 60000 -Reverse } |
+                Should -Throw '*exceeds the write-downs accumulated*'
+        }
+
+        It 'Should not book a reversal with -WhatIf' {
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' -Price 260
+            Add-LedgerImpairment -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' `
+                -ExpenseAccount 8281 -AdjustmentAccount 1359 -Reverse -WhatIf
+            Get-Bal '1359' | Should -Be -50000
+            (Get-LedgerHolding -JournalPath $jp -FiscalYear $fy).BookValue | Should -Be 100000
+        }
     }
 }

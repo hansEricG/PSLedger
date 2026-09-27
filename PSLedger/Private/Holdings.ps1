@@ -3,19 +3,21 @@
 # Holdings are stored as metadata in a plain-text file 'holdings.txt' in the
 # fiscal year directory, UTF-8, tab-separated, with a header row:
 #
-#     Account<TAB>Name<TAB>Isin<TAB>Quantity<TAB>Price<TAB>Currency<TAB>FxRate<TAB>PriceDate<TAB>Source<TAB>BookValue
-#     1350<TAB>Investor B<TAB>SE0015811963<TAB>500<TAB>265.40<TAB>SEK<TAB>1<TAB>2025-08-29<TAB>Nasdaq<TAB>98000
+#     Account<TAB>Name<TAB>Isin<TAB>Quantity<TAB>Price<TAB>Currency<TAB>FxRate<TAB>PriceDate<TAB>Source<TAB>BookValue<TAB>Cost
+#     1350<TAB>Investor B<TAB>SE0015811963<TAB>500<TAB>265.40<TAB>SEK<TAB>1<TAB>2025-08-29<TAB>Nasdaq<TAB>98000<TAB>120000
 #
-# A holding is identified by (Account, Name). Isin, PriceDate, Source and
-# BookValue are optional. Price is per unit in Currency; FxRate is SEK per unit of
-# Currency (1 for SEK). The market value in SEK is Quantity * Price * FxRate.
-# Numbers use the invariant culture (dot as decimal separator).
+# A holding is identified by (Account, Name). Isin, PriceDate, Source, BookValue
+# (redovisat värde) and Cost (anskaffningsvärde) are optional. Price is per unit in
+# Currency; FxRate is SEK per unit of Currency (1 for SEK). The market value in SEK
+# is Quantity * Price * FxRate. Numbers use the invariant culture (dot as decimal
+# separator). Columns are mapped by the header row, so files written before a
+# column was added are still read.
 #
 # The absence of holdings.txt means no holdings are recorded for the fiscal year.
 
 $script:LedgerHoldingsFileName = 'holdings.txt'
 $script:LedgerHoldingsColumns = @(
-    'Account', 'Name', 'Isin', 'Quantity', 'Price', 'Currency', 'FxRate', 'PriceDate', 'Source', 'BookValue'
+    'Account', 'Name', 'Isin', 'Quantity', 'Price', 'Currency', 'FxRate', 'PriceDate', 'Source', 'BookValue', 'Cost'
 )
 
 function Get-LedgerHoldingsPath {
@@ -56,7 +58,8 @@ function New-LedgerHoldingRecord {
         [AllowNull()] $FxRate,
         [AllowNull()] [AllowEmptyString()] [string]$PriceDate,
         [AllowNull()] [AllowEmptyString()] [string]$Source,
-        [AllowNull()] $BookValue
+        [AllowNull()] $BookValue,
+        [AllowNull()] $Cost
     )
 
     $currencyCode = if ([string]::IsNullOrWhiteSpace($Currency)) { 'SEK' } else { $Currency.Trim().ToUpperInvariant() }
@@ -82,6 +85,7 @@ function New-LedgerHoldingRecord {
         PriceDate   = if ([string]::IsNullOrWhiteSpace($PriceDate)) { $null } else { $PriceDate.Trim() }
         Source      = if ([string]::IsNullOrWhiteSpace($Source)) { $null } else { $Source.Trim() }
         BookValue   = if ($null -eq $BookValue -or "$BookValue" -eq '') { $null } else { [decimal]$BookValue }
+        Cost        = if ($null -eq $Cost -or "$Cost" -eq '') { $null } else { [decimal]$Cost }
         MarketValue = [Math]::Round($Quantity * $Price * $rate, 2)
     }
 }
@@ -128,7 +132,8 @@ function Read-LedgerHoldings {
             $record = New-LedgerHoldingRecord -Account $fields['Account'] -Name $fields['Name'] `
                 -Isin $fields['Isin'] -Quantity $quantity -Price $price -Currency $fields['Currency'] `
                 -FxRate (ConvertTo-LedgerHoldingDecimal $fields['FxRate']) -PriceDate $fields['PriceDate'] `
-                -Source $fields['Source'] -BookValue (ConvertTo-LedgerHoldingDecimal $fields['BookValue'])
+                -Source $fields['Source'] -BookValue (ConvertTo-LedgerHoldingDecimal $fields['BookValue']) `
+                -Cost (ConvertTo-LedgerHoldingDecimal $fields['Cost'])
             $rows.Add($record) | Out-Null
         }
         catch {
@@ -165,7 +170,7 @@ function Write-LedgerHoldings {
     foreach ($r in ($list | Sort-Object Account, Name)) {
         $values = @(
             $r.Account, $r.Name, "$($r.Isin)", (& $fmt $r.Quantity), (& $fmt $r.Price), $r.Currency,
-            (& $fmt $r.FxRate), "$($r.PriceDate)", "$($r.Source)", (& $fmt $r.BookValue)
+            (& $fmt $r.FxRate), "$($r.PriceDate)", "$($r.Source)", (& $fmt $r.BookValue), (& $fmt $r.Cost)
         )
         $lines.Add($values -join "`t") | Out-Null
     }
@@ -227,12 +232,16 @@ function Get-LedgerHoldingValuation {
     .DESCRIPTION
     Returns an object with:
     - Holdings    : holdings in the account range, each with Difference and
-                    BelowBookValue (only when the holding has a BookValue).
+                    BelowBookValue (only when the holding has a BookValue) and
+                    Reversible (the write-down that may be reversed, capped at
+                    Cost; only when the holding has both BookValue and Cost).
     - Accounts    : one row per account that has holdings, comparing the summed
                     market value with the account's closing balance (including
                     value adjustment accounts in the same ten-group without
                     holdings, e.g. 1359 for 1350), and the
                     summed holding BookValue (when every holding has one).
+                    AccountBalance is the account's own balance and HoldingsCost
+                    the summed Cost (when every holding has one).
     - MarketValue : total market value of the holdings in the range ($null when
                     there are none).
     - HasHoldings : whether any holdings exist in the range.
@@ -255,6 +264,13 @@ function Get-LedgerHoldingValuation {
         $row | Add-Member -NotePropertyName Difference -NotePropertyValue $diff
         $row | Add-Member -NotePropertyName BelowBookValue -NotePropertyValue $(if ($null -ne $diff) { $diff -lt 0 } else { $null })
         $row | Add-Member -NotePropertyName Rule -NotePropertyValue (Get-LedgerHoldingValuationRule $h.Account)
+        # A write-down may be reversed (återföring) up to the acquisition cost when
+        # the market value has recovered above the book value.
+        $reversible = if ($null -ne $h.Cost -and $null -ne $h.BookValue) {
+            $cap = [Math]::Min([decimal]$h.MarketValue, [decimal]$h.Cost)
+            [Math]::Max([decimal]0, [Math]::Round($cap - $h.BookValue, 2))
+        } else { $null }
+        $row | Add-Member -NotePropertyName Reversible -NotePropertyValue $reversible
         $row
     }
 
@@ -284,6 +300,10 @@ function Get-LedgerHoldingValuation {
             $holdingsBook = if ($withBook.Count -eq $group.Count) {
                 [decimal](($withBook | Measure-Object -Property BookValue -Sum).Sum)
             } else { $null }
+            $withCost = @($group.Group | Where-Object { $null -ne $_.Cost })
+            $holdingsCost = if ($withCost.Count -eq $group.Count) {
+                [decimal](($withCost | Measure-Object -Property Cost -Sum).Sum)
+            } else { $null }
             [PSCustomObject]@{
                 Account           = $acc
                 MarketValue       = $market
@@ -291,6 +311,8 @@ function Get-LedgerHoldingValuation {
                 Difference        = $market - $ledger
                 BelowBookValue    = $market -lt $ledger
                 HoldingsBookValue = $holdingsBook
+                AccountBalance    = if ($balances.ContainsKey($acc)) { $balances[$acc] } else { [decimal]0 }
+                HoldingsCost      = $holdingsCost
                 Rule              = Get-LedgerHoldingValuationRule $acc
             }
         }

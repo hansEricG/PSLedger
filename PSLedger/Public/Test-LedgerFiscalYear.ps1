@@ -20,8 +20,12 @@ properties. Nothing is modified. The checks are:
   be assessed as lasting or not; for 18xx accounts the lower of cost and market
   value applies. Info when there is no holdings.txt.
 - HoldingsReconcile  - the summed BookValue of an account's holdings (when all have
-  one) matches the ledger balance, and every PriceDate is the balance date
-  (Warning; Info when there is no holdings.txt).
+  one) matches the ledger balance, the summed Cost (when all have one) matches the
+  account's own balance (e.g. 1350 without 1359), and every PriceDate is the
+  balance date (Warning; Info when there is no holdings.txt).
+- HoldingsReversal  - no earlier write-down may be reversed: a holding with both
+  BookValue and Cost whose market value has recovered above its book value is
+  flagged for återföring (Warning; Info when no holding records a Cost).
 
 VAT reconciliation is not yet included. Use `Where-Object { $_.Status -eq 'Fail' }`
 to gate an automated close on the hard checks.
@@ -214,6 +218,7 @@ function Test-LedgerFiscalYear {
         if (-not $Valuation.HasHoldings) {
             New-CheckResult 'HoldingsValuation' 'Info' 'No holdings (holdings.txt) for this fiscal year.'
             New-CheckResult 'HoldingsReconcile' 'Info' 'No holdings (holdings.txt) for this fiscal year.'
+            New-CheckResult 'HoldingsReversal' 'Info' 'No holdings (holdings.txt) for this fiscal year.'
         }
         else {
             $Findings = @(Get-LedgerHoldingValuationFinding -Valuation $Valuation)
@@ -232,6 +237,9 @@ function Test-LedgerFiscalYear {
                     if ($null -ne $Acc.HoldingsBookValue -and [Math]::Round($Acc.HoldingsBookValue, 2) -ne [Math]::Round($Acc.BookValue, 2)) {
                         "Account $($Acc.Account): holdings book value $($Acc.HoldingsBookValue) does not match the ledger balance $($Acc.BookValue)"
                     }
+                    if ($null -ne $Acc.HoldingsCost -and [Math]::Round($Acc.HoldingsCost, 2) -ne [Math]::Round($Acc.AccountBalance, 2)) {
+                        "Account $($Acc.Account): holdings cost $($Acc.HoldingsCost) does not match the account balance $($Acc.AccountBalance)"
+                    }
                 }
                 foreach ($H in $Valuation.Holdings) {
                     if ($BalanceDate -and $H.PriceDate -and $H.PriceDate -ne $BalanceDate) {
@@ -244,6 +252,20 @@ function Test-LedgerFiscalYear {
             }
             else {
                 New-CheckResult 'HoldingsReconcile' 'Pass' 'Holdings reconcile with the ledger.'
+            }
+
+            $WithCost = @($Valuation.Holdings | Where-Object { $null -ne $_.Reversible })
+            $Reversals = @($WithCost | Where-Object { $_.Reversible -gt 0 } | ForEach-Object {
+                    "Holding '$($_.Name)' ($($_.Account)): market value $(Format-LedgerHoldingAmount $_.MarketValue) exceeds book value $(Format-LedgerHoldingAmount $_.BookValue) - up to $(Format-LedgerHoldingAmount $_.Reversible) of an earlier write-down may be reversed (återföring, Add-LedgerImpairment -Reverse)"
+                })
+            if ($WithCost.Count -eq 0) {
+                New-CheckResult 'HoldingsReversal' 'Info' 'No holding records a Cost (anskaffningsvärde).'
+            }
+            elseif ($Reversals.Count -gt 0) {
+                New-CheckResult 'HoldingsReversal' 'Warning' ($Reversals -join '; ')
+            }
+            else {
+                New-CheckResult 'HoldingsReversal' 'Pass' 'No write-down to reverse.'
             }
         }
     }
