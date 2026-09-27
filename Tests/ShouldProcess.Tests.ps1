@@ -22,7 +22,8 @@ Describe 'SupportsShouldProcess coverage' {
             # Orchestrators / removers
             'Invoke-LedgerInvoicePosting', 'Invoke-LedgerPayrollPosting', 'Invoke-LedgerSupplierInvoicePosting',
             'Invoke-LedgerRecurringEntry', 'Import-LedgerSie', 'Remove-LedgerRecurringEntry',
-            'Set-LedgerHolding', 'Remove-LedgerHolding'
+            'Set-LedgerHolding', 'Remove-LedgerHolding', 'Copy-LedgerHolding',
+            'Add-LedgerImpairment', 'Add-LedgerProfitDisposition'
         )
 
         It '<_> supports ShouldProcess' -ForEach $WriteCommands {

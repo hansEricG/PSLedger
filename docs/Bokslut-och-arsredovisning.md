@@ -19,13 +19,14 @@ verifikationer).
 | Steg | Vad | Kommandon |
 |------|-----|-----------|
 | 1 | Kontrollera att böckerna balanserar | `Get-LedgerBalance` |
-| 2 | Bokför bokslutstransaktioner (avskrivningar, skatt, bokslutsdispositioner) | `Add-LedgerDepreciation`, `Get-LedgerTaxEstimate`, `Add-LedgerTaxEntry`, `Add-LedgerAppropriation` |
+| 2 | Bokför bokslutstransaktioner (avskrivningar, nedskrivningar, skatt, bokslutsdispositioner) | `Add-LedgerDepreciation`, `Add-LedgerImpairment`, `Get-LedgerTaxEstimate`, `Add-LedgerTaxEntry`, `Add-LedgerAppropriation` |
 | 3 | Registrera bolagsuppgifter (en gång) | `Set-LedgerJournal -Metadata` |
 | 4 | Registrera årets berättelse och beslut | `Set-LedgerReportInput`, `Set-LedgerHolding` |
 | 5 | Granska rapporterna | `Get-LedgerIncomeStatement`, `Get-LedgerBalanceSheet -Detailed`, `Get-LedgerAnnualReport` |
 | 6 | Exportera årsredovisningen | `Export-LedgerAnnualReport` |
 | 7 | Stäng räkenskapsåret | `Close-LedgerFiscalYear` |
-| 8 | Öppna nästa år och rulla ingående balanser | `New-LedgerFiscalYear`, `Copy-LedgerOpeningBalance` |
+| 8 | Öppna nästa år och rulla ingående balanser och innehav | `New-LedgerFiscalYear`, `Copy-LedgerOpeningBalance`, `Copy-LedgerHolding` |
+| 9 | Bokför resultatdispositionen efter årsstämman | `Add-LedgerProfitDisposition` |
 
 > **Tips:** Kör alltid en `Backup-LedgerJournal` innan du börjar med bokslutet, så du
 > enkelt kan rulla tillbaka.
@@ -72,7 +73,33 @@ Add-LedgerDepreciation -JournalPath .\HEG.ledger -FiscalYear $fy -Date '2025-08-
     -AcquisitionCost 50000 -UsefulLifeYears 5
 ```
 
-### 2b. Bokslutsdispositioner (periodiseringsfond, överavskrivningar)
+### 2b. Nedskrivningar
+
+`Add-LedgerImpairment` bokför en nedskrivning (debiterar en nedskrivningskostnad,
+krediterar ett värderegleringskonto). Ange beloppet med `-Amount`, eller ange ett
+innehav (`-Account` och `-Name`, se [Innehav och marknadsvärde](#innehav-och-marknadsvärde))
+så skrivs det ned till sitt marknadsvärde. Datum är som standard balansdagen.
+
+```powershell
+# Explicit belopp
+Add-LedgerImpairment -JournalPath .\HEG.ledger -FiscalYear $fy `
+    -ExpenseAccount 8271 -AdjustmentAccount 1359 -Amount 24348 `
+    -Description 'Nedskrivning Knowit (bestående värdenedgång)'
+
+# Skriv ned ett registrerat innehav till marknadsvärdet
+Add-LedgerImpairment -JournalPath .\HEG.ledger -FiscalYear $fy `
+    -Account 1350 -Name 'Knowit' -ExpenseAccount 8271 -AdjustmentAccount 1359
+```
+
+- För ett innehav är beloppet `BookValue − MarketValue`. Saknar innehavet `BookValue`
+  används kontots bokförda värde (inklusive t.ex. 1359) minus marknadsvärdet, men bara
+  om innehavet är ensamt på kontot.
+- Efter bokningen sätts innehavets `BookValue` till marknadsvärdet.
+- Vanliga konton: 8271/1359 för andelar och värdepapper (13xx), 7710/1098 för
+  kryptotillgångar som redovisas som immateriell anläggningstillgång (K3).
+- Återföring av en tidigare nedskrivning bokförs manuellt med `Add-LedgerEntry`.
+
+### 2c. Bokslutsdispositioner (periodiseringsfond, överavskrivningar)
 
 `Add-LedgerAppropriation` hanterar `Periodiseringsfond` och `Overavskrivning`. Använd
 `-Reverse` för att återföra en tidigare avsättning.
@@ -87,7 +114,7 @@ Add-LedgerAppropriation -JournalPath .\HEG.ledger -FiscalYear $fy -Date '2025-08
     -Type Periodiseringsfond -Amount 12000 -Reverse
 ```
 
-### 2c. Skatt
+### 2d. Skatt
 
 Beräkna först skatten, bokför den sedan. `Get-LedgerTaxEstimate` utgår från resultatet
 före skatt (konton t.o.m. 8999) och justerar för ej avdragsgilla kostnader och ej
@@ -211,7 +238,7 @@ Get-LedgerHolding -JournalPath .\HEG.ledger -FiscalYear $fy |
 - Om marknadsvärdet understiger bokfört värde visas en varning. För finansiella
   anläggningstillgångar (13xx) ska du bedöma om värdenedgången är bestående
   (nedskrivning enligt K2); för kortfristiga placeringar (18xx) gäller lägsta värdets
-  princip. Nedskrivningen bokförs manuellt.
+  princip. Bokför nedskrivningen med `Add-LedgerImpairment` (se steg 2b).
 - Kontots bokförda värde inkluderar värderegleringskonton i samma tiotal som inte
   själva har innehav (t.ex. 1359 för 1350). Nedskrivningar som bokförts på ett konto
   i ett annat tiotal (t.ex. 1890 för 1810) räknas inte in i jämförelsen per konto —
@@ -369,16 +396,55 @@ Copy-LedgerOpeningBalance -JournalPath .\HEG.ledger `
 ```
 
 `Copy-LedgerOpeningBalance` för över alla tillgångs- och skuldsaldon (inklusive 2099)
-som ingående balans. Föregående års resultat ligger kvar i 2099:s ingående balans.
+som ingående balans. Föregående års resultat ligger kvar i 2099:s ingående balans tills
+resultatdispositionen bokförs (steg 9).
+
+Har du registrerat värdepappersinnehav rullar du dem vidare med `Copy-LedgerHolding`.
+Alla fält kopieras, även kurs och kursdatum, så uppdatera kurserna med
+`Set-LedgerHolding` vid nästa balansdag (`Test-LedgerFiscalYear` påminner om kursdatum
+som inte stämmer med balansdagen).
+
+```powershell
+Copy-LedgerHolding -JournalPath .\HEG.ledger `
+    -FromFiscalYear '2024-09_2025-08' -ToFiscalYear '2025-09_2026-08'
+```
+
+Målåret får inte redan ha innehav (använd `-Force` för att ersätta dem), och en
+varning visas för innehav vars konto saknar ingående balans i målåret.
+
+---
+
+## Steg 9 — Bokför resultatdispositionen efter årsstämman
+
+När årsstämman har fastställt årsredovisningen och beslutat om vinstdispositionen
+bokför du beslutet i det nya året med `Add-LedgerProfitDisposition`. Föregående års
+resultat förs från 2099 till 2091 (Balanserad vinst eller förlust), och en beslutad
+utdelning bokförs som skuld på 2898 (Outtagen vinstutdelning).
+
+```powershell
+# Använder AnnualMeetingDate och ProposedDividend från föregående års report.txt
+Add-LedgerProfitDisposition -JournalPath .\HEG.ledger -FiscalYear '2025-09_2026-08'
+
+# Ange datum och utdelning explicit
+Add-LedgerProfitDisposition -JournalPath .\HEG.ledger -FiscalYear '2025-09_2026-08' `
+    -Date '2025-10-15' -Dividend 50000
+```
+
+- Året som disponeras är som standard året före `-FiscalYear` (`-FromFiscalYear`).
+- Kommandot vägrar om 2099 saknar saldo (dispositionen är troligen redan bokförd) eller
+  om utdelningen överstiger det fria egna kapitalet.
+- Kontona kan ändras med `-ResultAccount`, `-RetainedEarningsAccount` och
+  `-DividendAccount`. Utbetalningen av utdelningen bokförs sedan som vanligt
+  (2898 mot bank).
 
 ---
 
 ## Att tänka på
 
-- **Omföring 2099 → 2091:** eget kapital-tabellen och vinstdispositionen förutsätter att
-  du **inte** bokför en manuell omföring av föregående års resultat (2099 → 2091) mitt
-  i året. Föregående års resultat behandlas som ingående balanserat resultat via 2099:s
-  ingående balans. Bokför du en manuell omföring dubbelräknas beloppet.
+- **Omföring 2099 → 2091:** eget kapital-tabellen och vinstdispositionen hanterar en
+  resultatdisposition som bokförts under året (med `Add-LedgerProfitDisposition` eller
+  manuellt). Föregående års resultat räknas som ingående balanserat resultat, och
+  omföringen dubbelräknas inte.
 - **Ordning:** bokför avskrivningar och bokslutsdispositioner **före** du beräknar och
   bokför skatten, eftersom de påverkar det skattemässiga resultatet.
 - **Kör alltid en backup** (`Backup-LedgerJournal`) innan du stänger året.
@@ -395,6 +461,7 @@ som ingående balans. Föregående års resultat ligger kvar i 2099:s ingående 
 | `Backup-LedgerJournal` | Skapa en tidsstämplad zip-backup |
 | `Get-LedgerBalance` | Saldobalans (kontroll före bokslut) |
 | `Add-LedgerDepreciation` | Bokför avskrivning |
+| `Add-LedgerImpairment` | Bokför nedskrivning (belopp eller innehav till marknadsvärde) |
 | `Add-LedgerAppropriation` | Bokför/återför periodiseringsfond eller överavskrivning |
 | `Get-LedgerTaxEstimate` | Beräkna bolagsskatt (skattemässigt resultat) |
 | `Add-LedgerTaxEntry` | Bokför årets skatt |
@@ -416,3 +483,5 @@ som ingående balans. Föregående års resultat ligger kvar i 2099:s ingående 
 | `Close-LedgerFiscalYear` | Stäng och lås räkenskapsåret |
 | `New-LedgerFiscalYear` | Skapa nästa räkenskapsår |
 | `Copy-LedgerOpeningBalance` | Rulla ingående balanser till nästa år |
+| `Copy-LedgerHolding` | Rulla värdepappersinnehav till nästa år |
+| `Add-LedgerProfitDisposition` | Bokför resultatdisposition och utdelning efter årsstämman |

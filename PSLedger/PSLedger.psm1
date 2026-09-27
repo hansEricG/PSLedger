@@ -74,9 +74,12 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Set-LedgerHolding.ps1
 . $PSScriptRoot\Public\Get-LedgerHolding.ps1
 . $PSScriptRoot\Public\Remove-LedgerHolding.ps1
+. $PSScriptRoot\Public\Copy-LedgerHolding.ps1
+. $PSScriptRoot\Public\Add-LedgerImpairment.ps1
 . $PSScriptRoot\Public\Get-LedgerMultiYearOverview.ps1
 . $PSScriptRoot\Public\Get-LedgerEquityReconciliation.ps1
 . $PSScriptRoot\Public\Get-LedgerProfitDisposition.ps1
+. $PSScriptRoot\Public\Add-LedgerProfitDisposition.ps1
 . $PSScriptRoot\Public\Get-LedgerFixedAssetNote.ps1
 . $PSScriptRoot\Public\Get-LedgerShareholdingNote.ps1
 . $PSScriptRoot\Public\Get-LedgerEmployeeNote.ps1
@@ -152,10 +155,11 @@ $script:BuiltInFunctions = @(
     'Get-LedgerTaxEstimate', 'Add-LedgerTaxEntry', 'Add-LedgerAppropriation',
     'Get-LedgerAnnualReport', 'Export-LedgerAnnualReport',
     'Set-LedgerReportInput', 'Get-LedgerReportInput',
-    'Set-LedgerHolding', 'Get-LedgerHolding', 'Remove-LedgerHolding',
+    'Set-LedgerHolding', 'Get-LedgerHolding', 'Remove-LedgerHolding', 'Copy-LedgerHolding',
+    'Add-LedgerImpairment',
     'Get-LedgerMultiYearOverview',
     'Get-LedgerEquityReconciliation',
-    'Get-LedgerProfitDisposition',
+    'Get-LedgerProfitDisposition', 'Add-LedgerProfitDisposition',
     'Get-LedgerFixedAssetNote',
     'Get-LedgerShareholdingNote', 'Get-LedgerEmployeeNote',
     'Get-LedgerAccountingPrinciples',

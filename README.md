@@ -93,6 +93,7 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerMultiYearOverview` | Flerårsöversikt (multi-year key figures) |
 | `Get-LedgerEquityReconciliation` | Förändringar i eget kapital (förvaltningsberättelse) |
 | `Get-LedgerProfitDisposition` | Förslag till vinstdisposition |
+| `Add-LedgerProfitDisposition` | Book the resultatdisposition (2099 → 2091, dividend on 2898) after the AGM |
 | `Get-LedgerFixedAssetNote` | Anläggningsregisternot (roll-forward) |
 | `Get-LedgerShareholdingNote` | Not för aktier och andelar (bokfört + marknadsvärde) |
 | `Get-LedgerEmployeeNote` | Not för medelantal anställda |
@@ -103,6 +104,8 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Set-LedgerHolding` | Record or update a securities holding at the balance date (holdings.txt) |
 | `Get-LedgerHolding` | List holdings with market value and comparison to book value |
 | `Remove-LedgerHolding` | Remove a securities holding |
+| `Copy-LedgerHolding` | Roll securities holdings over to a new year |
+| `Add-LedgerImpairment` | Book a write-down (nedskrivning), optionally of a holding to its market value |
 | `Copy-LedgerOpeningBalance` | Roll over balances to a new year |
 | `Update-LedgerJournal` | Migrate a journal to the current on-disk format |
 | `Backup-LedgerJournal` | Create a timestamped zip backup (with retention) |
