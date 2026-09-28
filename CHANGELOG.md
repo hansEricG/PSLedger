@@ -16,6 +16,9 @@
   description so the paper form can be filled in directly.
 - `Export-LedgerIncomeTaxReturn -ConsultantAssisted` and `-Audited` answer the
   Ja/Nej questions at the bottom of INK2S (SRU 8040/8041 and 8044/8045).
+- `Export-LedgerIncomeTaxReturn` falls back to the postal code and city in the
+  journal's `Address` metadata when `PostalCode`/`City` are not set, and writes
+  the street part as `#ADRESS` in INFO.SRU.
 
 ### Fixed
 - `Export-LedgerIncomeTaxReturn` now follows Skatteverket's official field

@@ -73,11 +73,13 @@ does not exist.
 
 .PARAMETER PostalCode
 The submitter's postal code (postnummer). Required by INFO.SRU; falls back to the
-journal metadata field 'PostalCode' when omitted.
+journal metadata field 'PostalCode', and then to the postal code in the
+metadata field 'Address' (e.g. 'Storgatan 1, 111 22 Stockholm, Sweden'), whose
+street part is also written to INFO.SRU as #ADRESS.
 
 .PARAMETER City
 The submitter's city (postort). Required by INFO.SRU; falls back to the journal
-metadata field 'City' when omitted.
+metadata field 'City', and then to the city in the metadata field 'Address'.
 
 .PARAMETER ContactPerson
 Optional contact person written to INFO.SRU; falls back to the journal metadata
@@ -201,13 +203,29 @@ function Export-LedgerIncomeTaxReturn {
         $endDate = [datetime]$year.EndDate
 
         # Submitter metadata: parameters win, otherwise fall back to free-form
-        # journal metadata. Postal code and city are mandatory in INFO.SRU.
+        # journal metadata. Postal code and city are mandatory in INFO.SRU;
+        # when 'PostalCode'/'City' are not set they are parsed from 'Address'
+        # (e.g. 'Storgatan 1, 111 22 Stockholm, Sweden'), whose street part is
+        # also written as the optional #ADRESS.
+        $street = $null
+        $address = [string]$journal.Metadata['Address']
+        if ($address) {
+            $segments = @($address -split ',' | ForEach-Object Trim | Where-Object { $_ })
+            for ($i = 0; $i -lt $segments.Count; $i++) {
+                if ($segments[$i] -match '^(?:SE-?\s?)?(\d{3}\s?\d{2})\s+(.+)$') {
+                    if (-not $PostalCode -and -not $journal.Metadata['PostalCode']) { $PostalCode = $Matches[1] }
+                    if (-not $City -and -not $journal.Metadata['City']) { $City = $Matches[2] }
+                    if ($i -gt 0) { $street = $segments[0..($i - 1)] -join ', ' }
+                    break
+                }
+            }
+        }
         if (-not $PostalCode) { $PostalCode = [string]$journal.Metadata['PostalCode'] }
         if (-not $City) { $City = [string]$journal.Metadata['City'] }
         if (-not $ContactPerson) { $ContactPerson = [string]$journal.Metadata['ContactPerson'] }
         if (-not $Email) { $Email = [string]$journal.Metadata['Email'] }
         if (-not $PostalCode -or -not $City) {
-            throw "INFO.SRU requires a postal code and city. Supply -PostalCode and -City, or set 'PostalCode' and 'City' in the journal metadata."
+            throw "INFO.SRU requires a postal code and city. Supply -PostalCode and -City, or set 'PostalCode' and 'City' (or an 'Address' such as 'Storgatan 1, 111 22 Stockholm') in the journal metadata."
         }
 
         # Whole kronor, öre truncated toward zero.
@@ -454,6 +472,7 @@ function Export-LedgerIncomeTaxReturn {
         & $addInfo '#MEDIELEV_START'
         & $addInfo "#ORGNR $orgNr"
         & $addInfo "#NAMN $name"
+        if ($street) { & $addInfo "#ADRESS $street" }
         & $addInfo "#POSTNR $($PostalCode -replace '\s', '')"
         & $addInfo "#POSTORT $City"
         if ($ContactPerson) { & $addInfo "#KONTAKT $ContactPerson" }

@@ -233,6 +233,29 @@ Describe 'Export-LedgerIncomeTaxReturn' {
                 -Path (Join-Path $TestDrive 'noaddr-sru') } | Should -Throw '*postal code*'
         }
 
+        It 'Should take postal code, city and street from the journal Address when PostalCode and City are not set' {
+            $Addr = Join-Path $TestDrive 'Addr.ledger'
+            New-LedgerJournal -Path $Addr -Name 'Adress AB' -OrgNumber '556000-0100' `
+                -Metadata @{ Address = 'Pingeltorpsvägen 17, 806 35 Gävle, Sweden' } | Out-Null
+            New-LedgerFiscalYear -JournalPath $Addr -StartDate '2024-01-01' -EndDate '2024-12-31' | Out-Null
+            $out = Join-Path $TestDrive 'addr-sru'
+            Export-LedgerIncomeTaxReturn -JournalPath $Addr -FiscalYear '2024-01_2024-12' -Path $out | Out-Null
+            $info = [System.IO.File]::ReadAllLines((Join-Path $out 'INFO.SRU'), [System.Text.Encoding]::GetEncoding('ISO-8859-1'))
+            $info | Should -Contain '#ADRESS Pingeltorpsvägen 17'
+            $info | Should -Contain '#POSTNR 80635'
+            $info | Should -Contain '#POSTORT Gävle'
+            [array]::IndexOf($info, '#ADRESS Pingeltorpsvägen 17') | Should -BeLessThan ([array]::IndexOf($info, '#POSTNR 80635'))
+        }
+
+        It 'Should prefer PostalCode and City metadata over the parsed Address' {
+            Set-LedgerJournal -JournalPath $JournalPath -Metadata @{ Address = 'Box 159, 123 45 Skattstad' }
+            Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest | Out-Null
+            $info = Get-Content -LiteralPath (Join-Path $Dest 'INFO.SRU')
+            $info | Should -Contain '#POSTNR 11122'
+            $info | Should -Contain '#POSTORT Stockholm'
+            $info | Should -Contain '#ADRESS Box 159'
+        }
+
         It 'Should throw when the journal has no OrgNumber' {
             $NoOrg = Join-Path $TestDrive 'NoOrg.ledger'
             New-LedgerJournal -Path $NoOrg -Name 'Utan Orgnr AB' | Out-Null

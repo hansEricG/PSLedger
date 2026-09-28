@@ -62,6 +62,10 @@ Set-LedgerJournal -Metadata @{ PostalCode = '11122'; City = 'Stockholm'
 Export-LedgerIncomeTaxReturn -Path .\sru
 ```
 
+Saknas `PostalCode`/`City` i metadata tolkas de ur fältet `Address` om det har formen
+`Gata 1, 111 22 Ort[, Land]`. Gatudelen skrivs då även som `#ADRESS` i INFO.SRU.
+Uppgifterna används på Skatteverkets mottagningskvittens.
+
 Resultatet blir `.\sru\INFO.SRU` och `.\sru\BLANKETTER.SRU`.
 
 Fyller du i blanketten för hand (eller vill kontrollera filen) listar egenskapen
