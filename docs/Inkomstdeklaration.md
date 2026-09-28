@@ -26,19 +26,20 @@ För ett aktiebolag skapas tre blankettblock:
 - **Eget kapital och skulder (konto 2xxx)** negeras så att ett kreditsaldo blir positivt.
 - **Resultaträkningen (konto 3xxx–8xxx)** negeras så att intäkter blir positiva och
   kostnader negativa – samma teckenkonvention som `Get-LedgerIncomeStatement`.
-- **Årets resultat** och **totalt eget kapital** beräknas från hela kontointervallet
-  och årets resultat vävs in i fritt eget kapital (SRU 7302), så att balansräkningen
-  alltid stämmer även om något ovanligt konto inte klassificeras på en egen rad.
-  Årets resultat skrivs även ut som resultaträkningens slutrad på INK2R
-  (SRU 7450 vinst / 7550 förlust).
+- **Årets resultat** (INK2R 3.26/3.27, SRU 7450 vinst / 7550 förlust, och INK2S
+  4.1/4.2) är summan av resultaträkningens avkortade rader, och **fritt eget kapital**
+  (SRU 7302) är balansräkningens balanserande post. Blanketten går därför alltid
+  ihop på kronan, även om något ovanligt konto inte klassificeras på en egen rad.
+- **Skattekontot och skatteskulder** redovisas efter saldots tecken: ett debetsaldo
+  på 25xx blir en fordran (2.21, SRU 7261) och ett kreditsaldo på 163x blir en
+  skatteskuld (2.49, SRU 7368).
 
 Beloppen anges i **hela kronor** (ören avkortas enligt SFL 22:1), organisationsnumret
 skrivs i **12-siffrig form** (`556677-8899` → `165566778899`) och filerna skrivs med
 **ISO-8859-1**-kodning – allt enligt formatets krav.
 
-Kör exporten på ett räkenskapsår vars resultat **ännu inte** är disponerat mot eget
-kapital (det normala arbetsflödet), på samma sätt som resultaträkningen visar det
-öppna årets resultat.
+Exporten fungerar både före och efter att årets resultat har förts mot eget kapital
+(8999/2099) – resultatet är detsamma.
 
 ## Steg för steg
 

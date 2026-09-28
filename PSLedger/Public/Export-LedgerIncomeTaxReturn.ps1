@@ -19,9 +19,13 @@ destination directory. The submission contains three blankett blocks:
 
 Amounts are reported in whole kronor (öre truncated per SFL 22:1), the
 organisation number is written in the 12-digit form and the files use ISO-8859-1
-encoding, all as the format requires. Årets resultat and total equity are
-computed from the full account range, so the bottom line always ties out even
-if an unusual account is not classified onto a specific räkenskapsschema line.
+encoding, all as the format requires. Årets resultat (3.26/3.27, and 4.1/4.2 on
+INK2S) is the sum of the truncated income statement lines, and fritt eget
+kapital (2.28) is the balancing figure of the truncated balance sheet, so both
+statements tie out to the krona. Fritt eget kapital includes årets resultat
+whether or not the closing entry (8999/2099) has been booked. A debit balance on
+a skatteskulder account (25xx) is reported as a receivable (2.21) and a credit
+balance on the skattekonto (163x) as a skatteskuld (2.49).
 
 The surplus/deficit (INK2S 8020/8021 and INK2 7113/7114) defaults to
 årets resultat plus the booked income tax. Supply -TaxAdjustment to add further
@@ -31,9 +35,8 @@ e.g. 7652 = 4.3b) are added and 77xx fields (deductions, e.g. 7754 = 4.5c) are
 subtracted. An explicit 8020/8021 overrides the computed surplus on both INK2S
 and the INK2 huvudblankett (7113/7114).
 
-Run this on a fiscal year whose result has not yet been appropriated into equity
-(the normal workflow), the same way Get-LedgerIncomeStatement reports the
-unclosed result.
+Run this on a fiscal year either before or after the result has been
+appropriated into equity (8999/2099); the export is the same in both cases.
 
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal
@@ -153,32 +156,58 @@ function Export-LedgerIncomeTaxReturn {
             $sru[$key] += [decimal]$amount
         }
 
-        $resultRaw = [decimal]0   # raw sum of P&L accounts (3000-8998)
         $bookedTax = [decimal]0   # raw sum of income-tax accounts (8900-8989)
         foreach ($row in $balance) {
             $acct = 0
             if (-not [int]::TryParse($row.AccountNumber, [ref]$acct)) { continue }
             $bal = [decimal]$row.Balance
 
-            if ($acct -ge 3000 -and $acct -le 8998) { $resultRaw += $bal }
             if ($acct -ge 8900 -and $acct -le 8989) { $bookedTax += $bal }
 
             $rule = Resolve-SruAccountRule -Account $acct -Rules $rules
             if (-not $rule) { continue }
             switch ($rule.Kind) {
-                'Asset' { & $addSru $rule.Sru $bal }       # debit-positive as-is
-                'Debt' { & $addSru $rule.Sru (-$bal) }     # credit -> positive
+                'Asset' {
+                    # debit-positive as-is; a credit balance may move to AltSru
+                    if ($rule.AltSru -and $bal -lt 0) { & $addSru $rule.AltSru (-$bal) }
+                    else { & $addSru $rule.Sru $bal }
+                }
+                'Debt' {
+                    # credit -> positive; a debit balance may move to AltSru
+                    if ($rule.AltSru -and $bal -gt 0) { & $addSru $rule.AltSru $bal }
+                    else { & $addSru $rule.Sru (-$bal) }
+                }
                 'Income' { & $addSru $rule.Sru (-$bal) }   # revenue+ / cost-
             }
         }
 
-        # Årets resultat (profit positive) and the booked income tax add-back.
-        $netResult = -$resultRaw
-        $tax = $bookedTax
+        # Whole kronor, öre truncated toward zero.
+        function Format-SruAmount {
+            param([decimal]$Value)
+            [long][Math]::Truncate($Value)
+        }
 
-        # Fold the year's result into fritt eget kapital (7302) so the balance
-        # sheet reflects total equity including årets resultat.
-        if ($netResult -ne 0) { & $addSru 7302 $netResult }
+        # Report whole kronor per field, and derive the totals from the
+        # truncated lines so the form ties out exactly: årets resultat is the
+        # sum of the income statement lines, and fritt eget kapital (7302) is
+        # the balancing figure of the balance sheet. That includes årets
+        # resultat whether or not the closing entry 8999/2099 has been booked.
+        $codes = @($sru.Keys)
+        foreach ($code in $codes) { $sru[$code] = [decimal](Format-SruAmount -Value $sru[$code]) }
+        $netResult = [decimal]0
+        $assetTotal = [decimal]0
+        $otherEquityLiab = [decimal]0
+        foreach ($code in $codes) {
+            if ($code -ge 7400) { $netResult += $sru[$code] }
+            elseif ($code -lt 7300) { $assetTotal += $sru[$code] }
+            elseif ($code -ne 7302) { $otherEquityLiab += $sru[$code] }
+        }
+        $freeEquity = $assetTotal - $otherEquityLiab
+        if ($freeEquity -ne 0) { $sru[7302] = $freeEquity }
+        else { $sru.Remove(7302) }
+
+        # The booked income tax (non-deductible) is added back on INK2S 4.3a.
+        $tax = [decimal](Format-SruAmount -Value $bookedTax)
 
         # Årets resultat is also the closing line of the INK2R income statement
         # (3.26 vinst / 3.27 förlust). A loss is reported as a positive amount;
@@ -206,12 +235,6 @@ function Export-LedgerIncomeTaxReturn {
                 if ($k -ge 7700 -and $k -le 7799) { $surplus -= $userAdjustments[$k] }
                 else { $surplus += $userAdjustments[$k] }
             }
-        }
-
-        # Whole kronor, öre truncated toward zero.
-        function Format-SruAmount {
-            param([decimal]$Value)
-            [long][Math]::Truncate($Value)
         }
 
         $stamp = Get-Date

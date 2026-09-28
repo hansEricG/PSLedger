@@ -236,5 +236,63 @@ Describe 'Export-LedgerIncomeTaxReturn' {
                 -Path (Join-Path $TestDrive 'noorg-sru') -PostalCode '11122' -City 'Stockholm' } |
                 Should -Throw '*OrgNumber*'
         }
+
+        It 'Should not double count årets resultat in fritt eget kapital when 8999/2099 is booked' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2099' -AccountName 'Årets resultat'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '8999' -AccountName 'Årets resultat'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-12-31' `
+                -Description 'Årets resultat' -Rows @(
+                    @{ Account = '8999'; Amount = 65000 }, @{ Account = '2099'; Amount = -65000 })
+            $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest
+            $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+            Get-Uppgift $blk 'INK2R-2024P4' 7302 | Should -Be 65000
+            Get-Uppgift $blk 'INK2R-2024P4' 7450 | Should -Be 65000
+            $r.NetResult | Should -Be 65000
+            $r.SurplusDeficit | Should -Be 80000
+        }
+
+        It 'Should report a debit balance on 25xx skatteskulder as a receivable (7261)' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2510' -AccountName 'Skatteskulder'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-06-12' `
+                -Description 'Preliminärskatt' -Rows @(
+                    @{ Account = '2510'; Amount = 4000 }, @{ Account = '1930'; Amount = -4000 })
+            Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest | Out-Null
+            $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+            Get-Uppgift $blk 'INK2R-2024P4' 7261 | Should -Be 4000
+            Get-Uppgift $blk 'INK2R-2024P4' 7368 | Should -BeNullOrEmpty
+        }
+
+        It 'Should report a credit balance on the skattekonto (163x) as a skatteskuld (7368)' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1630' -AccountName 'Skattekonto'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-06-12' `
+                -Description 'Debiterad skatt' -Rows @(
+                    @{ Account = '1630'; Amount = -3000 }, @{ Account = '2440'; Amount = 3000 })
+            Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest | Out-Null
+            $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+            Get-Uppgift $blk 'INK2R-2024P4' 7368 | Should -Be 3000
+            Get-Uppgift $blk 'INK2R-2024P4' 7261 | Should -BeNullOrEmpty
+        }
+
+        It 'Should derive årets resultat and fritt eget kapital from the truncated lines so the form ties out' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '6570' -AccountName 'Bankkostnader'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '8310' -AccountName 'Ränteintäkter'
+            # Öre on 6570 (cost 0,70) and 8310 (income 0,60) truncate to 0 per line,
+            # while the raw result drops by 0,10 kr.
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-07-01' `
+                -Description 'Öresposter' -Rows @(
+                    @{ Account = '6570'; Amount = 0.70 }, @{ Account = '8310'; Amount = -0.60 },
+                    @{ Account = '1930'; Amount = -0.10 })
+            $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest
+            $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+            $lines = 0
+            foreach ($c in 7410, 7513, 7528, 7417) { $lines += [long](Get-Uppgift $blk 'INK2R-2024P4' $c) }
+            Get-Uppgift $blk 'INK2R-2024P4' 7450 | Should -Be $lines
+            Get-Uppgift $blk 'INK2S-2024P4' 7650 | Should -Be $lines
+            $assets = (Get-Uppgift $blk 'INK2R-2024P4' 7251) + (Get-Uppgift $blk 'INK2R-2024P4' 7281)
+            $equityLiab = (Get-Uppgift $blk 'INK2R-2024P4' 7301) + (Get-Uppgift $blk 'INK2R-2024P4' 7302) +
+                (Get-Uppgift $blk 'INK2R-2024P4' 7365) + (Get-Uppgift $blk 'INK2R-2024P4' 7369)
+            $equityLiab | Should -Be $assets
+            $r.SurplusDeficit | Should -Be ($lines + 15000)
+        }
     }
 }

@@ -10,10 +10,10 @@
 #     and costs are negative.
 #
 # The official mapping is maintained by BAS-kontogruppen together with
-# Skatteverket (bas.se/kontoplaner/sru/). Årets resultat and total equity are
-# computed from the full account range in Export-LedgerIncomeTaxReturn, so the
-# bottom line always ties out even if an unusual account is not classified onto
-# a specific line here.
+# Skatteverket (bas.se/kontoplaner/sru/). Årets resultat and fritt eget kapital
+# are derived from the truncated lines in Export-LedgerIncomeTaxReturn, so the
+# statements always tie out even if an unusual account is not classified onto a
+# specific line here.
 
 function Get-SruAccountRules {
     <#
@@ -25,6 +25,10 @@ function Get-SruAccountRules {
     code and a Kind: 'Asset' (reported as-is), 'Debt' (equity/liabilities,
     negated) or 'Income' (income statement, negated). Rules are ordered so that
     more specific ranges are matched before the wider ranges that contain them.
+    An optional AltSru is used, per account, when the balance has the opposite
+    sign (an Asset account in credit or a Debt account in debit), so for
+    example a debit balance on 2510 Skatteskulder is reported as a receivable
+    rather than a negative liability.
     #>
     [CmdletBinding()]
     param()
@@ -60,6 +64,8 @@ function Get-SruAccountRules {
         [PSCustomObject]@{ Min = 1620; Max = 1620; Sru = 7262; Kind = 'Asset' }
         [PSCustomObject]@{ Min = 1520; Max = 1559; Sru = 7261; Kind = 'Asset' }
         [PSCustomObject]@{ Min = 1580; Max = 1599; Sru = 7261; Kind = 'Asset' }
+        # Skattekontot (1630): a credit balance is a tax liability (2.49).
+        [PSCustomObject]@{ Min = 1630; Max = 1639; Sru = 7261; Kind = 'Asset'; AltSru = 7368 }
         [PSCustomObject]@{ Min = 1600; Max = 1699; Sru = 7261; Kind = 'Asset' }
         [PSCustomObject]@{ Min = 1700; Max = 1799; Sru = 7263; Kind = 'Asset' }
         [PSCustomObject]@{ Min = 1800; Max = 1859; Sru = 7271; Kind = 'Asset' }
@@ -92,7 +98,8 @@ function Get-SruAccountRules {
         [PSCustomObject]@{ Min = 2480; Max = 2489; Sru = 7369; Kind = 'Debt' }
         [PSCustomObject]@{ Min = 2490; Max = 2490; Sru = 7366; Kind = 'Debt' }
         [PSCustomObject]@{ Min = 2491; Max = 2499; Sru = 7369; Kind = 'Debt' }
-        [PSCustomObject]@{ Min = 2500; Max = 2599; Sru = 7368; Kind = 'Debt' }
+        # Skatteskulder: a debit balance is a receivable from Skatteverket (2.21).
+        [PSCustomObject]@{ Min = 2500; Max = 2599; Sru = 7368; Kind = 'Debt'; AltSru = 7261 }
         [PSCustomObject]@{ Min = 2600; Max = 2799; Sru = 7369; Kind = 'Debt' }
         [PSCustomObject]@{ Min = 2800; Max = 2899; Sru = 7369; Kind = 'Debt' }
         [PSCustomObject]@{ Min = 2900; Max = 2999; Sru = 7370; Kind = 'Debt' }

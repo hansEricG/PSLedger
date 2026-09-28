@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Fixed
+- `Export-LedgerIncomeTaxReturn`: fritt eget kapital (7302) no longer counts
+  årets resultat twice when the closing entry 8999/2099 is already booked; a
+  debit balance on 25xx skatteskulder is reported as a receivable (7261) and a
+  credit balance on the skattekonto 163x as a skatteskuld (7368) instead of
+  negative amounts; årets resultat (7450/7550, INK2S 7650/7750) and fritt eget
+  kapital are derived from the truncated lines so the form ties out to the krona.
 - Help examples for `New-LedgerEntryRow` and `Add-LedgerEntry`: the pipeline
   example only piped the last row (so the entry did not balance), and the office
   rent example credited input VAT (2640) instead of debiting it. The README
