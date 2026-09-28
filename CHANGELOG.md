@@ -14,6 +14,8 @@
   ('4.3b', '4.13+') as well as the SRU code, and the result object gains
   `Fields`, listing every written field with its form, row, SRU code, amount and
   description so the paper form can be filled in directly.
+- `Export-LedgerIncomeTaxReturn -ConsultantAssisted` and `-Audited` answer the
+  Ja/Nej questions at the bottom of INK2S (SRU 8040/8041 and 8044/8045).
 
 ### Fixed
 - `Export-LedgerIncomeTaxReturn` now follows Skatteverket's official field

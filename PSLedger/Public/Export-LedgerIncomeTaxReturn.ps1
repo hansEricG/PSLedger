@@ -96,9 +96,21 @@ automatically derived amount for the same field (use 0 to remove a derived
 field). Give amounts as they appear on the form (positive); fields that
 Skatteverket only accepts as positive throw on a negative amount. Årets
 resultat (4.1/4.2) always comes from the books and cannot be supplied.
+
 .PARAMETER NoAutomaticAdjustment
 Do not derive any INK2S adjustments from the trial balance; only årets
 resultat, the booked tax (4.3a) and -TaxAdjustment are used.
+
+.PARAMETER ConsultantAssisted
+Answers the INK2S question whether an uppdragstagare (e.g. a
+redovisningskonsult) has assisted in preparing the annual report: $true
+writes Ja (SRU 8040), $false writes Nej (SRU 8041). Omit to leave the question
+unanswered.
+
+.PARAMETER Audited
+Answers the INK2S question whether the annual report has been audited
+(varit föremål för revision): $true writes Ja (SRU 8044), $false writes Nej
+(SRU 8045). Omit to leave the question unanswered.
 
 .PARAMETER Force
 Overwrite existing INFO.SRU / BLANKETTER.SRU files in the destination directory.
@@ -126,6 +138,12 @@ lageraktier and is deductible; the automatically derived 4.3b add-back
 
 Exports the return and lists every field with its row on the form (e.g. 3.7,
 4.3a, 4.15), SRU code and amount, ready to copy onto the declaration.
+
+.EXAMPLE
+Export-LedgerIncomeTaxReturn -JournalPath .\Grönlund.ledger -FiscalYear '2025-09_2026-08' -Path .\sru -ConsultantAssisted $false -Audited $false
+
+Grönlund Konsult AB prepared its annual report itself and has no auditor, so
+Nej is answered to both questions at the bottom of INK2S (SRU 8041 and 8045).
 #>
 function Export-LedgerIncomeTaxReturn {
     [CmdletBinding()]
@@ -156,6 +174,12 @@ function Export-LedgerIncomeTaxReturn {
         [hashtable]$TaxAdjustment,
 
         [switch]$NoAutomaticAdjustment,
+
+        [Parameter()]
+        [Nullable[bool]]$ConsultantAssisted,
+
+        [Parameter()]
+        [Nullable[bool]]$Audited,
 
         [switch]$Force
     )
@@ -390,6 +414,22 @@ function Export-LedgerIncomeTaxReturn {
         }
         $fields = @($fields)
 
+        # Ja/Nej questions at the bottom of INK2S, reported as the value 'X'
+        # in the field for the chosen answer (data type Str_X).
+        $question = 'Uppdragstagare (t.ex. redovisningskonsult) har biträtt vid upprättandet av årsredovisningen'
+        if ($null -ne $ConsultantAssisted) {
+            $fields += [PSCustomObject]@{
+                Form = 'INK2S'; Box = ''; SruCode = $(if ($ConsultantAssisted) { 8040 } else { 8041 }); Amount = 'X'
+                Description = "${question}: $(if ($ConsultantAssisted) { 'Ja' } else { 'Nej' })"
+            }
+        }
+        if ($null -ne $Audited) {
+            $fields += [PSCustomObject]@{
+                Form = 'INK2S'; Box = ''; SruCode = $(if ($Audited) { 8044 } else { 8045 }); Amount = 'X'
+                Description = "Årsredovisningen har varit föremål för revision: $(if ($Audited) { 'Ja' } else { 'Nej' })"
+            }
+        }
+
         $stamp = Get-Date
         $genDate = $stamp.ToString('yyyyMMdd')
         $genTime = $stamp.ToString('HHmmss')
@@ -440,7 +480,8 @@ function Export-LedgerIncomeTaxReturn {
         foreach ($form in 'INK2', 'INK2R', 'INK2S') {
             & $openBlock "$form-$period"
             foreach ($f in ($fields | Where-Object Form -eq $form | Sort-Object SruCode)) {
-                & $addUppgift $f.SruCode $f.Amount
+                if ($f.Amount -is [string]) { & $addBlk "#UPPGIFT $($f.SruCode) $($f.Amount)" }
+                else { & $addUppgift $f.SruCode $f.Amount }
             }
             & $addBlk '#BLANKETTSLUT'
         }

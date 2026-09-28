@@ -125,8 +125,25 @@ Justeringarna som användes finns i resultatobjektets egenskap `TaxAdjustments`.
 Anger du själv `'4.15'` eller `'4.16'` (SRU 7670/7770) används det värdet som
 över-/underskott i stället för det beräknade.
 
+### Upplysningar längst ner på INK2S
+
+De två Ja/Nej-frågorna besvaras med `-ConsultantAssisted` (uppdragstagare, t.ex.
+redovisningskonsult, har biträtt vid upprättandet av årsredovisningen, SRU
+8040/8041) och `-Audited` (årsredovisningen har varit föremål för revision, SRU
+8044/8045). Utelämnas parametern lämnas frågan obesvarad.
+
+```powershell
+# Bolaget har upprättat årsredovisningen själv och har ingen revisor
+Export-LedgerIncomeTaxReturn -Path .\sru -ConsultantAssisted $false -Audited $false
+```
+
 ## Att tänka på innan du laddar upp
 
+- **Filerna ska laddas upp i e-tjänsten Filöverföring och deklarationen måste
+  sedan skrivas under** av firmatecknare eller deklarationsombud. En uppladdad men
+  osignerad deklaration räknas inte som inlämnad.
+- Filöverföringen öppnar för **testfiler** ungefär en månad innan
+  produktionsingången öppnar – ett bra sätt att kontrollera filerna i förväg.
 - **Byt inte namn på filerna.** Webbläsare som lägger till `(1)` gör att uppladdningen
   avvisas.
 - Räkenskapsschemat följer den officiella BAS→SRU-mappningen, men **INK2S kräver

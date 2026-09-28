@@ -43,6 +43,10 @@ Describe 'Export-LedgerIncomeTaxReturn' {
             $Command.Parameters['TaxAdjustment'].ParameterType | Should -Be ([hashtable])
             $Command.Parameters['Force'].SwitchParameter | Should -BeTrue
             $Command.Parameters['NoAutomaticAdjustment'].SwitchParameter | Should -BeTrue
+            foreach ($p in 'ConsultantAssisted', 'Audited') {
+                $Command.Parameters[$p].ParameterType | Should -Be ([Nullable[bool]])
+                $Command.Parameters[$p].Attributes.Mandatory | Should -Not -Contain $true
+            }
         }
     }
 
@@ -297,6 +301,22 @@ Describe 'Export-LedgerIncomeTaxReturn' {
         }
 
         Context 'Form rows and official field codes' {
+            It 'Should answer the INK2S Ja/Nej questions with ConsultantAssisted and Audited' {
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                    -ConsultantAssisted $true -Audited $false
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                $blk | Should -Contain '#UPPGIFT 8040 X'
+                $blk | Should -Contain '#UPPGIFT 8045 X'
+                $blk | Should -Not -Contain '#UPPGIFT 8041 X'
+                $blk | Should -Not -Contain '#UPPGIFT 8044 X'
+                ($r.Fields | Where-Object SruCode -eq 8045).Description | Should -Match 'revision: Nej$'
+            }
+
+            It 'Should leave the Ja/Nej questions out when not answered' {
+                Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest | Out-Null
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                $blk | Where-Object { $_ -match '^#UPPGIFT 804[0145] ' } | Should -BeNullOrEmpty
+            }
             It 'Should use period P3 for a fiscal year ending in August' {
                 New-LedgerFiscalYear -JournalPath $JournalPath -StartDate '2025-09-01' -EndDate '2026-08-31' | Out-Null
                 $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear '2025-09_2026-08' -Path $Dest
