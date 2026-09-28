@@ -2,7 +2,24 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-28
+
 ### Added
+- **Securities holdings per fiscal year (`holdings.txt`).** `Set-LedgerHolding`,
+  `Get-LedgerHolding` and `Remove-LedgerHolding` record holdings (account and name,
+  optional ISIN, currency/FX rate, price, price date, source, cost and book value),
+  and `Copy-LedgerHolding` rolls them forward into a new fiscal year. The
+  shareholding note and annual report use the holdings total when present and warn
+  when market value is below book value. Value adjustment accounts in the same
+  ten-group (e.g. 1359 against 1350) are netted into the book value.
+  `Test-LedgerFiscalYear` gains the checks `HoldingsValuation`,
+  `HoldingsReconcile`, `HoldingsBookValue`, `HoldingsCost` and `HoldingsReversal`.
+- `Add-LedgerImpairment` books a nedskrivning as a verification, with the amount
+  given directly or derived from a recorded holding; `-Reverse` books an
+  återföring, which can never exceed the accumulated write-downs.
+- `Add-LedgerProfitDisposition` books the resultatdisposition decided by the
+  årsstämma: clears 2099 to 2091 and books any dividend as a liability on 2898,
+  defaulting to the `ProposedDividend` and `AnnualMeetingDate` report input.
 - `Export-LedgerIncomeTaxReturn` derives INK2S adjustments from the trial
   balance: non-deductible costs (6072, 6982, 6992, 7622, 7632, 8423) on 4.3c,
   skattefria ränteintäkter (8314) on 4.5c, and net write-downs of shares
