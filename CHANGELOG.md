@@ -21,6 +21,8 @@
   the street part as `#ADRESS` in INFO.SRU.
 
 ### Fixed
+- `Get-LedgerAccount` returns accounts sorted by account number; previously
+  accounts added later were listed last, in the order of accounts.txt.
 - `Export-LedgerIncomeTaxReturn` now follows Skatteverket's official field
   tables (INK2*_SKV2002-33-01-24-04) and BAS's official kopplingstabell:
   the surplus/deficit is written to INK2 7104/7114 (was 7113) and INK2S

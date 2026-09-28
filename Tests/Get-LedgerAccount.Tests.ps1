@@ -56,6 +56,16 @@ Describe 'Get-LedgerAccount' {
             $Result[0].AccountName | Should -Be 'Kassa'
         }
 
+        It 'Should return accounts sorted by account number regardless of file order' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1510' -AccountName 'Kundfordringar'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '7710' -AccountName 'Nedskrivningar'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2081' -AccountName 'Aktiekapital'
+
+            $Result = Get-LedgerAccount -JournalPath $JournalPath
+
+            $Result.AccountNumber | Should -Be @('1510', '1910', '2081', '2440', '3010', '7710')
+        }
+
         It 'Should return a single account when AccountNumber is specified' {
             $Result = Get-LedgerAccount -JournalPath $JournalPath -AccountNumber '2440'
 

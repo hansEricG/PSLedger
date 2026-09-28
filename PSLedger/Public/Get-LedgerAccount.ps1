@@ -4,7 +4,8 @@ Retrieves accounts from the journal's chart of accounts.
 
 .DESCRIPTION
 Reads accounts.txt and returns PSCustomObjects with AccountNumber and
-AccountName properties. Can optionally filter by a specific account number.
+AccountName properties, sorted by account number regardless of the order in
+the file. Can optionally filter by a specific account number.
 
 .PARAMETER JournalPath
 The path to an existing journal directory.
@@ -62,6 +63,10 @@ function Get-LedgerAccount {
             Write-Warning "Skipping malformed account row in '$KontoplanFile' (line ${lineNo}): '$Line'. Expected '<account number><TAB><account name>'."
         }
     }
+
+    # accounts.txt keeps the order accounts were added in; present them in
+    # account-number order.
+    $Accounts = $Accounts | Sort-Object { [long]$_.AccountNumber }, AccountNumber
 
     if ($AccountNumber) {
         $Accounts | Where-Object { $_.AccountNumber -eq $AccountNumber }
