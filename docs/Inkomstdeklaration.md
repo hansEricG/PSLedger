@@ -24,8 +24,14 @@ För ett aktiebolag skapas tre blankettblock:
 
 - **Tillgångar (konto 1xxx)** rapporteras med sitt naturliga tecken (debet = positivt).
 - **Eget kapital och skulder (konto 2xxx)** negeras så att ett kreditsaldo blir positivt.
-- **Resultaträkningen (konto 3xxx–8xxx)** negeras så att intäkter blir positiva och
-  kostnader negativa – samma teckenkonvention som `Get-LedgerIncomeStatement`.
+- **Resultaträkningen (konto 3xxx–8xxx)** anges **som på blanketten**: radens
+  förtryckta tecken (+/−) anger riktningen, så kostnader, avdrag och förlust skrivs
+  som positiva belopp (t.ex. 3.7 Övriga externa kostnader = 1 400). Ett negativt
+  belopp förekommer bara när värdet går mot det förtryckta tecknet, t.ex. en bokförd
+  skatteintäkt på 3.25. Rader som är delade i ett (+)- och ett (−)-fält (3.2,
+  3.12–3.15, 3.23, 3.24) får det fält som motsvarar radens nettobelopp.
+- Fältkoder, rader och tecken följer Skatteverkets fältnamnstabeller för
+  INK2/INK2R/INK2S och kontointervallen BAS officiella kopplingstabell.
 - **Årets resultat** (INK2R 3.26/3.27, SRU 7450 vinst / 7550 förlust, och INK2S
   4.1/4.2) är summan av resultaträkningens avkortade rader, och **fritt eget kapital**
   (SRU 7302) är balansräkningens balanserande post. Blanketten går därför alltid
@@ -58,11 +64,27 @@ Export-LedgerIncomeTaxReturn -Path .\sru
 
 Resultatet blir `.\sru\INFO.SRU` och `.\sru\BLANKETTER.SRU`.
 
+Fyller du i blanketten för hand (eller vill kontrollera filen) listar egenskapen
+`Fields` varje ifyllt fält med blankett, ruta, SRU-kod och belopp:
+
+```powershell
+(Export-LedgerIncomeTaxReturn -Path .\sru -Force).Fields | Format-Table
+
+# Form  Box   SruCode Amount Description
+# ----  ---   ------- ------ -----------
+# INK2  1.1      7104  22960 Överskott av näringsverksamhet
+# INK2R 3.7      7513   1400 Övriga externa kostnader
+# INK2S 4.3a     7651 -17740 Bokförda kostnader som inte ska dras av: skatt på årets resultat
+# ...
+```
+
 ## Skattemässiga justeringar
 
-Överskottet (INK2S 8020 / INK2 7113) beräknas som *årets resultat + bokförd
-inkomstskatt* (skatten återförs som en ej avdragsgill kostnad, 4.3a / SRU 7651)
-plus de skattemässiga justeringarna.
+Överskottet (INK2S 4.15 / INK2 1.1, SRU 7670 / 7104) beräknas som *årets resultat +
+bokförd inkomstskatt* (skatten återförs som en ej avdragsgill kostnad, 4.3a / SRU
+7651) plus de skattemässiga justeringarna med sitt förtryckta tecken. Ett underskott
+hamnar på 4.16 / 1.2 (SRU 7770 / 7114). Upplysningsrutorna 4.17–4.22 påverkar inte
+överskottet.
 
 ### Automatiska justeringar
 
@@ -78,24 +100,29 @@ Regeln för 827x/828x bygger på ett **antagande**: att aktierna är
 kapitalplaceringsaktier, vars nedskrivningar inte är avdragsgilla och vars
 återföringar inte är skattepliktiga. Exporten skriver därför en varning när regeln
 används. Gäller nedskrivningen lageraktier eller något annat avdragsgillt ersätter
-du beloppet med `-TaxAdjustment` (t.ex. `@{ '7652' = 0 }`), eller stänger av alla
+du beloppet med `-TaxAdjustment` (t.ex. `@{ '4.3b' = 0 }`), eller stänger av alla
 automatiska justeringar med `-NoAutomaticAdjustment`.
 
 ### Egna justeringar
 
 Behöver du fler justeringar anger du dem med `-TaxAdjustment` som en hashtabell från
-SRU-kod till belopp i hela kronor. Varje post skrivs som en INK2S-rad, ersätter ett
-automatiskt framräknat belopp för samma kod och räknas (med sitt tecken) in i
-överskottet:
+**ruta på blanketten** (t.ex. `'4.6a'`) eller SRU-kod (t.ex. `'7654'`) till belopp i
+hela kronor. Rader med både ett (+)- och ett (−)-fält kräver suffix: `'4.13+'` eller
+`'4.13-'`. Ange beloppen som på blanketten (positiva). Varje post skrivs som en
+INK2S-rad, ersätter ett automatiskt framräknat belopp för samma fält och räknas med
+radens tecken in i överskottet:
 
 ```powershell
-# Lägg till schablonintäkt på periodiseringsfonder (SRU 7654)
-Export-LedgerIncomeTaxReturn -Path .\sru -TaxAdjustment @{ '7654' = 940 }
+# Schablonintäkt på periodiseringsfonder (4.6a) och en övrig avdragspost (4.13 −)
+Export-LedgerIncomeTaxReturn -Path .\sru -TaxAdjustment @{ '4.6a' = 940; '4.13-' = 500 }
 ```
+
+Fält som Skatteverket bara godtar som positiva (t.ex. 4.13+, 4.15) ger ett fel om
+beloppet blir negativt. Årets resultat (4.1/4.2) hämtas alltid ur bokföringen.
 
 Justeringarna som användes finns i resultatobjektets egenskap `TaxAdjustments`.
 
-Anger du själv `8020` eller `8021` i hashtabellen används det värdet som
+Anger du själv `'4.15'` eller `'4.16'` (SRU 7670/7770) används det värdet som
 över-/underskott i stället för det beräknade.
 
 ## Att tänka på innan du laddar upp
@@ -104,5 +131,5 @@ Anger du själv `8020` eller `8021` i hashtabellen används det värdet som
   avvisas.
 - Räkenskapsschemat följer den officiella BAS→SRU-mappningen, men **INK2S kräver
   bedömning** – kontrollera de skattemässiga justeringarna innan du lämnar in.
-- Blanketternas periodsuffix (`P1`/`P2`/`P4`) och inkomstår sätts efter räkenskapsårets
-  slutmånad.
+- Blanketternas periodsuffix och inkomstår sätts efter räkenskapsårets slutmånad:
+  `P1` januari–april, `P2` maj–juni, `P3` juli–augusti, `P4` september–december.

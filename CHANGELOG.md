@@ -10,8 +10,23 @@
   kapitalplaceringsaktier and warns when it applies. `-TaxAdjustment` replaces a
   derived amount for the same code, `-NoAutomaticAdjustment` turns derivation
   off, and the result object gains `TaxAdjustments`.
+- `Export-LedgerIncomeTaxReturn -TaxAdjustment` accepts the row on the form
+  ('4.3b', '4.13+') as well as the SRU code, and the result object gains
+  `Fields`, listing every written field with its form, row, SRU code, amount and
+  description so the paper form can be filled in directly.
 
 ### Fixed
+- `Export-LedgerIncomeTaxReturn` now follows Skatteverket's official field
+  tables (INK2*_SKV2002-33-01-24-04) and BAS's official kopplingstabell:
+  the surplus/deficit is written to INK2 7104/7114 (was 7113) and INK2S
+  7670/7770 (was 8020/8021, which are 4.17/4.18 värdeminskningsavdrag);
+  amounts are written as printed on the form (costs and deductions positive on
+  minus rows); split ± rows (3.2, 3.12–3.15, 3.23, 3.24) use the field matching
+  the net amount; the surplus uses each INK2S row's printed sign and ignores the
+  information rows 4.17–4.22; negative amounts in positive-only fields throw;
+  several account ranges were corrected (e.g. dividends 8210 → 3.15, share
+  write-downs 827x/828x → 3.17); and a fiscal year ending in
+  July–August gets period suffix P3 (was P2) and May–June P2.
 - `Export-LedgerIncomeTaxReturn`: fritt eget kapital (7302) no longer counts
   årets resultat twice when the closing entry 8999/2099 is already booked; a
   debit balance on 25xx skatteskulder is reported as a receivable (7261) and a

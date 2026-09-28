@@ -115,12 +115,12 @@ Describe 'Export-LedgerIncomeTaxReturn' {
             $blk[-1] | Should -Be '#FIL_SLUT'
         }
 
-        It 'Should map the income statement with SRU signs (revenue positive, costs negative)' {
+        It 'Should map the income statement as printed on the form (costs positive on minus rows)' {
             Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest | Out-Null
             $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
             Get-Uppgift $blk 'INK2R-2024P4' 7410 | Should -Be 100000    # Nettoomsättning
-            Get-Uppgift $blk 'INK2R-2024P4' 7513 | Should -Be -20000    # Övriga externa kostnader
-            Get-Uppgift $blk 'INK2R-2024P4' 7528 | Should -Be -15000    # Skatt
+            Get-Uppgift $blk 'INK2R-2024P4' 7513 | Should -Be 20000    # Övriga externa kostnader
+            Get-Uppgift $blk 'INK2R-2024P4' 7528 | Should -Be 15000    # Skatt
         }
 
         It 'Should map the balance sheet as positive amounts and balance assets against equity and liabilities' {
@@ -152,13 +152,13 @@ Describe 'Export-LedgerIncomeTaxReturn' {
             $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
             Get-Uppgift $blk 'INK2S-2024P4' 7650 | Should -Be 65000    # årets resultat, vinst
             Get-Uppgift $blk 'INK2S-2024P4' 7651 | Should -Be 15000    # skatt (ej avdragsgill)
-            Get-Uppgift $blk 'INK2S-2024P4' 8020 | Should -Be 80000    # överskott
+            Get-Uppgift $blk 'INK2S-2024P4' 7670 | Should -Be 80000    # överskott
         }
 
-        It 'Should carry the surplus to INK2 field 7113 (överskott av näringsverksamhet)' {
+        It 'Should carry the surplus to INK2 1.1 (SRU 7104, överskott av näringsverksamhet)' {
             Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest | Out-Null
             $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
-            Get-Uppgift $blk 'INK2-2024P4' 7113 | Should -Be 80000
+            Get-Uppgift $blk 'INK2-2024P4' 7104 | Should -Be 80000
         }
 
         It 'Should add supplied tax adjustments to INK2S and into the surplus' {
@@ -166,7 +166,7 @@ Describe 'Export-LedgerIncomeTaxReturn' {
                 -TaxAdjustment @{ '7654' = 940 }
             $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
             Get-Uppgift $blk 'INK2S-2024P4' 7654 | Should -Be 940
-            Get-Uppgift $blk 'INK2S-2024P4' 8020 | Should -Be 80940
+            Get-Uppgift $blk 'INK2S-2024P4' 7670 | Should -Be 80940
             $r.SurplusDeficit | Should -Be 80940
         }
 
@@ -175,27 +175,27 @@ Describe 'Export-LedgerIncomeTaxReturn' {
                 -TaxAdjustment @{ '7654' = 940; '7754' = 395 }
             $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
             Get-Uppgift $blk 'INK2S-2024P4' 7754 | Should -Be 395
-            Get-Uppgift $blk 'INK2S-2024P4' 8020 | Should -Be 80545
-            Get-Uppgift $blk 'INK2-2024P4' 7113 | Should -Be 80545
+            Get-Uppgift $blk 'INK2S-2024P4' 7670 | Should -Be 80545
+            Get-Uppgift $blk 'INK2-2024P4' 7104 | Should -Be 80545
             $r.SurplusDeficit | Should -Be 80545
         }
 
-        It 'Should let an explicit 8020 override the computed surplus' {
+        It 'Should let an explicit 4.15 override the computed surplus' {
             $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
-                -TaxAdjustment @{ '8020' = 12345 }
+                -TaxAdjustment @{ '4.15' = 12345 }
             $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
-            Get-Uppgift $blk 'INK2S-2024P4' 8020 | Should -Be 12345
-            Get-Uppgift $blk 'INK2-2024P4' 7113 | Should -Be 12345
+            Get-Uppgift $blk 'INK2S-2024P4' 7670 | Should -Be 12345
+            Get-Uppgift $blk 'INK2-2024P4' 7104 | Should -Be 12345
             Get-Uppgift $blk 'INK2-2024P4' 7114 | Should -BeNullOrEmpty
             $r.SurplusDeficit | Should -Be 12345
         }
 
-        It 'Should let an explicit 8021 override the computed surplus with a deficit' {
+        It 'Should let an explicit 4.16 (SRU 7770) override the computed surplus with a deficit' {
             $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
-                -TaxAdjustment @{ '8021' = 500 }
+                -TaxAdjustment @{ '7770' = 500 }
             $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
-            Get-Uppgift $blk 'INK2S-2024P4' 8021 | Should -Be 500
-            Get-Uppgift $blk 'INK2S-2024P4' 8020 | Should -BeNullOrEmpty
+            Get-Uppgift $blk 'INK2S-2024P4' 7770 | Should -Be 500
+            Get-Uppgift $blk 'INK2S-2024P4' 7670 | Should -BeNullOrEmpty
             Get-Uppgift $blk 'INK2-2024P4' 7114 | Should -Be 500
             $r.SurplusDeficit | Should -Be -500
         }
@@ -285,8 +285,8 @@ Describe 'Export-LedgerIncomeTaxReturn' {
                     @{ Account = '1930'; Amount = -0.10 })
             $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest
             $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
-            $lines = 0
-            foreach ($c in 7410, 7513, 7528, 7417) { $lines += [long](Get-Uppgift $blk 'INK2R-2024P4' $c) }
+            $lines = [long](Get-Uppgift $blk 'INK2R-2024P4' 7410) + [long](Get-Uppgift $blk 'INK2R-2024P4' 7417) -
+                [long](Get-Uppgift $blk 'INK2R-2024P4' 7513) - [long](Get-Uppgift $blk 'INK2R-2024P4' 7528)
             Get-Uppgift $blk 'INK2R-2024P4' 7450 | Should -Be $lines
             Get-Uppgift $blk 'INK2S-2024P4' 7650 | Should -Be $lines
             $assets = (Get-Uppgift $blk 'INK2R-2024P4' 7251) + (Get-Uppgift $blk 'INK2R-2024P4' 7281)
@@ -294,6 +294,106 @@ Describe 'Export-LedgerIncomeTaxReturn' {
                 (Get-Uppgift $blk 'INK2R-2024P4' 7365) + (Get-Uppgift $blk 'INK2R-2024P4' 7369)
             $equityLiab | Should -Be $assets
             $r.SurplusDeficit | Should -Be ($lines + 15000)
+        }
+
+        Context 'Form rows and official field codes' {
+            It 'Should use period P3 for a fiscal year ending in August' {
+                New-LedgerFiscalYear -JournalPath $JournalPath -StartDate '2025-09-01' -EndDate '2026-08-31' | Out-Null
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear '2025-09_2026-08' -Path $Dest
+                $r.Period | Should -Be '2026P3'
+            }
+
+            It 'Should use period P2 for a fiscal year ending in June' {
+                New-LedgerFiscalYear -JournalPath $JournalPath -StartDate '2025-07-01' -EndDate '2026-06-30' | Out-Null
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear '2025-07_2026-06' -Path $Dest
+                $r.Period | Should -Be '2026P2'
+            }
+
+            It 'Should report dividends (8210) on 3.15 (+) and write-downs of shares (8271) on 3.17' {
+                foreach ($a in @(@('8210', 'Utdelning på andelar i andra företag'), @('8271', 'Nedskrivning'), @('1359', 'Värdereglering'))) {
+                    Add-LedgerAccount -JournalPath $JournalPath -AccountNumber $a[0] -AccountName $a[1]
+                }
+                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-05-01' `
+                    -Description 'Utdelning och nedskrivning' -Rows @(
+                        @{ Account = '1930'; Amount = 3000 }, @{ Account = '8210'; Amount = -3000 },
+                        @{ Account = '8271'; Amount = 1000 }, @{ Account = '1359'; Amount = -1000 })
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                    -WarningAction SilentlyContinue
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                Get-Uppgift $blk 'INK2R-2024P4' 7416 | Should -Be 3000
+                Get-Uppgift $blk 'INK2R-2024P4' 7521 | Should -Be 1000
+                Get-Uppgift $blk 'INK2R-2024P4' 7423 | Should -BeNullOrEmpty
+                $r.NetResult | Should -Be 67000
+            }
+
+            It 'Should report a net loss on a split row in its (-) field as a positive amount' {
+                Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '8250' -AccountName 'Rearesultat andelar'
+                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-05-01' `
+                    -Description 'Förlust avyttring' -Rows @(
+                        @{ Account = '8250'; Amount = 2500 }, @{ Account = '1930'; Amount = -2500 })
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                Get-Uppgift $blk 'INK2R-2024P4' 7520 | Should -Be 2500
+                Get-Uppgift $blk 'INK2R-2024P4' 7416 | Should -BeNullOrEmpty
+                $r.NetResult | Should -Be 62500
+            }
+
+            It 'Should report a booked tax income as a negative amount on 3.25 and 4.3a' {
+                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-12-31' `
+                    -Description 'Skatteintäkt' -Rows @(
+                        @{ Account = '2440'; Amount = 20000 }, @{ Account = '8910'; Amount = -20000 })
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                Get-Uppgift $blk 'INK2R-2024P4' 7528 | Should -Be -5000
+                Get-Uppgift $blk 'INK2S-2024P4' 7651 | Should -Be -5000
+                $r.NetResult | Should -Be 85000
+                $r.SurplusDeficit | Should -Be 80000
+            }
+
+            It 'Should accept a row on the form as -TaxAdjustment key' {
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                    -TaxAdjustment @{ '4.6a' = 940; '4.13-' = 100 }
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                Get-Uppgift $blk 'INK2S-2024P4' 7654 | Should -Be 940
+                Get-Uppgift $blk 'INK2S-2024P4' 7762 | Should -Be 100
+                $r.SurplusDeficit | Should -Be 80840
+            }
+
+            It 'Should require a (+)/(-) suffix for a split INK2S row' {
+                { Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                        -TaxAdjustment @{ '4.13' = 100 } } | Should -Throw "*'4.13+' or '4.13-'*"
+            }
+
+            It 'Should reject unknown fields and årets resultat as -TaxAdjustment keys' {
+                { Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                        -TaxAdjustment @{ '4.99' = 1 } } | Should -Throw '*Unknown INK2S field*'
+                { Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                        -TaxAdjustment @{ '7650' = 1 } } | Should -Throw '*årets resultat*'
+            }
+
+            It 'Should throw on a negative amount in a field that only accepts positive amounts' {
+                { Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                        -TaxAdjustment @{ '4.13+' = -100 } } | Should -Throw '*cannot be negative*'
+            }
+
+            It 'Should not count information-only fields (4.17-4.22) in the surplus' {
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                    -TaxAdjustment @{ '4.21' = 5000 }
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                Get-Uppgift $blk 'INK2S-2024P4' 8022 | Should -Be 5000
+                $r.SurplusDeficit | Should -Be 80000
+            }
+
+            It 'Should list every written field with its row on the form in Fields' {
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest
+                $f = $r.Fields | Where-Object { $_.Form -eq 'INK2R' -and $_.Box -eq '3.7' }
+                $f.SruCode | Should -Be 7513
+                $f.Amount | Should -Be 20000
+                ($r.Fields | Where-Object { $_.Form -eq 'INK2' -and $_.Box -eq '1.1' }).Amount | Should -Be 80000
+                ($r.Fields | Where-Object { $_.Form -eq 'INK2S' -and $_.Box -eq '4.15' }).Amount | Should -Be 80000
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                ($blk | Where-Object { $_ -match '^#UPPGIFT (?!701[12] )' }).Count | Should -Be $r.Fields.Count
+            }
         }
 
         Context 'Automatic tax adjustments' {
