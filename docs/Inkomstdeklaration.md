@@ -60,18 +60,40 @@ Resultatet blir `.\sru\INFO.SRU` och `.\sru\BLANKETTER.SRU`.
 
 ## Skattemässiga justeringar
 
-Utan justeringar sätts överskottet (INK2S 8020 / INK2 7113) till *årets resultat +
-bokförd inkomstskatt* (skatten återförs som en ej avdragsgill kostnad, SRU 7651) –
-det vanligaste minsta fallet.
+Överskottet (INK2S 8020 / INK2 7113) beräknas som *årets resultat + bokförd
+inkomstskatt* (skatten återförs som en ej avdragsgill kostnad, 4.3a / SRU 7651)
+plus de skattemässiga justeringarna.
+
+### Automatiska justeringar
+
+Justeringar som följer av själva BAS-kontot räknas fram ur saldobalansen:
+
+| Ruta (SRU) | Konton | Behandling |
+|------------|--------|------------|
+| 4.3c (7653) | 6072, 6982, 6992, 7622, 7632, 8423 | Ej avdragsgilla kostnader (representation, föreningsavgifter, kostnadsränta på skattekontot m.m.) läggs tillbaka |
+| 4.5c (7754) | 8314 | Skattefria ränteintäkter dras av |
+| 4.3b (7652) | 8270–8289 | Nettonedskrivning av andelar i andra företag läggs tillbaka; en nettoåterföring dras av på 4.5c (7754) |
+
+Regeln för 827x/828x bygger på ett **antagande**: att aktierna är
+kapitalplaceringsaktier, vars nedskrivningar inte är avdragsgilla och vars
+återföringar inte är skattepliktiga. Exporten skriver därför en varning när regeln
+används. Gäller nedskrivningen lageraktier eller något annat avdragsgillt ersätter
+du beloppet med `-TaxAdjustment` (t.ex. `@{ '7652' = 0 }`), eller stänger av alla
+automatiska justeringar med `-NoAutomaticAdjustment`.
+
+### Egna justeringar
 
 Behöver du fler justeringar anger du dem med `-TaxAdjustment` som en hashtabell från
-SRU-kod till belopp i hela kronor. Varje post skrivs som en INK2S-rad och räknas
-(med sitt tecken) in i överskottet:
+SRU-kod till belopp i hela kronor. Varje post skrivs som en INK2S-rad, ersätter ett
+automatiskt framräknat belopp för samma kod och räknas (med sitt tecken) in i
+överskottet:
 
 ```powershell
 # Lägg till schablonintäkt på periodiseringsfonder (SRU 7654)
 Export-LedgerIncomeTaxReturn -Path .\sru -TaxAdjustment @{ '7654' = 940 }
 ```
+
+Justeringarna som användes finns i resultatobjektets egenskap `TaxAdjustments`.
 
 Anger du själv `8020` eller `8021` i hashtabellen används det värdet som
 över-/underskott i stället för det beräknade.

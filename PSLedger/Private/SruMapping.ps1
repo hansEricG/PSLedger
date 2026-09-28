@@ -136,6 +136,45 @@ function Get-SruAccountRules {
     )
 }
 
+function Get-SruTaxAdjustmentRules {
+    <#
+    .SYNOPSIS
+    Returns the BAS-account-range rules that derive INK2S tax adjustments
+    automatically from the trial balance.
+
+    .DESCRIPTION
+    Each rule has Min/Max (inclusive BAS account range) and the INK2S field the
+    net balance of the range goes to. DebitSru receives a net debit balance
+    (a cost to add back) and CreditSru a net credit balance (an income to
+    deduct); either may be $null. Assumption is $true for rules that rest on a
+    judgement rather than on the account's own definition; the export warns when
+    such a rule produces an amount.
+
+    The unambiguous rules cover BAS accounts whose name states the tax
+    treatment (skattefria ränteintäkter, ej avdragsgilla kostnader, ränta på
+    skattekontot). The assumption rule treats write-downs (827x) and reversals
+    of write-downs (828x) of shares in other companies as non-deductible and
+    non-taxable, which holds for kapitalplaceringsaktier but not for
+    lageraktier.
+    #>
+    [CmdletBinding()]
+    param()
+
+    @(
+        # 4.3c Andra bokförda kostnader (ej avdragsgilla)
+        [PSCustomObject]@{ Min = 6072; Max = 6072; DebitSru = 7653; CreditSru = $null; Assumption = $false; Label = 'Representation, ej avdragsgill' }
+        [PSCustomObject]@{ Min = 6982; Max = 6982; DebitSru = 7653; CreditSru = $null; Assumption = $false; Label = 'Föreningsavgifter, ej avdragsgilla' }
+        [PSCustomObject]@{ Min = 6992; Max = 6992; DebitSru = 7653; CreditSru = $null; Assumption = $false; Label = 'Övriga externa kostnader, ej avdragsgilla' }
+        [PSCustomObject]@{ Min = 7622; Max = 7622; DebitSru = 7653; CreditSru = $null; Assumption = $false; Label = 'Sjuk- och hälsovård, ej avdragsgill' }
+        [PSCustomObject]@{ Min = 7632; Max = 7632; DebitSru = 7653; CreditSru = $null; Assumption = $false; Label = 'Personalrepresentation, ej avdragsgill' }
+        [PSCustomObject]@{ Min = 8423; Max = 8423; DebitSru = 7653; CreditSru = $null; Assumption = $false; Label = 'Räntekostnader för skatter och avgifter' }
+        # 4.5c Andra bokförda intäkter (ej skattepliktiga)
+        [PSCustomObject]@{ Min = 8314; Max = 8314; DebitSru = $null; CreditSru = 7754; Assumption = $false; Label = 'Skattefria ränteintäkter' }
+        # 4.3b Nedskrivning av finansiella tillgångar / 4.5c återförda nedskrivningar
+        [PSCustomObject]@{ Min = 8270; Max = 8289; DebitSru = 7652; CreditSru = 7754; Assumption = $true; Label = 'Ned- och uppskrivningar av andelar i andra företag' }
+    )
+}
+
 function Resolve-SruAccountRule {
     <#
     .SYNOPSIS

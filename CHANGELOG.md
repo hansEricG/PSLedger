@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+- `Export-LedgerIncomeTaxReturn` derives INK2S adjustments from the trial
+  balance: non-deductible costs (6072, 6982, 6992, 7622, 7632, 8423) on 4.3c,
+  skattefria ränteintäkter (8314) on 4.5c, and net write-downs of shares
+  (8270–8289) on 4.3b (a net reversal on 4.5c). The write-down rule assumes
+  kapitalplaceringsaktier and warns when it applies. `-TaxAdjustment` replaces a
+  derived amount for the same code, `-NoAutomaticAdjustment` turns derivation
+  off, and the result object gains `TaxAdjustments`.
+
 ### Fixed
 - `Export-LedgerIncomeTaxReturn`: fritt eget kapital (7302) no longer counts
   årets resultat twice when the closing entry 8999/2099 is already booked; a

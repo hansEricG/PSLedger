@@ -35,13 +35,14 @@ Describe 'Export-LedgerIncomeTaxReturn' {
             $pathParam.Attributes.Mandatory | Should -Contain $true
         }
 
-        It 'Should have optional PostalCode, City, ContactPerson, Email, TaxAdjustment parameters and a Force switch' {
+        It 'Should have optional PostalCode, City, ContactPerson, Email, TaxAdjustment parameters and Force and NoAutomaticAdjustment switches' {
             foreach ($p in 'PostalCode', 'City', 'ContactPerson', 'Email', 'TaxAdjustment') {
                 $Command.Parameters[$p] | Should -Not -BeNullOrEmpty
                 $Command.Parameters[$p].Attributes.Mandatory | Should -Not -Contain $true
             }
             $Command.Parameters['TaxAdjustment'].ParameterType | Should -Be ([hashtable])
             $Command.Parameters['Force'].SwitchParameter | Should -BeTrue
+            $Command.Parameters['NoAutomaticAdjustment'].SwitchParameter | Should -BeTrue
         }
     }
 
@@ -293,6 +294,89 @@ Describe 'Export-LedgerIncomeTaxReturn' {
                 (Get-Uppgift $blk 'INK2R-2024P4' 7365) + (Get-Uppgift $blk 'INK2R-2024P4' 7369)
             $equityLiab | Should -Be $assets
             $r.SurplusDeficit | Should -Be ($lines + 15000)
+        }
+
+        Context 'Automatic tax adjustments' {
+            BeforeEach {
+                foreach ($a in @(@('8314', 'Skattefria ränteintäkter'), @('8423', 'Räntekostnader för skatter och avgifter'),
+                        @('6072', 'Representation, ej avdragsgill'), @('1350', 'Aktier'), @('1359', 'Värdereglering'),
+                        @('8271', 'Nedskrivning av andelar i andra företag'),
+                        @('8281', 'Återföring av nedskrivning av andelar i andra företag'))) {
+                    Add-LedgerAccount -JournalPath $JournalPath -AccountNumber $a[0] -AccountName $a[1]
+                }
+            }
+
+            It 'Should deduct skattefria ränteintäkter (8314) on 4.5c (7754)' {
+                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-04-01' `
+                    -Description 'Intäktsränta skattekonto' -Rows @(
+                        @{ Account = '1930'; Amount = 395 }, @{ Account = '8314'; Amount = -395 })
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                Get-Uppgift $blk 'INK2S-2024P4' 7754 | Should -Be 395
+                $r.SurplusDeficit | Should -Be 80000
+            }
+
+            It 'Should add back non-deductible costs (6072, 8423) on 4.3c (7653)' {
+                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-04-01' `
+                    -Description 'Representation och kostnadsränta' -Rows @(
+                        @{ Account = '6072'; Amount = 700 }, @{ Account = '8423'; Amount = 45 },
+                        @{ Account = '1930'; Amount = -745 })
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                Get-Uppgift $blk 'INK2S-2024P4' 7653 | Should -Be 745
+                $r.SurplusDeficit | Should -Be 80000
+            }
+
+            It 'Should add back write-downs of shares (827x) on 4.3b (7652) and warn about the assumption' {
+                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-12-31' `
+                    -Description 'Nedskrivning Investor B' -Rows @(
+                        @{ Account = '8271'; Amount = 12000 }, @{ Account = '1359'; Amount = -12000 })
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                    -WarningVariable warn -WarningAction SilentlyContinue
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                Get-Uppgift $blk 'INK2S-2024P4' 7652 | Should -Be 12000
+                $r.SurplusDeficit | Should -Be 80000
+                ($warn -join ' ') | Should -Match 'kapitalplaceringsaktier'
+            }
+
+            It 'Should deduct a net reversal of share write-downs (828x) on 4.5c (7754) and warn' {
+                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-12-31' `
+                    -Description 'Återföring nedskrivning Investor B' -Rows @(
+                        @{ Account = '1359'; Amount = 5000 }, @{ Account = '8281'; Amount = -5000 })
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                    -WarningVariable warn -WarningAction SilentlyContinue
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                Get-Uppgift $blk 'INK2S-2024P4' 7754 | Should -Be 5000
+                Get-Uppgift $blk 'INK2S-2024P4' 7652 | Should -BeNullOrEmpty
+                $r.SurplusDeficit | Should -Be 80000
+                $warn | Should -Not -BeNullOrEmpty
+            }
+
+            It 'Should let -TaxAdjustment replace a derived amount without warning' {
+                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-12-31' `
+                    -Description 'Nedskrivning lageraktier' -Rows @(
+                        @{ Account = '8271'; Amount = 12000 }, @{ Account = '1359'; Amount = -12000 })
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                    -TaxAdjustment @{ '7652' = 0 } -WarningVariable warn -WarningAction SilentlyContinue
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                Get-Uppgift $blk 'INK2S-2024P4' 7652 | Should -BeNullOrEmpty
+                $r.SurplusDeficit | Should -Be 68000
+                $warn | Should -BeNullOrEmpty
+            }
+
+            It 'Should derive nothing with -NoAutomaticAdjustment' {
+                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-12-31' `
+                    -Description 'Nedskrivning och ränta' -Rows @(
+                        @{ Account = '8271'; Amount = 12000 }, @{ Account = '1359'; Amount = -12000 },
+                        @{ Account = '1930'; Amount = 395 }, @{ Account = '8314'; Amount = -395 })
+                $r = Export-LedgerIncomeTaxReturn -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $Dest `
+                    -NoAutomaticAdjustment -WarningVariable warn -WarningAction SilentlyContinue
+                $blk = Get-Content -LiteralPath (Join-Path $Dest 'BLANKETTER.SRU')
+                Get-Uppgift $blk 'INK2S-2024P4' 7652 | Should -BeNullOrEmpty
+                Get-Uppgift $blk 'INK2S-2024P4' 7754 | Should -BeNullOrEmpty
+                $r.SurplusDeficit | Should -Be 68395
+                $warn | Should -BeNullOrEmpty
+            }
         }
     }
 }
