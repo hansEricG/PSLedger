@@ -424,6 +424,12 @@ New-LedgerInvoice -CustomerNumber '10' -Date '2024-03-15' `
     -Description 'Konsultarvode mars' -Rows $rows
 # DueDate defaults to InvoiceDate + the customer's payment terms
 
+# Rows can carry text, quantity, unit and unit price; Amount is then computed
+$rows = @(
+    @{ Account = '3010'; Description = 'Systemutveckling mars'; Quantity = 32.5; Unit = 'h'; UnitPrice = 1100; VatRate = 0.25; VatAccount = '2610' }
+)
+New-LedgerInvoice -CustomerNumber '10' -Date '2024-03-31' -Description 'Konsulttjänster mars' -Rows $rows
+
 # 3. Post it to the ledger (creates the verification):
 #      1510 Kundfordringar  +12500
 #      3010 Försäljning      -10000

@@ -37,11 +37,20 @@ A description of what is being invoiced.
 .PARAMETER Rows
 An array of hashtables describing the revenue rows. Each row must have:
 - Account: the revenue account (e.g. '3010')
-- Amount: the net amount excluding VAT (positive)
+- Amount: the net amount excluding VAT (positive). May be omitted when
+  Quantity and UnitPrice are given; it is then Quantity x UnitPrice rounded to
+  öre. When all three are given they must agree.
 and may optionally have:
 - VatRate: the VAT rate as a decimal (e.g. 0.25 for 25%); defaults to 0
 - VatAccount: the account output VAT is booked to (e.g. '2610'); required when
   VatRate is greater than 0
+- Description: the text shown on the invoice (e.g. 'Systemutveckling mars')
+- Quantity: the number of units (e.g. 32.5)
+- Unit: the unit (e.g. 'h', 'st')
+- UnitPrice: the net price per unit excluding VAT (à-pris)
+
+Rows without a Description are shown with the account name on the exported
+invoice.
 
 .PARAMETER ReceivableAccount
 The accounts-receivable account the invoice total is booked to when posted.
@@ -68,6 +77,16 @@ New-LedgerInvoice -JournalPath .\MinFirma.ledger -CustomerNumber 'K012' -Descrip
 
 Creates an invoice with a VAT-liable service row and a VAT-free expense row, an
 explicit due date, and returns the created invoice object.
+
+.EXAMPLE
+$rows = @(
+    @{ Account = '3010'; Description = 'Systemutveckling mars'; Quantity = 32.5; Unit = 'h'; UnitPrice = 1100; VatRate = 0.25; VatAccount = '2610' }
+    @{ Account = '3010'; Description = 'Projektledning mars'; Quantity = 6; Unit = 'h'; UnitPrice = 1250; VatRate = 0.25; VatAccount = '2610' }
+)
+New-LedgerInvoice -CustomerNumber '10' -Date '2024-03-31' -Description 'Konsulttjänster mars 2024' -Rows $rows
+
+Invoices hours with text, quantity and unit price to Volvo AB. The net amounts
+(35 750 kr and 7 500 kr) are computed from quantity x unit price.
 #>
 function New-LedgerInvoice {
     [CmdletBinding(SupportsShouldProcess)]
@@ -116,10 +135,23 @@ function New-LedgerInvoice {
         if (-not $row.ContainsKey('Account') -or [string]::IsNullOrWhiteSpace([string]$row.Account)) {
             throw "Each invoice row must have an Account."
         }
-        if (-not $row.ContainsKey('Amount')) {
-            throw "Each invoice row must have an Amount."
+        $quantity = if ($row.ContainsKey('Quantity') -and $null -ne $row.Quantity -and "$($row.Quantity)" -ne '') { [decimal]$row.Quantity } else { $null }
+        $unitPrice = if ($row.ContainsKey('UnitPrice') -and $null -ne $row.UnitPrice -and "$($row.UnitPrice)" -ne '') { [decimal]$row.UnitPrice } else { $null }
+        $computed = if ($null -ne $quantity -and $null -ne $unitPrice) {
+            [decimal]::Parse(([Math]::Round($quantity * $unitPrice, 2)).ToString('0.##', [cultureinfo]::InvariantCulture), [cultureinfo]::InvariantCulture)
+        } else { $null }
+        if ($row.ContainsKey('Amount') -and $null -ne $row.Amount) {
+            $amount = [decimal]$row.Amount
+            if ($null -ne $computed -and $computed -ne $amount) {
+                throw "Invoice row for account $($row.Account): Amount $amount does not equal Quantity $quantity x UnitPrice $unitPrice ($computed)."
+            }
         }
-        $amount = [decimal]$row.Amount
+        elseif ($null -ne $computed) {
+            $amount = $computed
+        }
+        else {
+            throw "Each invoice row must have an Amount, or a Quantity and a UnitPrice."
+        }
         if ($amount -le 0) {
             throw "Invoice row amount for account $($row.Account) must be greater than zero."
         }
@@ -129,11 +161,15 @@ function New-LedgerInvoice {
             throw "Row for account $($row.Account) has VatRate $vatRate but no VatAccount."
         }
         [PSCustomObject]@{
-            Account    = [string]$row.Account
-            Amount     = $amount
-            VatRate    = $vatRate
-            VatAccount = $vatAccount
-            VatAmount  = [Math]::Round($amount * $vatRate, 2)
+            Account     = [string]$row.Account
+            Amount      = $amount
+            VatRate     = $vatRate
+            VatAccount  = $vatAccount
+            VatAmount   = [Math]::Round($amount * $vatRate, 2)
+            Description = if ($row.ContainsKey('Description')) { [string]$row.Description } else { '' }
+            Quantity    = $quantity
+            Unit        = if ($row.ContainsKey('Unit')) { [string]$row.Unit } else { '' }
+            UnitPrice   = $unitPrice
         }
     }
     $normalizedRows = @($normalizedRows)

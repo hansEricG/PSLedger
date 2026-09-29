@@ -24,7 +24,8 @@ MinFirma.ledger/
 ```
 
 En fakturafil (`inv0001.txt`) innehåller metadata, en `Rows:`-sektion (en
-intäktsrad per rad: konto, nettobelopp, momssats, momskonto) och en
+intäktsrad per rad: konto, nettobelopp, momssats, momskonto och de valfria
+kolumnerna text, antal, enhet och à-pris) och en
 `Payments:`-sektion (en betalning per rad: datum, belopp, verifikationsnummer,
 räkenskapsår). Belopp lagras med punkt som decimaltecken (invariant kultur) så
 att de tab-separerade kolumnerna inte bryts av ett lokalt kommatecken.
@@ -80,6 +81,20 @@ $rows = @(
 )
 New-LedgerInvoice -CustomerNumber '10' -Description 'Arvode och utlägg' -Rows $rows -PassThru
 ```
+
+Rader med text, antal och à-pris. Beloppet räknas ut som antal × à-pris (anger du
+både `Amount` och antal/à-pris måste de stämma):
+
+```powershell
+$rows = @(
+    @{ Account = '3010'; Description = 'Systemutveckling mars'; Quantity = 32.5; Unit = 'h'; UnitPrice = 1100; VatRate = 0.25; VatAccount = '2610' }
+    @{ Account = '3010'; Description = 'Projektledning mars';   Quantity = 6;    Unit = 'h'; UnitPrice = 1250; VatRate = 0.25; VatAccount = '2610' }
+)
+New-LedgerInvoice -CustomerNumber '10' -Date '2024-03-31' -Description 'Konsulttjänster mars 2024' -Rows $rows
+```
+
+På den exporterade fakturan visas kolumnerna *Beskrivning, Antal, À-pris,
+Moms % och Belopp*. En rad utan text visas med kontots namn.
 
 ### 3. Bokför fakturan
 

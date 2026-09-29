@@ -142,11 +142,15 @@ function Add-LedgerCreditInvoice {
         # Persist the credit note with negated rows.
         $creditRows = foreach ($row in $original.Rows) {
             [PSCustomObject]@{
-                Account    = $row.Account
-                Amount     = - [decimal]$row.Amount
-                VatRate    = $row.VatRate
-                VatAccount = $row.VatAccount
-                VatAmount  = - [decimal]$row.VatAmount
+                Account     = $row.Account
+                Amount      = - [decimal]$row.Amount
+                VatRate     = $row.VatRate
+                VatAccount  = $row.VatAccount
+                VatAmount   = - [decimal]$row.VatAmount
+                Description = $row.Description
+                Quantity    = if ($null -ne $row.Quantity) { - [decimal]$row.Quantity } else { $null }
+                Unit        = $row.Unit
+                UnitPrice   = $row.UnitPrice
             }
         }
 

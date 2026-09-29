@@ -136,22 +136,35 @@ function Build-LedgerInvoiceBlock {
 
     # --- Rows table -----------------------------------------------------------
     $blocks.Add(@{ Type = 'Spacer' })
-    $rows = foreach ($r in $Invoice.Rows) {
+    $accountNames = @{}
+    if ($Invoice.Rows | Where-Object { -not ($_.PSObject.Properties['Description'] -and $_.Description) }) {
+        foreach ($a in @(Get-LedgerAccount -JournalPath $Journal.Path)) { $accountNames[[string]$a.AccountNumber] = $a.AccountName }
+    }
+    $rows = [System.Collections.Generic.List[object]]::new()
+    foreach ($r in $Invoice.Rows) {
+        $text = if ($r.PSObject.Properties['Description'] -and $r.Description) { $r.Description }
+                elseif ($accountNames.ContainsKey([string]$r.Account)) { $accountNames[[string]$r.Account] }
+                else { [string]$r.Account }
+        $qty = if ($r.PSObject.Properties['Quantity'] -and $null -ne $r.Quantity) {
+            $q = [decimal]$r.Quantity
+            $qText = Format-LedgerAmount -Value $q -Decimals ($(if ($q -eq [Math]::Round($q, 0)) { 0 } elseif ($q -eq [Math]::Round($q, 1)) { 1 } else { 2 }))
+            if ($r.Unit) { "$qText $($r.Unit)" } else { $qText }
+        } else { '' }
+        $price = if ($r.PSObject.Properties['UnitPrice'] -and $null -ne $r.UnitPrice) { Format-LedgerAmount -Value ([decimal]$r.UnitPrice) } else { '' }
         $vatPct = (Format-LedgerAmount -Value ([decimal]$r.VatRate * 100) -Decimals 0) + ' %'
-        $lineTotal = [decimal]$r.Amount + [decimal]$r.VatAmount
-        , @(
-            [string]$r.Account
-            (Format-LedgerAmount -Value ([decimal]$r.Amount))
+        $rows.Add(@(
+            [string]$text
+            $qty
+            $price
             $vatPct
-            (Format-LedgerAmount -Value ([decimal]$r.VatAmount))
-            (Format-LedgerAmount -Value $lineTotal)
-        )
+            (Format-LedgerAmount -Value ([decimal]$r.Amount))
+        ))
     }
     $blocks.Add(@{
             Type   = 'Table'
-            Header = @('Konto', 'Netto', 'Moms %', 'Moms', 'Summa')
+            Header = @('Beskrivning', 'Antal', 'À-pris', 'Moms %', 'Belopp')
             Align  = @('left', 'right', 'right', 'right', 'right')
-            Rows   = @($rows)
+            Rows   = $rows.ToArray()
         })
 
     # --- Totals ---------------------------------------------------------------

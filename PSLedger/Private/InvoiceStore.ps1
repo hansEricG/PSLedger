@@ -1,7 +1,8 @@
 # Helpers for reading and writing invoice files under a journal's 'invoices/'
 # directory. An invoice is stored as a plain-text file (inv0001.txt) with tab-
 # separated "Key:\tValue" metadata lines, a 'Rows:' section (one revenue row per
-# line: Account, NetAmount, VatRate, VatAccount) and a 'Payments:' section (one
+# line: Account, NetAmount, VatRate, VatAccount and the optional descriptive
+# columns Description, Quantity, Unit, UnitPrice) and a 'Payments:' section (one
 # payment per line: Date, Amount, Verification, FiscalYear). Amounts are written
 # and read with the invariant culture so the tab-separated numeric columns round
 # -trip regardless of the machine's regional settings.
@@ -105,11 +106,15 @@ function ConvertTo-LedgerInvoiceObject {
                     $vatRate = if ($parts.Count -ge 3 -and $parts[2]) { ConvertFrom-LedgerInvoiceAmount -Text $parts[2] } else { [decimal]0 }
                     $net = ConvertFrom-LedgerInvoiceAmount -Text $parts[1]
                     $rows += [PSCustomObject]@{
-                        Account    = $parts[0]
-                        Amount     = $net
-                        VatRate    = $vatRate
-                        VatAccount = if ($parts.Count -ge 4) { $parts[3] } else { '' }
-                        VatAmount  = [Math]::Round($net * $vatRate, 2)
+                        Account     = $parts[0]
+                        Amount      = $net
+                        VatRate     = $vatRate
+                        VatAccount  = if ($parts.Count -ge 4) { $parts[3] } else { '' }
+                        VatAmount   = [Math]::Round($net * $vatRate, 2)
+                        Description = if ($parts.Count -ge 5) { $parts[4] } else { '' }
+                        Quantity    = if ($parts.Count -ge 6 -and $parts[5]) { ConvertFrom-LedgerInvoiceAmount -Text $parts[5] } else { $null }
+                        Unit        = if ($parts.Count -ge 7) { $parts[6] } else { '' }
+                        UnitPrice   = if ($parts.Count -ge 8 -and $parts[7]) { ConvertFrom-LedgerInvoiceAmount -Text $parts[7] } else { $null }
                     }
                 }
             }
@@ -235,7 +240,20 @@ function Save-LedgerInvoiceFile {
     )
 
     foreach ($row in $Invoice.Rows) {
-        $lines += "$($row.Account)`t$(Format-LedgerInvoiceAmount -Value ([decimal]$row.Amount))`t$(Format-LedgerInvoiceAmount -Value ([decimal]$row.VatRate))`t$($row.VatAccount)"
+        $line = "$($row.Account)`t$(Format-LedgerInvoiceAmount -Value ([decimal]$row.Amount))`t$(Format-LedgerInvoiceAmount -Value ([decimal]$row.VatRate))`t$($row.VatAccount)"
+        # The descriptive columns are optional and only written when used, so
+        # invoices without them keep the original four-column layout.
+        $get = { param($name) if ($row.PSObject.Properties[$name]) { $row.$name } else { $null } }
+        $desc = [string](& $get 'Description') -replace '[\t\r\n]+', ' '
+        $qty = & $get 'Quantity'
+        $unit = [string](& $get 'Unit') -replace '[\t\r\n]+', ' '
+        $price = & $get 'UnitPrice'
+        if ($desc -or $null -ne $qty -or $unit -or $null -ne $price) {
+            $qtyText = if ($null -ne $qty) { Format-LedgerInvoiceAmount -Value ([decimal]$qty) } else { '' }
+            $priceText = if ($null -ne $price) { Format-LedgerInvoiceAmount -Value ([decimal]$price) } else { '' }
+            $line += "`t$desc`t$qtyText`t$unit`t$priceText"
+        }
+        $lines += $line
     }
 
     $lines += 'Payments:'

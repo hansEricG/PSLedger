@@ -24,6 +24,15 @@
   - `Get-LedgerBankStatement` and `Get-LedgerBankTransaction` list imported data.
   - `Get-LedgerBankReconciliation` compares the ledger balance of the bank account
     with the bank's balance and lists the unmatched items on both sides.
+- **Invoice rows with text, quantity and unit price.** `New-LedgerInvoice` rows
+  accept `Description`, `Quantity`, `Unit` and `UnitPrice`; `Amount` may be
+  omitted and is then computed as quantity x unit price. The exported invoice
+  shows Beskrivning, Antal, À-pris, Moms % and Belopp (rows without text show
+  the account name), and credit notes copy the row text. The extra columns are
+  optional and appended to the row, so existing invoices need no migration.
+
+### Fixed
+- `Export-LedgerInvoice` rendered a single-row invoice as one table row per cell.
 
 ## [0.12.0] - 2026-09-28
 

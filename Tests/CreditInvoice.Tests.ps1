@@ -56,6 +56,17 @@ Describe 'Add-LedgerCreditInvoice' {
             (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 2).Status | Should -Be 'Credited'
         }
 
+        It 'Should copy row text and negate the quantity on the credit note' {
+            $rows = @(@{ Account = '3010'; Description = 'Systemutveckling mars'; Quantity = 10; Unit = 'h'; UnitPrice = 1000; VatRate = 0.25; VatAccount = '2610' })
+            New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2024-03-31' -Description 'Konsult' -Rows $rows | Out-Null
+            Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
+            $credit = Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-04-30' -PassThru
+            $credit.Rows[0].Description | Should -Be 'Systemutveckling mars'
+            $credit.Rows[0].Quantity | Should -Be (-10)
+            $credit.Rows[0].UnitPrice | Should -Be 1000
+            $credit.Rows[0].Amount | Should -Be (-10000)
+        }
+
         It 'Should post a balanced reversing verification' {
             New-BookedInvoice -JournalPath $JournalPath | Out-Null
             Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-04-30'

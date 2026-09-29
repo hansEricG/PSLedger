@@ -83,6 +83,44 @@ Describe 'New-LedgerInvoice' {
             { New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Description 'X' -Rows $bad } |
                 Should -Throw '*greater than zero*'
         }
+
+        It 'Should compute the amount from Quantity and UnitPrice and keep the row text' {
+            $timeRows = @(@{ Account = '3010'; Description = 'Systemutveckling mars'; Quantity = 32.5; Unit = 'h'; UnitPrice = 1100; VatRate = 0.25; VatAccount = '2610' })
+            New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2024-03-31' -Description 'Konsult' -Rows $timeRows
+            $inv = Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1
+            $inv.NetTotal | Should -Be 35750
+            $inv.Rows[0].Description | Should -Be 'Systemutveckling mars'
+            $inv.Rows[0].Quantity | Should -Be 32.5
+            $inv.Rows[0].Unit | Should -Be 'h'
+            $inv.Rows[0].UnitPrice | Should -Be 1100
+        }
+
+        It 'Should keep the four-column row layout for rows without text' {
+            New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2024-03-15' -Description 'Konsult' -Rows $rows
+            $line = Get-Content (Join-Path $JournalPath 'invoices\inv0001.txt') | Where-Object { $_ -like '3010*' }
+            ($line -split "`t").Count | Should -Be 4
+            (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).Rows[0].Quantity | Should -BeNullOrEmpty
+        }
+
+        It 'Should keep tabs and line breaks in the row text from breaking the file' {
+            $odd = @(@{ Account = '3010'; Amount = 100; Description = "Rad ett`tmed tab`r`noch radbrytning" })
+            New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2024-03-15' -Description 'Konsult' -Rows $odd
+            $inv = Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1
+            $inv.Rows[0].Description | Should -Be 'Rad ett med tab och radbrytning'
+            $inv.NetTotal | Should -Be 100
+        }
+
+        It 'Should throw when Amount disagrees with Quantity x UnitPrice' {
+            $bad = @(@{ Account = '3010'; Amount = 1000; Quantity = 2; UnitPrice = 400 })
+            { New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Description 'X' -Rows $bad } |
+                Should -Throw '*does not equal*'
+        }
+
+        It 'Should throw when a row has neither Amount nor Quantity and UnitPrice' {
+            $bad = @(@{ Account = '3010'; Quantity = 2 })
+            { New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Description 'X' -Rows $bad } |
+                Should -Throw '*must have an Amount*'
+        }
     }
 }
 

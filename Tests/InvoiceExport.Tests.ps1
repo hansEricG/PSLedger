@@ -104,6 +104,24 @@ Describe 'Export-LedgerInvoice' {
             $content | Should -Match 'Att betala: 13 000,00'
         }
 
+        It 'Should show the account name for rows without a description' {
+            $out = Join-Path $TestDrive 'faktura-names.md'
+            Export-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Path $out -Format Markdown
+            $content = Get-Content $out -Raw
+            $content | Should -Match '\| Beskrivning \| Antal \| À-pris \| Moms % \| Belopp \|'
+            $name = (Get-LedgerAccount -JournalPath $JournalPath | Where-Object AccountNumber -eq '3010').AccountName
+            $content | Should -Match ([regex]::Escape("| $name |"))
+        }
+
+        It 'Should show description, quantity with unit and unit price' {
+            $rows = @(@{ Account = '3010'; Description = 'Systemutveckling mars'; Quantity = 32.5; Unit = 'h'; UnitPrice = 1100; VatRate = 0.25; VatAccount = '2610' })
+            New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2024-03-31' -Description 'Konsult' -Rows $rows | Out-Null
+            $out = Join-Path $TestDrive 'faktura-time.md'
+            Export-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 2 -Path $out -Format Markdown
+            $content = (Get-Content $out -Raw) -replace "\u00A0", ' '
+            $content | Should -Match '\| Systemutveckling mars \| 32,5 h \| 1 100,00 \| 25 % \| 35 750,00 \|'
+        }
+
         It 'Should include payment information from journal metadata' {
             $out = Join-Path $TestDrive 'faktura-pay.txt'
             Export-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Path $out -Format Text
