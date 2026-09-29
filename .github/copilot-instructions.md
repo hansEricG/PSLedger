@@ -11,16 +11,22 @@ Invoke-Pester ./Tests/Add-LedgerEntry.Tests.ps1
 
 # Run a specific test by name filter
 Invoke-Pester ./Tests -Filter @{ FullName = '*Should create a verification file*' }
+
+# Lint (must report nothing; CI fails otherwise)
+Invoke-ScriptAnalyzer -Path ./PSLedger -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
 ```
 
 No build step — this is a script module loaded directly via `Import-Module ./PSLedger/PSLedger.psd1`.
+The module requires PowerShell 7.4+ (Core only); PowerShell 7 syntax is fine.
+
+CI (`.github/workflows/ci.yml`) runs PSScriptAnalyzer and the Pester suite on Windows and Linux,
+so use `Join-Path`/forward slashes rather than hard-coded `\` in paths passed to .NET APIs.
 
 ### Test dependencies
 
-Tests require two external modules from the same author:
-
+- **Pester 6.x** — the test framework (classic `Should -Be` syntax is used)
 - **TDDUtils** — provides `Test-TDDCmdletBinding` and similar assertion helpers
-- **TDDSeams** — provides mockable seam infrastructure
+- **PSScriptAnalyzer** — linting
 
 ## Architecture
 

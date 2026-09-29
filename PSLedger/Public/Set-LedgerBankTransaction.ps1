@@ -83,6 +83,8 @@ Registers a customer payment that arrived without OCR reference against
 invoice 7.
 #>
 function Set-LedgerBankTransaction {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Ignore', Justification = 'Selects a parameter set')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Reset', Justification = 'Selects a parameter set')]
     [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'Account')]
     param (
         [Parameter()]

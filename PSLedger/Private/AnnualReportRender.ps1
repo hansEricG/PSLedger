@@ -194,7 +194,7 @@ function ConvertTo-LedgerReportDocx {
     # Text area width of an A4 page with 25 mm margins, in twentieths of a point.
     $textWidth = 9072
 
-    function Escape-Xml {
+    function ConvertTo-LedgerXmlText {
         param ([string]$Text)
         if ($null -eq $Text) { return '' }
         $Text.Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;').Replace('"', '&quot;')
@@ -204,7 +204,7 @@ function ConvertTo-LedgerReportDocx {
         param ([string]$Text, [switch]$Bold)
         $rPr = if ($Bold) { '<w:rPr><w:b/><w:bCs/></w:rPr>' } else { '' }
         # A newline in the text becomes a line break (used for period column headers).
-        $parts = foreach ($line in ($Text -split "`n")) { "<w:t xml:space=""preserve"">$(Escape-Xml $line)</w:t>" }
+        $parts = foreach ($line in ($Text -split "`n")) { "<w:t xml:space=""preserve"">$(ConvertTo-LedgerXmlText $line)</w:t>" }
         "<w:r>$rPr$($parts -join '<w:br/>')</w:r>"
     }
 
@@ -357,7 +357,7 @@ function ConvertTo-LedgerReportDocx {
     $footerXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
         "<w:p><w:pPr><w:pStyle w:val=""Footer""/><w:pBdr>$(& $border 'top' 4)</w:pBdr><w:tabs><w:tab w:val=""right"" w:pos=""$textWidth""/></w:tabs></w:pPr>" +
-        "<w:r><w:t xml:space=""preserve"">$(Escape-Xml $footerLabel)</w:t></w:r><w:r><w:tab/><w:t xml:space=""preserve"">Sida </w:t></w:r>" +
+        "<w:r><w:t xml:space=""preserve"">$(ConvertTo-LedgerXmlText $footerLabel)</w:t></w:r><w:r><w:tab/><w:t xml:space=""preserve"">Sida </w:t></w:r>" +
         (& $fld 'PAGE') + '<w:r><w:t xml:space="preserve"> (</w:t></w:r>' + (& $fld 'NUMPAGES') + '<w:r><w:t>)</w:t></w:r></w:p></w:ftr>'
 
     $documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +

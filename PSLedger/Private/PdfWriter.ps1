@@ -114,12 +114,6 @@ function ConvertTo-LedgerReportPdf {
     $pages = New-Object System.Collections.Generic.List[object]
     $currentPage = New-Object System.Collections.Generic.List[object]
     $y = $yTop
-    $newPage = {
-        if ($currentPage.Count -gt 0) { $pages.Add($currentPage) }
-        $script:__pdfPage = New-Object System.Collections.Generic.List[object]
-        $currentPage = $script:__pdfPage
-        $y = $yTop
-    }
     foreach ($ln in $lines) {
         $lineHeight = [Math]::Round($ln.Size * 1.4)
         if ($lineHeight -lt 8) { $lineHeight = 8 }

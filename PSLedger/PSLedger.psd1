@@ -15,7 +15,7 @@ RootModule = 'PSLedger.psm1'
 ModuleVersion = '0.12.0'
 
 # Supported PSEditions
-# CompatiblePSEditions = @()
+CompatiblePSEditions = @('Core')
 
 # ID used to uniquely identify this module
 GUID = '860f1750-790f-4063-898c-14939e3cf1f0'
@@ -33,7 +33,7 @@ Copyright = '(c) hansEricG. All rights reserved.'
 Description = 'A simple command-line double-entry bookkeeping system using plain text files.'
 
 # Minimum version of the PowerShell engine required by this module
-PowerShellVersion = '5.1'
+PowerShellVersion = '7.4'
 
 # Name of the PowerShell host required by this module
 # PowerShellHostName = ''

@@ -21,7 +21,7 @@ function Build-LedgerAnnualReportBlocks {
         [switch]$NoComparison
     )
 
-    $profile = Get-LedgerCompanyProfile -JournalPath $JournalPath
+    $company = Get-LedgerCompanyProfile -JournalPath $JournalPath
     $reportInput = Get-LedgerReportInput -JournalPath $JournalPath -FiscalYear $FiscalYear
     $year = Get-LedgerFiscalYear -JournalPath $JournalPath | Where-Object { $_.Name -eq $FiscalYear }
 
@@ -151,8 +151,8 @@ function Build-LedgerAnnualReportBlocks {
     # ---- Build blocks -----------------------------------------------------------
     $blocks = @()
 
-    $heading = $profile.Name
-    if ($profile.OrgNumber) { $heading = "$heading, org.nr $($profile.OrgNumber)" }
+    $heading = $company.Name
+    if ($company.OrgNumber) { $heading = "$heading, org.nr $($company.OrgNumber)" }
 
     # Cover
     $blocks += @{ Type = 'Title'; Text = 'Årsredovisning'; Cover = $true }
@@ -162,8 +162,8 @@ function Build-LedgerAnnualReportBlocks {
     # Fastställelseintyg on the cover, as Bolagsverket recommends. It is signed
     # after the årsstämma, so the signing date is always left blank.
     $meetingDate = if ($reportInput.AnnualMeetingDate) { Format-LedgerSwedishDate -Date $reportInput.AnnualMeetingDate } else { '____________' }
-    $certPlace = if ($reportInput.CertificatePlace) { $reportInput.CertificatePlace } elseif ($profile.RegisteredOffice) { $profile.RegisteredOffice } else { '____________' }
-    $certSigner = if ($reportInput.CertificateSigner) { $reportInput.CertificateSigner } elseif ($profile.BoardMembers.Count -gt 0) { @($profile.BoardMembers)[0] } else { '' }
+    $certPlace = if ($reportInput.CertificatePlace) { $reportInput.CertificatePlace } elseif ($company.RegisteredOffice) { $company.RegisteredOffice } else { '____________' }
+    $certSigner = if ($reportInput.CertificateSigner) { $reportInput.CertificateSigner } elseif ($company.BoardMembers.Count -gt 0) { @($company.BoardMembers)[0] } else { '' }
     $blocks += @{
         Type    = 'Certificate'
         Heading = 'Fastställelseintyg'
@@ -175,13 +175,13 @@ function Build-LedgerAnnualReportBlocks {
 
     # Förvaltningsberättelse
     $blocks += @{ Type = 'Heading'; Level = 1; Text = 'Förvaltningsberättelse' }
-    $blocks += @{ Type = 'Paragraph'; Text = "Styrelsen för $($profile.Name) avger följande årsredovisning för räkenskapsåret $dateRange. Om inte annat särskilt anges, redovisas alla belopp i hela kronor." }
+    $blocks += @{ Type = 'Paragraph'; Text = "Styrelsen för $($company.Name) avger följande årsredovisning för räkenskapsåret $dateRange. Om inte annat särskilt anges, redovisas alla belopp i hela kronor." }
     $blocks += @{ Type = 'Heading'; Level = 2; Text = 'Verksamheten' }
-    if ($profile.BusinessObject) {
-        $blocks += @{ Type = 'Paragraph'; Text = "Allmänt om verksamheten: $($profile.BusinessObject)" }
+    if ($company.BusinessObject) {
+        $blocks += @{ Type = 'Paragraph'; Text = "Allmänt om verksamheten: $($company.BusinessObject)" }
     }
-    if ($profile.RegisteredOffice) {
-        $blocks += @{ Type = 'Paragraph'; Text = "Företaget har sitt säte i $($profile.RegisteredOffice)." }
+    if ($company.RegisteredOffice) {
+        $blocks += @{ Type = 'Paragraph'; Text = "Företaget har sitt säte i $($company.RegisteredOffice)." }
     }
     if ($reportInput.Ownership) {
         $blocks += @{ Type = 'Heading'; Level = 2; Text = 'Ägarförhållanden' }
@@ -454,8 +454,8 @@ function Build-LedgerAnnualReportBlocks {
     if ($signLine.Count -gt 0) {
         $blocks += @{ Type = 'Paragraph'; Text = ($signLine -join ' '); KeepNext = $true }
     }
-    if ($profile.BoardMembers.Count -gt 0) {
-        $blocks += @{ Type = 'Signatures'; Names = @($profile.BoardMembers) }
+    if ($company.BoardMembers.Count -gt 0) {
+        $blocks += @{ Type = 'Signatures'; Names = @($company.BoardMembers) }
     }
 
     $blocks

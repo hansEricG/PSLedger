@@ -46,9 +46,18 @@
     time, cost and margin per customer, project, person, month or ISO week.
   - `New-LedgerTimeInvoice` creates a customer invoice from open billable time,
     one row per project, person and rate (or per entry with `-PerEntry`).
+- **Continuous integration.** A GitHub Actions workflow runs PSScriptAnalyzer
+  (with `PSScriptAnalyzerSettings.psd1`) and the Pester suite on Windows and Linux.
+  The test suite now runs on Pester 6.
+
+### Changed
+- **PowerShell 7.4 or later is required** (`CompatiblePSEditions = 'Core'`). The
+  manifest previously claimed Windows PowerShell 5.1 support, but the module
+  already relied on PowerShell 7 features.
 
 ### Fixed
 - `Export-LedgerInvoice` rendered a single-row invoice as one table row per cell.
+- The annual report builder no longer assigns to the automatic `$profile` variable.
 
 ## [0.12.0] - 2026-09-28
 

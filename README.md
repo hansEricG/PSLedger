@@ -769,6 +769,9 @@ All files are UTF-8 encoded plain text. Tab (`\t`) is the field delimiter.
 
 ## Installation
 
+PSLedger requires [PowerShell 7.4](https://aka.ms/powershell) or later
+(Windows, macOS or Linux). Windows PowerShell 5.1 is not supported.
+
 ```powershell
 Install-Module PSLedger
 ```
@@ -776,15 +779,24 @@ Install-Module PSLedger
 ## Development
 
 ### Prerequisites
-- PowerShell 5.1+
-- [Pester](https://github.com/pester/Pester) (testing framework)
+- PowerShell 7.4+
+- [Pester](https://github.com/pester/Pester) 6.x (testing framework)
 - [TDDUtils](https://github.com/hansEricG/TDDUtils) (test utilities)
-- [TDDSeams](https://github.com/hansEricG/TDDSeams) (mockable seams)
+- [PSScriptAnalyzer](https://github.com/PowerShell/PSScriptAnalyzer) (linting)
+
+```powershell
+Install-Module Pester -MinimumVersion 6.0.0 -Scope CurrentUser -SkipPublisherCheck
+Install-Module TDDUtils, PSScriptAnalyzer -Scope CurrentUser
+```
 
 ### Running Tests
 ```powershell
 Invoke-Pester ./Tests
+Invoke-ScriptAnalyzer -Path ./PSLedger -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
 ```
+
+The same checks run in GitHub Actions on Windows and Linux for every push and
+pull request (`.github/workflows/ci.yml`).
 
 ## License
 MIT

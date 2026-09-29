@@ -15,17 +15,17 @@ The manifest declares `PowerShellVersion = '5.1'`, but the code uses
 PowerShell 7 features in at least 35 places (`[System.Globalization.ISOWeek]`,
 `Join-Path` with several child paths, `??`, `?.`).
 
-- [ ] Set `PowerShellVersion = '7.4'` and `CompatiblePSEditions = @('Core')`.
-- [ ] State the requirement in the README.
+- [x] Set `PowerShellVersion = '7.4'` and `CompatiblePSEditions = @('Core')`.
+- [x] State the requirement in the README.
 
 ### 2. Continuous integration and Pester 6
 There is no GitHub Actions workflow; tests only run when someone runs them.
 
-- [ ] Upgrade the test suite to Pester 6 (verified: all 1494 tests pass
+- [x] Upgrade the test suite to Pester 6 (verified: all 1494 tests pass
       unchanged on Pester 6.2.0, and the run is faster than on 5.7.1).
-- [ ] Require Pester 6 in the workflow and in the Build & Test instructions.
-- [ ] Add a workflow that runs `Invoke-Pester ./Tests` on Windows and Linux.
-- [ ] Run PSScriptAnalyzer in the workflow and fix or suppress its findings.
+- [x] Require Pester 6 in the workflow and in the Build & Test instructions.
+- [x] Add a workflow that runs `Invoke-Pester ./Tests` on Windows and Linux.
+- [x] Run PSScriptAnalyzer in the workflow and fix or suppress its findings.
 - [ ] Optionally move to the new `Should-*` assertions gradually.
 
 ### 3. Documented and frozen file format
