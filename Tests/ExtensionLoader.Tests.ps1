@@ -116,14 +116,13 @@ function Get-TestVersion {
             $extDir = Join-Path $TestDrive 'ScopeExt'
             New-Item -Path $extDir -ItemType Directory -Force | Out-Null
 
-            # Extension that calls a Private function (Resolve-LedgerJournalPath)
+            # Extension that calls a Private function (ConvertFrom-LedgerHours)
             @'
 function Test-ScopeAccess {
     [CmdletBinding()]
     param ()
     try {
-        $result = Resolve-LedgerJournalPath -JournalPath 'C:\Dummy'
-        return ($result -eq 'C:\Dummy')
+        return ((ConvertFrom-LedgerHours -Text '7:30') -eq 7.5)
     } catch {
         return $false
     }
