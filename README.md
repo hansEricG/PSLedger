@@ -17,6 +17,8 @@ A simple command-line double-entry bookkeeping system built as a PowerShell modu
 - **Dimensions & objects** — cost centres, projects with SIE round-trip support
 - **Accruals** — automated accrual + reversal across fiscal years
 - **Recurring entries** — monthly templates with idempotent auto-generation
+- **Bank import & reconciliation** — import camt.053/CSV statements, auto-match OCR and
+  supplier payments, posting rules, and bank reconciliation (bankavstämning)
 - **Custom extensions** — load your own functions from `$HOME\.psledger\Extensions\` or per-journal
 - **Current journal** — set a session default to skip `-JournalPath` on every call
 
@@ -171,6 +173,15 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Add-LedgerVacationLiability` | Book the change in the vacation pay liability (2920/7290) |
 | `Export-LedgerPayslip` | Export a payslip to PDF, Word, Markdown or text |
 | `Export-LedgerEmployerDeclaration` | Export the employer declaration on individual level (AGI) as XML |
+| `Import-LedgerBankStatement` | Import a bank statement (camt.053 or CSV) |
+| `Get-LedgerBankStatement` | List imported bank statements with balances |
+| `Get-LedgerBankTransaction` | List bank transactions, filter by status or period |
+| `Invoke-LedgerBankMatching` | Match and post unmatched bank transactions automatically |
+| `Set-LedgerBankTransaction` | Post, link, ignore or reset a bank transaction by hand |
+| `Get-LedgerBankReconciliation` | Reconcile the bank account against the ledger (bankavstämning) |
+| `Add-LedgerBankRule` | Add a posting rule for recurring bank transactions |
+| `Get-LedgerBankRule` | List bank posting rules |
+| `Remove-LedgerBankRule` | Remove a bank posting rule |
 
 ## Annual Report (Årsredovisning)
 
@@ -549,6 +560,38 @@ Export-LedgerEmployerDeclaration -Period '202403' -Path .\agi-2024-03.xml
 
 For a full walkthrough see [docs/Lonehantering.md](docs/Lonehantering.md).
 
+## Bank Import & Reconciliation (Bankavstämning)
+
+Import bank statements, let PSLedger match and post the transactions, and
+reconcile the bank account against the ledger. Supports ISO 20022 camt.053 and
+CSV exports from the internet bank (columns such as Swedbank's are recognised
+automatically).
+
+```powershell
+Set-LedgerCurrentJournal -Path .\MinFirma.ledger
+
+# 1. Import a statement (duplicates from overlapping files are skipped)
+Import-LedgerBankStatement -Path .\kontoutdrag-2024-03.xml
+
+# 2. Posting rules for recurring transactions (first match wins)
+Add-LedgerBankRule -Pattern 'Bankavgift' -Account 6570 -Description 'Bankavgift'
+Add-LedgerBankRule -Pattern 'Telia*' -Account 6212 -VatRate 0.25 -VatAccount 2640
+
+# 3. Match and post: links existing verifications, registers OCR payments on
+#    customer invoices and payments of supplier invoices, then applies rules
+Invoke-LedgerBankMatching
+
+# 4. Handle what is left by hand
+Get-LedgerBankTransaction -Status Unmatched
+Set-LedgerBankTransaction -TransactionId 12 -Account 8310
+Set-LedgerBankTransaction -TransactionId 18 -InvoiceNumber 7
+
+# 5. Reconcile 1930 against the bank's balance
+Get-LedgerBankReconciliation -AsOf '2024-12-31'
+```
+
+For a full walkthrough see [docs/Bankavstamning.md](docs/Bankavstamning.md).
+
 ## Custom Extensions
 
 Extend PSLedger with your own PowerShell functions. Extensions are `.ps1` files
@@ -655,6 +698,9 @@ MinFirma.ledger/
 │   └── inv0002.txt
 ├── recurring/               # Recurring entry templates
 │   └── Hyra.txt
+├── bank/                    # Imported bank statements and posting rules
+│   ├── rules.txt
+│   └── stmt0001.txt
 ├── Extensions/              # Per-journal custom extensions (.ps1)
 │   └── Add-PreliminärskattEntry.ps1
 └── 2024-01_2024-12/         # Fiscal year

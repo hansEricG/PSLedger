@@ -23,7 +23,10 @@ Describe 'SupportsShouldProcess coverage' {
             'Invoke-LedgerInvoicePosting', 'Invoke-LedgerPayrollPosting', 'Invoke-LedgerSupplierInvoicePosting',
             'Invoke-LedgerRecurringEntry', 'Import-LedgerSie', 'Remove-LedgerRecurringEntry',
             'Set-LedgerHolding', 'Remove-LedgerHolding', 'Copy-LedgerHolding',
-            'Add-LedgerImpairment', 'Add-LedgerProfitDisposition'
+            'Add-LedgerImpairment', 'Add-LedgerProfitDisposition',
+            # Bank import and reconciliation
+            'Import-LedgerBankStatement', 'Invoke-LedgerBankMatching', 'Set-LedgerBankTransaction',
+            'Add-LedgerBankRule', 'Remove-LedgerBankRule'
         )
 
         It '<_> supports ShouldProcess' -ForEach $WriteCommands {

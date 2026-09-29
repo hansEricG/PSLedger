@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Added
+- **Bank import and reconciliation (bankavstämning).** Bank statements are stored
+  under the journal's new `bank/` directory (additive, no schema migration).
+  - `Import-LedgerBankStatement` imports ISO 20022 camt.053 files and CSV exports.
+    CSV header rows, columns (e.g. Swedbank's Bokföringsdag, Belopp, Beskrivning,
+    Referens, Bokfört saldo), delimiter, decimal separator and encoding are
+    detected automatically. Batch entries with several payments are split,
+    and transactions already imported are skipped. A ledger account is tied to
+    one bank account (IBAN); multi-account camt files are imported one account
+    at a time with `-AccountId`.
+  - `Invoke-LedgerBankMatching` links transactions to existing verifications,
+    registers OCR payments on customer invoices and payments of supplier invoices,
+    and posts the rest by bank rules. It supports `-WhatIf`. A transfer between
+    own accounts (e.g. 1930 → 1940 or the tax account 1630) is booked once and
+    linked from both accounts' statements.
+  - `Add-LedgerBankRule`, `Get-LedgerBankRule` and `Remove-LedgerBankRule` manage
+    posting rules (konteringsregler), optionally with VAT split out.
+  - `Set-LedgerBankTransaction` posts a transaction against an account, pays an
+    invoice, links an existing verification, ignores it or resets it.
+  - `Get-LedgerBankStatement` and `Get-LedgerBankTransaction` list imported data.
+  - `Get-LedgerBankReconciliation` compares the ledger balance of the bank account
+    with the bank's balance and lists the unmatched items on both sides.
+
 ## [0.12.0] - 2026-09-28
 
 ### Added

@@ -25,6 +25,9 @@
 . $PSScriptRoot\Private\InvoiceCharge.ps1
 . $PSScriptRoot\Private\PdfWriter.ps1
 . $PSScriptRoot\Private\PayslipStore.ps1
+. $PSScriptRoot\Private\BankStore.ps1
+. $PSScriptRoot\Private\BankImport.ps1
+. $PSScriptRoot\Private\BankMatching.ps1
 . $PSScriptRoot\Private\Migrations.ps1
 
 # Module-level state
@@ -139,6 +142,15 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Add-LedgerVacationLiability.ps1
 . $PSScriptRoot\Public\Export-LedgerPayslip.ps1
 . $PSScriptRoot\Public\Export-LedgerEmployerDeclaration.ps1
+. $PSScriptRoot\Public\Import-LedgerBankStatement.ps1
+. $PSScriptRoot\Public\Get-LedgerBankStatement.ps1
+. $PSScriptRoot\Public\Get-LedgerBankTransaction.ps1
+. $PSScriptRoot\Public\Invoke-LedgerBankMatching.ps1
+. $PSScriptRoot\Public\Set-LedgerBankTransaction.ps1
+. $PSScriptRoot\Public\Get-LedgerBankReconciliation.ps1
+. $PSScriptRoot\Public\Add-LedgerBankRule.ps1
+. $PSScriptRoot\Public\Get-LedgerBankRule.ps1
+. $PSScriptRoot\Public\Remove-LedgerBankRule.ps1
 
 # Export built-in public functions
 $script:BuiltInFunctions = @(
@@ -188,7 +200,10 @@ $script:BuiltInFunctions = @(
     'Add-LedgerEmployee', 'Get-LedgerEmployee', 'Set-LedgerEmployee',
     'New-LedgerPayslip', 'Get-LedgerPayslip', 'Invoke-LedgerPayrollPosting',
     'Add-LedgerPayrollTaxPayment', 'Add-LedgerVacationLiability',
-    'Export-LedgerPayslip', 'Export-LedgerEmployerDeclaration'
+    'Export-LedgerPayslip', 'Export-LedgerEmployerDeclaration',
+    'Import-LedgerBankStatement', 'Get-LedgerBankStatement', 'Get-LedgerBankTransaction',
+    'Invoke-LedgerBankMatching', 'Set-LedgerBankTransaction', 'Get-LedgerBankReconciliation',
+    'Add-LedgerBankRule', 'Get-LedgerBankRule', 'Remove-LedgerBankRule'
 )
 
 # Load extensions at module scope (env variable — semicolon-separated paths)
