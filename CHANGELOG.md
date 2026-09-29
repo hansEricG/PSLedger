@@ -30,6 +30,22 @@
   shows Beskrivning, Antal, À-pris, Moms % and Belopp (rows without text show
   the account name), and credit notes copy the row text. The extra columns are
   optional and appended to the row, so existing invoices need no migration.
+- **Time reporting (tidrapportering).** Time is stored under the journal's new
+  `time/` directory (additive, no schema migration).
+  - `Add-`, `Get-` and `Set-LedgerTimeResource` manage who reports time (yourself,
+    employees and subcontractors) with an optional cost rate.
+  - `Add-`, `Get-` and `Set-LedgerProject` manage projects with a customer, an
+    hourly rate and a status. Time on projects without a customer is internal.
+  - Customers get an optional hourly rate (`-HourlyRate` on `Add-`/`Set-LedgerCustomer`).
+  - `Add-`, `Get-`, `Set-` and `Remove-LedgerTimeEntry` register and maintain time
+    (hours as `7.5`, `7,5` or `7:30`). The rate (explicit, project or customer)
+    is stored on the entry. Invoiced entries are locked until the invoice is credited.
+  - `Import-LedgerTimeEntry` imports time from CSV exports with automatic column
+    detection; the import is all or nothing and already imported rows are skipped.
+  - `Get-LedgerTimeReport` summarises hours, billable amount, invoiced and open
+    time, cost and margin per customer, project, person, month or ISO week.
+  - `New-LedgerTimeInvoice` creates a customer invoice from open billable time,
+    one row per project, person and rate (or per entry with `-PerEntry`).
 
 ### Fixed
 - `Export-LedgerInvoice` rendered a single-row invoice as one table row per cell.

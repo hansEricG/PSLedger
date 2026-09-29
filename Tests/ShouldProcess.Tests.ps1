@@ -26,7 +26,11 @@ Describe 'SupportsShouldProcess coverage' {
             'Add-LedgerImpairment', 'Add-LedgerProfitDisposition',
             # Bank import and reconciliation
             'Import-LedgerBankStatement', 'Invoke-LedgerBankMatching', 'Set-LedgerBankTransaction',
-            'Add-LedgerBankRule', 'Remove-LedgerBankRule'
+            'Add-LedgerBankRule', 'Remove-LedgerBankRule',
+            # Time reporting
+            'Add-LedgerTimeResource', 'Set-LedgerTimeResource', 'Add-LedgerProject', 'Set-LedgerProject',
+            'Add-LedgerTimeEntry', 'Set-LedgerTimeEntry', 'Remove-LedgerTimeEntry', 'Import-LedgerTimeEntry',
+            'New-LedgerTimeInvoice'
         )
 
         It '<_> supports ShouldProcess' -ForEach $WriteCommands {

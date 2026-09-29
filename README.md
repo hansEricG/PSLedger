@@ -19,6 +19,8 @@ A simple command-line double-entry bookkeeping system built as a PowerShell modu
 - **Recurring entries** — monthly templates with idempotent auto-generation
 - **Bank import & reconciliation** — import camt.053/CSV statements, auto-match OCR and
   supplier payments, posting rules, and bank reconciliation (bankavstämning)
+- **Time reporting** — register or import time per project, customer and person,
+  hourly rates per customer/project, time reports with margin, and invoicing of time
 - **Custom extensions** — load your own functions from `$HOME\.psledger\Extensions\` or per-journal
 - **Current journal** — set a session default to skip `-JournalPath` on every call
 
@@ -182,6 +184,19 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Add-LedgerBankRule` | Add a posting rule for recurring bank transactions |
 | `Get-LedgerBankRule` | List bank posting rules |
 | `Remove-LedgerBankRule` | Remove a bank posting rule |
+| `Add-LedgerTimeResource` | Add a person who reports time (self, employee or subcontractor) |
+| `Get-LedgerTimeResource` | List time resources |
+| `Set-LedgerTimeResource` | Update a time resource or make it the default |
+| `Add-LedgerProject` | Add a project with customer and hourly rate |
+| `Get-LedgerProject` | List projects |
+| `Set-LedgerProject` | Update, close or reopen a project |
+| `Add-LedgerTimeEntry` | Register time |
+| `Get-LedgerTimeEntry` | List time entries, filter by period, project, person or status |
+| `Set-LedgerTimeEntry` | Change a time entry that is not invoiced |
+| `Remove-LedgerTimeEntry` | Remove a time entry that is not invoiced |
+| `Import-LedgerTimeEntry` | Import time from a CSV file |
+| `Get-LedgerTimeReport` | Summarise time per customer, project, person, month or week |
+| `New-LedgerTimeInvoice` | Create a customer invoice from open billable time |
 
 ## Annual Report (Årsredovisning)
 
@@ -598,6 +613,34 @@ Get-LedgerBankReconciliation -AsOf '2024-12-31'
 
 For a full walkthrough see [docs/Bankavstamning.md](docs/Bankavstamning.md).
 
+## Time Reporting (Tidrapportering)
+
+Register time for yourself, employees and subcontractors, and invoice it.
+Time is priced by an hourly rate per project or per customer and becomes
+invoice rows with hours, rate and text.
+
+```powershell
+Set-LedgerCurrentJournal -Path .\MinFirma.ledger
+
+# 1. Who reports time (the first resource is the default) and what it costs
+Add-LedgerTimeResource -ResourceId 'HEG' -Name 'Hans-Eric'
+Add-LedgerTimeResource -ResourceId 'KON' -Name 'Kalle Konsult' -SupplierNumber 200 -CostRate 750
+
+# 2. Hourly rates per customer and/or project (the project rate wins)
+Set-LedgerCustomer -CustomerNumber 10 -HourlyRate 1050
+Add-LedgerProject -ProjectNumber 'P100' -Name 'Webbshop' -CustomerNumber 10 -HourlyRate 1200
+
+# 3. Register time, or import it from a CSV export (Excel, Toggl, Harvest ...)
+Add-LedgerTimeEntry -Hours '7:30' -Project P100 -Date '2024-03-04' -Text 'Design'
+Import-LedgerTimeEntry -Path .\tid-mars.csv
+
+# 4. Follow up and invoice the open time
+Get-LedgerTimeReport -GroupBy Project, Resource -From '2024-03-01' -To '2024-03-31'
+New-LedgerTimeInvoice -CustomerNumber 10 -Through '2024-03-31'
+```
+
+For a full walkthrough see [docs/Tidrapportering.md](docs/Tidrapportering.md).
+
 ## Custom Extensions
 
 Extend PSLedger with your own PowerShell functions. Extensions are `.ps1` files
@@ -707,6 +750,10 @@ MinFirma.ledger/
 ├── bank/                    # Imported bank statements and posting rules
 │   ├── rules.txt
 │   └── stmt0001.txt
+├── time/                    # Time reporting
+│   ├── resources.txt        # Who reports time
+│   ├── projects.txt         # Projects with customer and hourly rate
+│   └── 2024-03.txt          # Time entries, one file per month
 ├── Extensions/              # Per-journal custom extensions (.ps1)
 │   └── Add-PreliminärskattEntry.ps1
 └── 2024-01_2024-12/         # Fiscal year

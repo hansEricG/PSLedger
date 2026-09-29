@@ -28,6 +28,7 @@
 . $PSScriptRoot\Private\BankStore.ps1
 . $PSScriptRoot\Private\BankImport.ps1
 . $PSScriptRoot\Private\BankMatching.ps1
+. $PSScriptRoot\Private\TimeStore.ps1
 . $PSScriptRoot\Private\Migrations.ps1
 
 # Module-level state
@@ -151,6 +152,19 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Add-LedgerBankRule.ps1
 . $PSScriptRoot\Public\Get-LedgerBankRule.ps1
 . $PSScriptRoot\Public\Remove-LedgerBankRule.ps1
+. $PSScriptRoot\Public\Add-LedgerTimeResource.ps1
+. $PSScriptRoot\Public\Get-LedgerTimeResource.ps1
+. $PSScriptRoot\Public\Set-LedgerTimeResource.ps1
+. $PSScriptRoot\Public\Add-LedgerProject.ps1
+. $PSScriptRoot\Public\Get-LedgerProject.ps1
+. $PSScriptRoot\Public\Set-LedgerProject.ps1
+. $PSScriptRoot\Public\Add-LedgerTimeEntry.ps1
+. $PSScriptRoot\Public\Get-LedgerTimeEntry.ps1
+. $PSScriptRoot\Public\Set-LedgerTimeEntry.ps1
+. $PSScriptRoot\Public\Remove-LedgerTimeEntry.ps1
+. $PSScriptRoot\Public\Import-LedgerTimeEntry.ps1
+. $PSScriptRoot\Public\Get-LedgerTimeReport.ps1
+. $PSScriptRoot\Public\New-LedgerTimeInvoice.ps1
 
 # Export built-in public functions
 $script:BuiltInFunctions = @(
@@ -203,7 +217,11 @@ $script:BuiltInFunctions = @(
     'Export-LedgerPayslip', 'Export-LedgerEmployerDeclaration',
     'Import-LedgerBankStatement', 'Get-LedgerBankStatement', 'Get-LedgerBankTransaction',
     'Invoke-LedgerBankMatching', 'Set-LedgerBankTransaction', 'Get-LedgerBankReconciliation',
-    'Add-LedgerBankRule', 'Get-LedgerBankRule', 'Remove-LedgerBankRule'
+    'Add-LedgerBankRule', 'Get-LedgerBankRule', 'Remove-LedgerBankRule',
+    'Add-LedgerTimeResource', 'Get-LedgerTimeResource', 'Set-LedgerTimeResource',
+    'Add-LedgerProject', 'Get-LedgerProject', 'Set-LedgerProject',
+    'Add-LedgerTimeEntry', 'Get-LedgerTimeEntry', 'Set-LedgerTimeEntry', 'Remove-LedgerTimeEntry',
+    'Import-LedgerTimeEntry', 'Get-LedgerTimeReport', 'New-LedgerTimeInvoice'
 )
 
 # Load extensions at module scope (env variable — semicolon-separated paths)

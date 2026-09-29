@@ -3,7 +3,7 @@
 Updates a customer in the journal's customer register.
 
 .DESCRIPTION
-Updates the Name, OrgNumber, Email and/or PaymentTermsDays of an existing
+Updates the Name, OrgNumber, Email, PaymentTermsDays and/or HourlyRate of an existing
 customer in customers.txt. Only the fields you supply are changed; the others
 keep their current values. The customer must already exist.
 
@@ -25,6 +25,10 @@ The new email address. Pass an empty string to clear it.
 
 .PARAMETER PaymentTermsDays
 The new default payment terms in days.
+
+.PARAMETER HourlyRate
+The new default hourly rate for time reported against the customer. Pass 0 to
+clear it.
 
 .EXAMPLE
 Set-LedgerCustomer -JournalPath .\MinFirma.ledger -CustomerNumber '10' -Email 'ny@volvo.se'
@@ -57,7 +61,11 @@ function Set-LedgerCustomer {
 
         [Parameter()]
         [ValidateRange(0, 3650)]
-        [int]$PaymentTermsDays
+        [int]$PaymentTermsDays,
+
+        [Parameter()]
+        [ValidateRange(0, 1000000)]
+        [decimal]$HourlyRate
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
@@ -74,9 +82,10 @@ function Set-LedgerCustomer {
     $updateOrg = $PSBoundParameters.ContainsKey('OrgNumber')
     $updateEmail = $PSBoundParameters.ContainsKey('Email')
     $updateTerms = $PSBoundParameters.ContainsKey('PaymentTermsDays')
+    $updateRate = $PSBoundParameters.ContainsKey('HourlyRate')
 
-    if (-not ($updateName -or $updateOrg -or $updateEmail -or $updateTerms)) {
-        throw "Nothing to update. Specify -Name, -OrgNumber, -Email and/or -PaymentTermsDays."
+    if (-not ($updateName -or $updateOrg -or $updateEmail -or $updateTerms -or $updateRate)) {
+        throw "Nothing to update. Specify -Name, -OrgNumber, -Email, -PaymentTermsDays and/or -HourlyRate."
     }
 
     $lines = @(Get-Content $CustomerFile -Encoding UTF8)
@@ -90,13 +99,16 @@ function Set-LedgerCustomer {
             $curOrg = if ($parts.Count -ge 3) { $parts[2] } else { '' }
             $curEmail = if ($parts.Count -ge 4) { $parts[3] } else { '' }
             $curTerms = if ($parts.Count -ge 5) { $parts[4] } else { '30' }
+            $curRate = if ($parts.Count -ge 6) { $parts[5] } else { '' }
 
             if ($updateName) { $curName = $Name }
             if ($updateOrg) { $curOrg = $OrgNumber }
             if ($updateEmail) { $curEmail = $Email }
             if ($updateTerms) { $curTerms = $PaymentTermsDays }
+            if ($updateRate) { $curRate = if ($HourlyRate -gt 0) { Format-LedgerInvoiceAmount -Value $HourlyRate } else { '' } }
 
-            "$CustomerNumber`t$curName`t$curOrg`t$curEmail`t$curTerms"
+            $rateField = if ($curRate) { "`t$curRate" } else { '' }
+            "$CustomerNumber`t$curName`t$curOrg`t$curEmail`t$curTerms$rateField"
         }
         else {
             $line

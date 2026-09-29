@@ -51,6 +51,7 @@ function Get-LedgerCustomer {
             OrgNumber        = if ($parts.Count -ge 3) { $parts[2] } else { '' }
             Email            = if ($parts.Count -ge 4) { $parts[3] } else { '' }
             PaymentTermsDays = if ($parts.Count -ge 5 -and $parts[4]) { [int]$parts[4] } else { 30 }
+            HourlyRate       = if ($parts.Count -ge 6 -and $parts[5]) { ConvertFrom-LedgerInvoiceAmount -Text $parts[5] } else { $null }
         }
     }
 
