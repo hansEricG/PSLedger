@@ -781,12 +781,13 @@ Install-Module PSLedger
 ### Prerequisites
 - PowerShell 7.4+
 - [Pester](https://github.com/pester/Pester) 6.x (testing framework)
-- [TDDUtils](https://github.com/hansEricG/TDDUtils) (test utilities)
+- [TDDUtils](https://github.com/hansEricG/TDDUtils) 1.0.6+ (test utilities)
 - [PSScriptAnalyzer](https://github.com/PowerShell/PSScriptAnalyzer) (linting)
 
 ```powershell
 Install-Module Pester -MinimumVersion 6.0.0 -Scope CurrentUser -SkipPublisherCheck
-Install-Module TDDUtils, PSScriptAnalyzer -Scope CurrentUser
+Install-Module TDDUtils -MinimumVersion 1.0.6 -Scope CurrentUser
+Install-Module PSScriptAnalyzer -Scope CurrentUser
 ```
 
 ### Running Tests

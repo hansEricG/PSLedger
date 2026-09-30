@@ -42,11 +42,7 @@ jobs:
         run: |
           $PSVersionTable.PSVersion
           Install-Module Pester -MinimumVersion 6.0.0 -Scope CurrentUser -Force -SkipPublisherCheck
-          Install-Module TDDUtils -Scope CurrentUser -Force
-          # TDDUtils 1.0.5 dot-sources a private file without its .ps1 extension,
-          # which only resolves on Windows. Patch it until a fixed version is published.
-          $psm1 = Join-Path (Get-Module TDDUtils -ListAvailable | Select-Object -First 1).ModuleBase 'TDDUtils.psm1'
-          (Get-Content $psm1) -replace 'Get-TDDParamBlockAttribute$', 'Get-TDDParamBlockAttribute.ps1' | Set-Content $psm1
+          Install-Module TDDUtils -MinimumVersion 1.0.6 -Scope CurrentUser -Force
 
       - name: Run tests
         shell: pwsh

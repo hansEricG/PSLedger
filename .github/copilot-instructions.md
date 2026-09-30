@@ -25,7 +25,7 @@ so use `Join-Path`/forward slashes rather than hard-coded `\` in paths passed to
 ### Test dependencies
 
 - **Pester 6.x** — the test framework (classic `Should -Be` syntax is used)
-- **TDDUtils** — provides `Test-TDDCmdletBinding` and similar assertion helpers
+- **TDDUtils 1.0.6+** — provides `Test-TDDCmdletBinding` and similar assertion helpers (1.0.6 fixes loading on Linux)
 - **PSScriptAnalyzer** — linting
 
 ## Architecture
