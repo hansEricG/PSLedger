@@ -32,6 +32,10 @@ Optional email address for the supplier.
 Default number of days from invoice date until a supplier invoice is due.
 Defaults to 30 days.
 
+.PARAMETER PassThru
+If specified, returns the created/updated supplier. By default the command
+produces no output.
+
 .EXAMPLE
 Add-LedgerSupplier -JournalPath .\MinFirma.ledger -SupplierNumber '100' -Name 'Kontorsbolaget AB'
 
@@ -62,7 +66,10 @@ function Add-LedgerSupplier {
 
         [Parameter()]
         [ValidateRange(0, 3650)]
-        [int]$PaymentTermsDays = 30
+        [int]$PaymentTermsDays = 30,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
@@ -87,5 +94,8 @@ function Add-LedgerSupplier {
     if ($PSCmdlet.ShouldProcess($SupplierNumber, 'Add supplier')) {
         "$SupplierNumber`t$Name`t$OrgNumber`t$Email`t$PaymentTermsDays" |
             Add-Content -Path $SupplierFile -Encoding UTF8
+        if ($PassThru) {
+            Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber
+        }
     }
 }

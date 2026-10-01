@@ -57,7 +57,7 @@ function Add-LedgerSupplierPayment {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
         [int]$InvoiceNumber,
 
         [Parameter()]
@@ -75,67 +75,69 @@ function Add-LedgerSupplierPayment {
         [Parameter()]
         [switch]$PassThru
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $invoiceDir = Get-LedgerSupplierInvoiceDirectory -JournalPath $JournalPath
-    $filePath = Join-Path $invoiceDir (Get-LedgerSupplierInvoiceFileName -InvoiceNumber $InvoiceNumber)
-    if (-not (Test-Path $filePath)) {
-        throw "Supplier invoice $InvoiceNumber does not exist."
-    }
-
-    $invoice = Read-LedgerSupplierInvoiceFile -Path $filePath
-
-    if ($invoice.Status -eq 'Draft') {
-        throw "Supplier invoice $InvoiceNumber has not been posted. Post it first with Invoke-LedgerSupplierInvoicePosting."
-    }
-    if ($invoice.Status -eq 'Paid') {
-        throw "Supplier invoice $InvoiceNumber is already fully paid."
-    }
-
-    if (-not $PSBoundParameters.ContainsKey('Amount')) {
-        $Amount = $invoice.RemainingAmount
-    }
-    if ($Amount -le 0) {
-        throw "Payment amount must be greater than zero."
-    }
-    if ($Amount -gt $invoice.RemainingAmount) {
-        throw "Payment amount $Amount exceeds the remaining amount $($invoice.RemainingAmount) on supplier invoice $InvoiceNumber."
-    }
-
-    # Resolve the fiscal year from the payment date unless one was supplied.
-    if (-not $FiscalYear) {
-        $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $Date
-        if (-not $FiscalYear) {
-            throw "No fiscal year covers the payment date $($Date.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+        $invoiceDir = Get-LedgerSupplierInvoiceDirectory -JournalPath $JournalPath
+        $filePath = Join-Path $invoiceDir (Get-LedgerSupplierInvoiceFileName -InvoiceNumber $InvoiceNumber)
+        if (-not (Test-Path $filePath)) {
+            throw "Supplier invoice $InvoiceNumber does not exist."
         }
-    }
 
-    $rows = @(
-        @{ Account = $invoice.PayableAccount; Amount = $Amount }
-        @{ Account = $Account; Amount = -$Amount }
-    )
-    $description = "Betalning leverantörsfaktura $InvoiceNumber"
+        $invoice = Read-LedgerSupplierInvoiceFile -Path $filePath
 
-    if (-not $PSCmdlet.ShouldProcess("Supplier invoice $InvoiceNumber", "Register payment of $Amount")) {
-        return
-    }
+        if ($invoice.Status -eq 'Draft') {
+            throw "Supplier invoice $InvoiceNumber has not been posted. Post it first with Invoke-LedgerSupplierInvoicePosting."
+        }
+        if ($invoice.Status -eq 'Paid') {
+            throw "Supplier invoice $InvoiceNumber is already fully paid."
+        }
 
-    $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-        -Date $Date -Description $description -Rows $rows -PassThru
+        if (-not $PSBoundParameters.ContainsKey('Amount')) {
+            $Amount = $invoice.RemainingAmount
+        }
+        if ($Amount -le 0) {
+            throw "Payment amount must be greater than zero."
+        }
+        if ($Amount -gt $invoice.RemainingAmount) {
+            throw "Payment amount $Amount exceeds the remaining amount $($invoice.RemainingAmount) on supplier invoice $InvoiceNumber."
+        }
 
-    $invoice.Payments += [PSCustomObject]@{
-        Date               = $Date
-        Amount             = $Amount
-        VerificationNumber = $verification.VerificationNumber
-        FiscalYear         = $FiscalYear
-    }
+        # Resolve the fiscal year from the payment date unless one was supplied.
+        if (-not $FiscalYear) {
+            $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $Date
+            if (-not $FiscalYear) {
+                throw "No fiscal year covers the payment date $($Date.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+            }
+        }
 
-    $paid = ($invoice.Payments | Measure-Object -Property Amount -Sum).Sum
-    $invoice.Status = if ([Math]::Round($invoice.Total - $paid, 2) -le 0) { 'Paid' } else { 'Partial' }
+        $rows = @(
+            @{ Account = $invoice.PayableAccount; Amount = $Amount }
+            @{ Account = $Account; Amount = -$Amount }
+        )
+        $description = "Betalning leverantörsfaktura $InvoiceNumber"
 
-    Save-LedgerSupplierInvoiceFile -Invoice $invoice
+        if (-not $PSCmdlet.ShouldProcess("Supplier invoice $InvoiceNumber", "Register payment of $Amount")) {
+            return
+        }
 
-    if ($PassThru) {
-        Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+        $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+            -Date $Date -Description $description -Rows $rows -PassThru
+
+        $invoice.Payments += [PSCustomObject]@{
+            Date               = $Date
+            Amount             = $Amount
+            VerificationNumber = $verification.VerificationNumber
+            FiscalYear         = $FiscalYear
+        }
+
+        $paid = ($invoice.Payments | Measure-Object -Property Amount -Sum).Sum
+        $invoice.Status = if ([Math]::Round($invoice.Total - $paid, 2) -le 0) { 'Paid' } else { 'Partial' }
+
+        Save-LedgerSupplierInvoiceFile -Invoice $invoice
+
+        if ($PassThru) {
+            Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+        }
     }
 }

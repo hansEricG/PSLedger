@@ -41,6 +41,7 @@ Get-LedgerAccountsReceivable -AsOf '2024-05-01' -Summary
 Shows the outstanding total per aging bucket as of 1 May 2024.
 #>
 function Get-LedgerAccountsReceivable {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

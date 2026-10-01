@@ -42,6 +42,7 @@ Get-LedgerEquityReconciliation -JournalPath .\HEG.ledger -FiscalYear '2024-09_20
 Displays the change in equity as a table similar to a printed note.
 #>
 function Get-LedgerEquityReconciliation {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

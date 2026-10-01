@@ -29,6 +29,10 @@ The new cost per hour. Pass 0 to clear it.
 .PARAMETER Default
 Makes this the default resource for new time entries.
 
+.PARAMETER PassThru
+If specified, returns the created/updated time resource. By default the command
+produces no output.
+
 .EXAMPLE
 Set-LedgerTimeResource -ResourceId 'BK' -CostRate 900
 
@@ -63,7 +67,10 @@ function Set-LedgerTimeResource {
         [decimal]$CostRate,
 
         [Parameter()]
-        [switch]$Default
+        [switch]$Default,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
@@ -92,6 +99,9 @@ function Set-LedgerTimeResource {
 
         if ($PSCmdlet.ShouldProcess($ResourceId, 'Update time resource')) {
             Save-LedgerTimeResources -JournalPath $JournalPath -Resources $resources
+            if ($PassThru) {
+                Get-LedgerTimeResource -JournalPath $JournalPath -ResourceId $ResourceId
+            }
         }
     }
 }

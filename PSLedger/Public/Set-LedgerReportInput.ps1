@@ -12,7 +12,8 @@ report.txt file in the fiscal year directory (alongside the verifications and
 ib.txt), UTF-8 encoded.
 
 Only the fields you supply are changed; existing values are preserved. Passing an
-empty string removes a field. Get the stored values back with
+empty string (or $null for AverageEmployees, SigningDate and AnnualMeetingDate)
+removes a field. Get the stored values back with
 Get-LedgerReportInput and use them when producing the annual report.
 
 Supports -WhatIf and -Confirm.
@@ -44,10 +45,11 @@ The market value (marknadsvärde) of listed securities held as assets, used in t
 The place (ort) where the annual report is signed, e.g. 'Gävle'.
 
 .PARAMETER SigningDate
-The date the annual report is signed, e.g. '2025-10-01'.
+The date the annual report is signed, e.g. '2025-10-01'. Stored as yyyy-MM-dd.
 
 .PARAMETER AnnualMeetingDate
-The date of the årsstämma that adopts the report, e.g. '2025-10-01'. Shown in
+The date of the årsstämma that adopts the report, e.g. '2025-10-01'. Stored as
+yyyy-MM-dd and shown in
 the fastställelseintyg on the cover page; when omitted a blank line is printed.
 
 .PARAMETER CertificatePlace
@@ -90,6 +92,10 @@ förvaltningsberättelse and as a note when set.
 .PARAMETER Ownership
 Ägarförhållanden shown in the förvaltningsberättelse, for example owners
 holding more than ten per cent of the shares (K3 punkt 3.7).
+
+.PARAMETER PassThru
+If specified, returns the created/updated report input. By default the command
+produces no output.
 
 .EXAMPLE
 Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' `
@@ -135,7 +141,8 @@ function Set-LedgerReportInput {
         [string]$ProposedDividend,
 
         [Parameter()]
-        [string]$AverageEmployees,
+        [AllowNull()]
+        [Nullable[int]]$AverageEmployees,
 
         [Parameter()]
         [string]$SecuritiesMarketValue,
@@ -144,10 +151,12 @@ function Set-LedgerReportInput {
         [string]$SigningPlace,
 
         [Parameter()]
-        [string]$SigningDate,
+        [AllowNull()]
+        [Nullable[datetime]]$SigningDate,
 
         [Parameter()]
-        [string]$AnnualMeetingDate,
+        [AllowNull()]
+        [Nullable[datetime]]$AnnualMeetingDate,
 
         [Parameter()]
         [string]$CertificatePlace,
@@ -178,7 +187,10 @@ function Set-LedgerReportInput {
         [string]$EventsAfterBalanceDate,
 
         [Parameter()]
-        [string]$Ownership
+        [string]$Ownership,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
@@ -202,7 +214,8 @@ function Set-LedgerReportInput {
         $values = @{}
         foreach ($key in $order) {
             $supplied[$key] = $PSBoundParameters.ContainsKey($key)
-            $values[$key] = $PSBoundParameters[$key]
+            $value = $PSBoundParameters[$key]
+            $values[$key] = if ($value -is [datetime]) { $value.ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture) } elseif ($null -ne $value) { [string]$value } else { $null }
         }
 
         if (-not ($supplied.Values -contains $true)) {
@@ -228,6 +241,9 @@ function Set-LedgerReportInput {
 
         if ($PSCmdlet.ShouldProcess($Path, "Update annual report input")) {
             Write-LedgerReportInput -Path $Path -Fields $result
+            if ($PassThru) {
+                Get-LedgerReportInput -JournalPath $JournalPath -FiscalYear $FiscalYear
+            }
         }
     }
 }

@@ -58,7 +58,7 @@ Export-LedgerAnnualReport -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08
 Writes the complete annual report as a Word document, overwriting any existing file.
 #>
 function Export-LedgerAnnualReport {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -89,6 +89,10 @@ function Export-LedgerAnnualReport {
         }
 
         $blocks = @(Build-LedgerAnnualReportBlocks -JournalPath $JournalPath -FiscalYear $FiscalYear -NoComparison:$NoComparison)
+
+        if (-not $PSCmdlet.ShouldProcess($Path, "Export annual report for $FiscalYear")) {
+            return
+        }
 
         switch ($Format) {
             'Word' {

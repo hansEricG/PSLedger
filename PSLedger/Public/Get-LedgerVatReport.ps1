@@ -42,6 +42,7 @@ Get-LedgerVatReport -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
 Displays January's VAT report as a formatted table.
 #>
 function Get-LedgerVatReport {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

@@ -19,6 +19,10 @@ An identifier for this object (e.g. 'cs01', 'proj-a').
 .PARAMETER Name
 A descriptive name for the object.
 
+.PARAMETER PassThru
+If specified, returns the created/updated object. By default the command
+produces no output.
+
 .EXAMPLE
 Add-LedgerObject -JournalPath .\MinFirma.ledger -DimensionNumber 1 -ObjectNumber 'sthlm' -Name 'Stockholm'
 
@@ -42,7 +46,10 @@ function Add-LedgerObject {
         [string]$ObjectNumber,
 
         [Parameter(Mandatory)]
-        [string]$Name
+        [string]$Name,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
@@ -68,5 +75,8 @@ function Add-LedgerObject {
 
     if ($PSCmdlet.ShouldProcess($ObjectNumber, 'Add object')) {
         "$DimensionNumber`t$ObjectNumber`t$Name" | Add-Content -Path $ObjFile -Encoding UTF8
+        if ($PassThru) {
+            Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $DimensionNumber -ObjectNumber $ObjectNumber
+        }
     }
 }

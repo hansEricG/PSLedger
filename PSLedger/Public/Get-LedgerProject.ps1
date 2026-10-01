@@ -31,6 +31,7 @@ Get-LedgerProject -CustomerNumber '10' | Format-Table ProjectNumber, Name, Effec
 Lists Volvo AB's projects and the rate their time is billed at.
 #>
 function Get-LedgerProject {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

@@ -29,6 +29,7 @@ Get-LedgerAccount -JournalPath .\MinFirma.ledger | Where-Object { $_.AccountNumb
 Returns all income accounts (3xxx in BAS).
 #>
 function Get-LedgerAccount {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

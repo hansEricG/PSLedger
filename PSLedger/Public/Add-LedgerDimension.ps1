@@ -16,6 +16,10 @@ The numeric ID for the dimension (e.g. 1, 2).
 .PARAMETER Name
 A descriptive name for the dimension.
 
+.PARAMETER PassThru
+If specified, returns the created/updated dimension. By default the command
+produces no output.
+
 .EXAMPLE
 Add-LedgerDimension -JournalPath .\MinFirma.ledger -DimensionNumber 1 -Name 'Kostnadsställe'
 
@@ -36,7 +40,10 @@ function Add-LedgerDimension {
         [int]$DimensionNumber,
 
         [Parameter(Mandatory)]
-        [string]$Name
+        [string]$Name,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
@@ -56,5 +63,8 @@ function Add-LedgerDimension {
 
     if ($PSCmdlet.ShouldProcess("$DimensionNumber", 'Add dimension')) {
         "$DimensionNumber`t$Name" | Add-Content -Path $DimFile -Encoding UTF8
+        if ($PassThru) {
+            Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $DimensionNumber
+        }
     }
 }

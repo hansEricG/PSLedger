@@ -49,7 +49,7 @@ function Invoke-LedgerSupplierInvoicePosting {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
         [int]$InvoiceNumber,
 
         [Parameter()]
@@ -58,70 +58,72 @@ function Invoke-LedgerSupplierInvoicePosting {
         [Parameter()]
         [switch]$PassThru
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $invoiceDir = Get-LedgerSupplierInvoiceDirectory -JournalPath $JournalPath
-    $filePath = Join-Path $invoiceDir (Get-LedgerSupplierInvoiceFileName -InvoiceNumber $InvoiceNumber)
-    if (-not (Test-Path $filePath)) {
-        throw "Supplier invoice $InvoiceNumber does not exist."
-    }
+        $invoiceDir = Get-LedgerSupplierInvoiceDirectory -JournalPath $JournalPath
+        $filePath = Join-Path $invoiceDir (Get-LedgerSupplierInvoiceFileName -InvoiceNumber $InvoiceNumber)
+        if (-not (Test-Path $filePath)) {
+            throw "Supplier invoice $InvoiceNumber does not exist."
+        }
 
-    $invoice = Read-LedgerSupplierInvoiceFile -Path $filePath
+        $invoice = Read-LedgerSupplierInvoiceFile -Path $filePath
 
-    if ($invoice.Status -ne 'Draft') {
-        throw "Supplier invoice $InvoiceNumber is already posted (status '$($invoice.Status)', verification $($invoice.BookedVerification))."
-    }
+        if ($invoice.Status -ne 'Draft') {
+            throw "Supplier invoice $InvoiceNumber is already posted (status '$($invoice.Status)', verification $($invoice.BookedVerification))."
+        }
 
-    # Resolve the fiscal year from the invoice date unless one was supplied.
-    if (-not $FiscalYear) {
-        $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $invoice.InvoiceDate
+        # Resolve the fiscal year from the invoice date unless one was supplied.
         if (-not $FiscalYear) {
-            throw "No fiscal year covers the invoice date $($invoice.InvoiceDate.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+            $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $invoice.InvoiceDate
+            if (-not $FiscalYear) {
+                throw "No fiscal year covers the invoice date $($invoice.InvoiceDate.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+            }
         }
-    }
 
-    # Aggregate amounts per account so the verification is compact.
-    $accountSums = [ordered]@{}
-    $addAmount = {
-        param($account, $amount)
-        if ($accountSums.Contains($account)) {
-            $accountSums[$account] += $amount
+        # Aggregate amounts per account so the verification is compact.
+        $accountSums = [ordered]@{}
+        $addAmount = {
+            param($account, $amount)
+            if ($accountSums.Contains($account)) {
+                $accountSums[$account] += $amount
+            }
+            else {
+                $accountSums[$account] = $amount
+            }
         }
-        else {
-            $accountSums[$account] = $amount
+
+        # Debit cost accounts (net) and input VAT.
+        foreach ($row in $invoice.Rows) {
+            & $addAmount $row.Account $row.Amount
+            if ($row.VatAmount -ne 0) {
+                & $addAmount $row.VatAccount $row.VatAmount
+            }
         }
-    }
 
-    # Debit cost accounts (net) and input VAT.
-    foreach ($row in $invoice.Rows) {
-        & $addAmount $row.Account $row.Amount
-        if ($row.VatAmount -ne 0) {
-            & $addAmount $row.VatAccount $row.VatAmount
+        # Credit the payable with the gross total.
+        & $addAmount $invoice.PayableAccount (-$invoice.Total)
+
+        $entryRows = foreach ($account in $accountSums.Keys) {
+            @{ Account = $account; Amount = [Math]::Round([decimal]$accountSums[$account], 2) }
         }
-    }
 
-    # Credit the payable with the gross total.
-    & $addAmount $invoice.PayableAccount (-$invoice.Total)
+        $description = "Leverantörsfaktura $InvoiceNumber - $($invoice.Description)"
 
-    $entryRows = foreach ($account in $accountSums.Keys) {
-        @{ Account = $account; Amount = [Math]::Round([decimal]$accountSums[$account], 2) }
-    }
+        if (-not $PSCmdlet.ShouldProcess("Supplier invoice $InvoiceNumber", "Post to fiscal year $FiscalYear")) {
+            return
+        }
 
-    $description = "Leverantörsfaktura $InvoiceNumber - $($invoice.Description)"
+        $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+            -Date $invoice.InvoiceDate -Description $description -Rows @($entryRows) -PassThru
 
-    if (-not $PSCmdlet.ShouldProcess("Supplier invoice $InvoiceNumber", "Post to fiscal year $FiscalYear")) {
-        return
-    }
+        $invoice.Status = 'Booked'
+        $invoice.BookedVerification = $verification.VerificationNumber
+        $invoice.BookedFiscalYear = $FiscalYear
+        Save-LedgerSupplierInvoiceFile -Invoice $invoice
 
-    $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-        -Date $invoice.InvoiceDate -Description $description -Rows @($entryRows) -PassThru
-
-    $invoice.Status = 'Booked'
-    $invoice.BookedVerification = $verification.VerificationNumber
-    $invoice.BookedFiscalYear = $FiscalYear
-    Save-LedgerSupplierInvoiceFile -Invoice $invoice
-
-    if ($PassThru) {
-        Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+        if ($PassThru) {
+            Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+        }
     }
 }

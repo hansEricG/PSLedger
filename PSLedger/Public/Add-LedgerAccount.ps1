@@ -16,6 +16,10 @@ The account number (typically 4 digits following the BAS standard, e.g. '1910').
 .PARAMETER AccountName
 The descriptive name for the account (e.g. 'Kassa').
 
+.PARAMETER PassThru
+If specified, returns the created/updated account. By default the command
+produces no output.
+
 .EXAMPLE
 Add-LedgerAccount -JournalPath .\MinFirma.ledger -AccountNumber '1910' -AccountName 'Kassa'
 
@@ -36,7 +40,10 @@ function Add-LedgerAccount {
         [string]$AccountNumber,
 
         [Parameter(Mandatory)]
-        [string]$AccountName
+        [string]$AccountName,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
@@ -58,5 +65,8 @@ function Add-LedgerAccount {
     if ($PSCmdlet.ShouldProcess($AccountNumber, 'Add account')) {
         $Entry = "$AccountNumber`t$AccountName"
         $Entry | Add-Content -Path $KontoplanFile -Encoding UTF8
+        if ($PassThru) {
+            Get-LedgerAccount -JournalPath $JournalPath -AccountNumber $AccountNumber
+        }
     }
 }

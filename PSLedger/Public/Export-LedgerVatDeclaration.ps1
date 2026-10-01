@@ -59,7 +59,7 @@ Exports the June 2024 declaration with an explicit period, overwriting any
 existing file.
 #>
 function Export-LedgerVatDeclaration {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -146,6 +146,10 @@ function Export-LedgerVatDeclaration {
         }
         & $append '  </Moms>'
         & $append '</eSKDUpload>'
+
+        if (-not $PSCmdlet.ShouldProcess($DestPath, "Export VAT declaration for $Period")) {
+            return
+        }
 
         $encoding = [System.Text.Encoding]::GetEncoding('ISO-8859-1')
         [System.IO.File]::WriteAllText($DestPath, $sb.ToString(), $encoding)

@@ -16,6 +16,10 @@ The first day of the fiscal year.
 .PARAMETER EndDate
 The last day of the fiscal year. Must be after StartDate.
 
+.PARAMETER PassThru
+If specified, returns the created/updated fiscal year. By default the command
+produces no output.
+
 .EXAMPLE
 New-LedgerFiscalYear -JournalPath .\MinFirma.ledger -StartDate '2024-01-01' -EndDate '2024-12-31'
 
@@ -27,6 +31,7 @@ New-LedgerFiscalYear -JournalPath .\MinFirma.ledger -StartDate '2024-07-01' -End
 Creates a broken fiscal year (directory: 2024-07_2025-06).
 #>
 function New-LedgerFiscalYear {
+    [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
@@ -36,7 +41,10 @@ function New-LedgerFiscalYear {
         [datetime]$StartDate,
 
         [Parameter(Mandatory)]
-        [datetime]$EndDate
+        [datetime]$EndDate,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
@@ -69,4 +77,7 @@ function New-LedgerFiscalYear {
 
     $YearFile = Join-Path $YearDir 'year.txt'
     $Lines | Set-Content -Path $YearFile -Encoding UTF8
+    if ($PassThru) {
+        Get-LedgerFiscalYear -JournalPath $JournalPath | Where-Object { $_.Name -eq $DirName }
+    }
 }

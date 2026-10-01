@@ -17,8 +17,8 @@ names:
 - Billable: Debiterbar, Fakturerbar, Billable, Billable? (ja/nej, yes/no, 1/0)
 
 Override a column with the matching -*Column parameter. Rows without a
-resource get -Resource or the default resource; rows without a project or
-customer get -Project.
+resource get -ResourceId or the default resource; rows without a project or
+customer get -ProjectNumber.
 
 The import is all or nothing: if any row cannot be imported (unknown project,
 missing hourly rate, invalid hours, ...) nothing is imported and all problems
@@ -33,10 +33,10 @@ set via Set-LedgerCurrentJournal.
 .PARAMETER Path
 The CSV file to import.
 
-.PARAMETER Resource
+.PARAMETER ResourceId
 Resource for rows without a resource column value.
 
-.PARAMETER Project
+.PARAMETER ProjectNumber
 Project for rows without a project or customer.
 
 .PARAMETER Delimiter
@@ -91,10 +91,10 @@ function Import-LedgerTimeEntry {
         [string]$Path,
 
         [Parameter()]
-        [string]$Resource,
+        [string]$ResourceId,
 
         [Parameter()]
-        [string]$Project,
+        [string]$ProjectNumber,
 
         [Parameter()]
         [ValidateSet(';', ',', "`t")]
@@ -196,19 +196,19 @@ function Import-LedgerTimeEntry {
             Test-LedgerHours -Hours $hours
 
             $resourceValue = & $field $parts 'Resource'
-            $resourceId = if ($resourceValue) {
+            $rowResource = if ($resourceValue) {
                 $r = & $findBy $context.Resources 'ResourceId' $resourceValue
                 if (-not $r) { throw "Unknown resource '$resourceValue'." }
                 $r
-            } else { $Resource }
+            } else { $ResourceId }
 
             $projectValue = & $field $parts 'Project'
             $customerValue = & $field $parts 'Customer'
-            $projectNumber = if ($projectValue) {
+            $rowProject = if ($projectValue) {
                 $p = & $findBy $context.Projects 'ProjectNumber' $projectValue
                 if (-not $p) { throw "Unknown project '$projectValue'." }
                 $p
-            } elseif (-not $customerValue) { $Project } else { '' }
+            } elseif (-not $customerValue) { $ProjectNumber } else { '' }
             $customerNumber = ''
             if ($customerValue -and -not $projectValue) {
                 $customerNumber = & $findBy $context.Customers 'CustomerNumber' $customerValue
@@ -223,7 +223,7 @@ function Import-LedgerTimeEntry {
                 default { throw "Unknown billable value '$billableText'." }
             }
 
-            $target = Resolve-LedgerTimeEntryTarget -Context $context -ResourceId $resourceId -ProjectNumber $projectNumber `
+            $target = Resolve-LedgerTimeEntryTarget -Context $context -ResourceId $rowResource -ProjectNumber $rowProject `
                 -CustomerNumber $customerNumber -Billable $billable
             $entry = [PSCustomObject]@{
                 EntryId        = 0

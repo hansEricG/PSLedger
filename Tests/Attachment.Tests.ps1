@@ -63,7 +63,7 @@ Describe 'Add-LedgerAttachment' {
             $testFile = Join-Path $TestDrive 'faktura.pdf'
             'PDF content' | Set-Content $testFile -Encoding UTF8
 
-            $result = Add-LedgerAttachment -VerificationNumber 1 -Path $testFile
+            $result = Add-LedgerAttachment -VerificationNumber 1 -Path $testFile -PassThru
             $result.FileName | Should -Be 'faktura.pdf'
             $result.VerificationNumber | Should -Be 1
 
@@ -77,7 +77,7 @@ Describe 'Add-LedgerAttachment' {
             $testFile = Join-Path $TestDrive 'kvitto.jpg'
             'JPG content' | Set-Content $testFile -Encoding UTF8
 
-            Add-LedgerAttachment -VerificationNumber 1 -Path $testFile -Move
+            Add-LedgerAttachment -VerificationNumber 1 -Path $testFile -PassThru -Move
             # Original should be gone
             Test-Path $testFile | Should -BeFalse
         }
@@ -88,7 +88,7 @@ Describe 'Add-LedgerAttachment' {
             'A' | Set-Content $fileA -Encoding UTF8
             'B' | Set-Content $fileB -Encoding UTF8
 
-            $result = Add-LedgerAttachment -VerificationNumber 1 -Path $fileA, $fileB
+            $result = Add-LedgerAttachment -VerificationNumber 1 -Path $fileA, $fileB -PassThru
             $result.Count | Should -Be 2
             $result.FileName | Should -Contain 'multi-a.pdf'
             $result.FileName | Should -Contain 'multi-b.pdf'
@@ -127,11 +127,11 @@ Describe 'Add-LedgerAttachment' {
             $testFile = Join-Path $TestDrive 'rapport.xlsx'
             'XLS content' | Set-Content $testFile -Encoding UTF8
 
-            $result = Add-LedgerAttachment -VerificationNumber 1 -Path $testFile
+            $result = Add-LedgerAttachment -VerificationNumber 1 -Path $testFile -PassThru
             $result.VerificationNumber | Should -Be 1
             $result.FiscalYear | Should -Be '2024-01_2024-12'
             $result.FileName | Should -Be 'rapport.xlsx'
-            $result.DestinationPath | Should -Not -BeNullOrEmpty
+            $result.Path | Should -Not -BeNullOrEmpty
             $result.Size | Should -BeGreaterThan 0
         }
     }

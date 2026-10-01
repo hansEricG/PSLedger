@@ -19,15 +19,15 @@ Describe 'Get-LedgerFixedAssetNote' {
             Test-TDDCmdletBinding $Command | Should -BeTrue
         }
 
-        It 'Should have a mandatory FromAccount parameter of type Int32' {
+        It 'Should have a mandatory FromAccount parameter of type String' {
             $Param = $Command.Parameters['FromAccount']
-            $Param.ParameterType.Name | Should -Be 'Int32'
+            $Param.ParameterType.Name | Should -Be 'String'
             $Param.Attributes.Where({ $_ -is [System.Management.Automation.ParameterAttribute] }).Mandatory | Should -Contain $true
         }
 
-        It 'Should have a mandatory ToAccount parameter of type Int32' {
+        It 'Should have a mandatory ToAccount parameter of type String' {
             $Param = $Command.Parameters['ToAccount']
-            $Param.ParameterType.Name | Should -Be 'Int32'
+            $Param.ParameterType.Name | Should -Be 'String'
             $Param.Attributes.Where({ $_ -is [System.Management.Automation.ParameterAttribute] }).Mandatory | Should -Contain $true
         }
     }

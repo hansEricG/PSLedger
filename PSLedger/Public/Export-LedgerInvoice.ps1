@@ -41,12 +41,12 @@ Export-LedgerInvoice -InvoiceNumber 1 -Path .\faktura-1.docx -Format Word -Force
 Writes invoice 1 as a Word document, overwriting any existing file.
 #>
 function Export-LedgerInvoice {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
         [int]$InvoiceNumber,
 
         [Parameter(Mandatory)]
@@ -59,27 +59,33 @@ function Export-LedgerInvoice {
         [Parameter()]
         [switch]$Force
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
-    if ((Test-Path $Path) -and -not $Force) {
-        throw "Destination file already exists: $Path. Use -Force to overwrite."
-    }
+        if ((Test-Path $Path) -and -not $Force) {
+            throw "Destination file already exists: $Path. Use -Force to overwrite."
+        }
 
-    $invoice = Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
-    if (-not $invoice) {
-        throw "Invoice $InvoiceNumber does not exist."
-    }
+        $invoice = Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+        if (-not $invoice) {
+            throw "Invoice $InvoiceNumber does not exist."
+        }
 
-    $journal = Get-LedgerJournal -Path $JournalPath
-    $customer = Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $invoice.CustomerNumber
+        $journal = Get-LedgerJournal -Path $JournalPath
+        $customer = Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $invoice.CustomerNumber
 
-    $blocks = @(Build-LedgerInvoiceBlock -Invoice $invoice -Journal $journal -Customer $customer)
+        $blocks = @(Build-LedgerInvoiceBlock -Invoice $invoice -Journal $journal -Customer $customer)
 
-    switch ($Format) {
-        'Word' { ConvertTo-LedgerReportDocx -Block $blocks -Path $Path }
-        'Pdf' { ConvertTo-LedgerReportPdf -Block $blocks -Path $Path }
-        'Markdown' { ConvertTo-LedgerReportMarkdown -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
-        default { ConvertTo-LedgerReportText -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
+        if (-not $PSCmdlet.ShouldProcess($Path, "Export invoice $InvoiceNumber")) {
+            return
+        }
+
+        switch ($Format) {
+            'Word' { ConvertTo-LedgerReportDocx -Block $blocks -Path $Path }
+            'Pdf' { ConvertTo-LedgerReportPdf -Block $blocks -Path $Path }
+            'Markdown' { ConvertTo-LedgerReportMarkdown -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
+            default { ConvertTo-LedgerReportText -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
+        }
     }
 }
 

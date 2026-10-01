@@ -239,7 +239,7 @@ function Add-LedgerEntry {
             $attached = @()
             if ($Attachment) {
                 $attached = Add-LedgerAttachment -JournalPath $JournalPath -FiscalYear $FiscalYear `
-                    -VerificationNumber $NextNum -Path $Attachment
+                    -VerificationNumber $NextNum -Path $Attachment -PassThru
             }
 
             if ($PassThru) {

@@ -44,6 +44,7 @@ Get-LedgerProfitDisposition -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-
 Proposes a dividend of 50 000 kr and reports the dividend per share (50 kr).
 #>
 function Get-LedgerProfitDisposition {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

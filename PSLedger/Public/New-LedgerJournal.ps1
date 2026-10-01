@@ -28,6 +28,10 @@ Optional hashtable of additional free-form company fields to store, such as
 identifiers; the reserved keys Name, OrgNumber, SchemaVersion and CompanyType are
 not allowed (use the dedicated parameters instead).
 
+.PARAMETER PassThru
+If specified, returns the created/updated journal. By default the command
+produces no output.
+
 .EXAMPLE
 New-LedgerJournal -Path .\MinFirma.ledger -Name 'MinFirma AB'
 
@@ -39,6 +43,7 @@ New-LedgerJournal -Path C:\Bokföring\Konsult.ledger -Name 'Konsult AB' -OrgNumb
 Creates a journal with full company details including company form and a VAT number.
 #>
 function New-LedgerJournal {
+    [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter(Mandatory)]
@@ -51,7 +56,10 @@ function New-LedgerJournal {
 
         [string]$CompanyType,
 
-        [hashtable]$Metadata
+        [hashtable]$Metadata,
+
+        [Parameter()]
+        [switch]$PassThru
     )
 
     if (Test-Path $Path) {
@@ -96,4 +104,7 @@ function New-LedgerJournal {
 
     $JournalFile = Join-Path $Path 'journal.txt'
     $Lines | Set-Content -Path $JournalFile -Encoding UTF8
+    if ($PassThru) {
+        Get-LedgerJournal -Path $Path
+    }
 }

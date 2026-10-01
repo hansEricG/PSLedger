@@ -101,7 +101,7 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerFixedAssetNote` | Anläggningsregisternot (roll-forward) |
 | `Get-LedgerShareholdingNote` | Not för aktier och andelar (bokfört + marknadsvärde) |
 | `Get-LedgerEmployeeNote` | Not för medelantal anställda |
-| `Get-LedgerAccountingPrinciples` | Standard K2 redovisnings- och värderingsprinciper |
+| `Get-LedgerAccountingPrinciple` | Standard K2 redovisnings- och värderingsprinciper |
 | `Get-LedgerCompanyProfile` | Stable company info for the annual report (säte, aktier, styrelse) |
 | `Set-LedgerReportInput` | Store year-specific annual report input (report.txt) |
 | `Get-LedgerReportInput` | Read year-specific annual report input |
@@ -117,7 +117,7 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Export-LedgerSie` | Export a fiscal year to a SIE 4E file |
 | `Import-LedgerSie` | Import verifications from a SIE 4 file |
 | `Test-LedgerSie` | Validate a SIE file without importing |
-| `Get-LedgerLedger` | General ledger (huvudbok) per account |
+| `Get-LedgerGeneralLedger` | General ledger (huvudbok) per account |
 | `Get-LedgerVatReport` | VAT declaration report (momsdeklaration) |
 | `Export-LedgerVatDeclaration` | Export a VAT declaration to a Skatteverket eSKD file |
 | `Export-LedgerIncomeTaxReturn` | Export an income tax return (INK2) to Skatteverket SRU files |
@@ -270,7 +270,7 @@ Import-LedgerSie -JournalPath .\Imported.ledger -FiscalYear '2024-01_2024-12' `
 
 ```powershell
 # View all transactions for a specific account
-Get-LedgerLedger -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Account '1910'
+Get-LedgerGeneralLedger -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Account '1910'
 
 # Generate a VAT report for a quarter
 Get-LedgerVatReport -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' `
@@ -517,7 +517,7 @@ $rows = @(
     @{ Account = '5010'; Amount = 8000; VatRate = 0.25; VatAccount = '2640' }
 )
 New-LedgerSupplierInvoice -SupplierNumber '100' -Date '2024-03-10' `
-    -Description 'Lokalhyra mars' -SupplierInvoiceNo 'F-99123' -Rows $rows
+    -Description 'Lokalhyra mars' -SupplierReference 'F-99123' -Rows $rows
 
 # 3. Post it to the ledger (creates the verification):
 #      5010 Lokalhyra           +8000
@@ -631,11 +631,11 @@ Set-LedgerCustomer -CustomerNumber 10 -HourlyRate 1050
 Add-LedgerProject -ProjectNumber 'P100' -Name 'Webbshop' -CustomerNumber 10 -HourlyRate 1200
 
 # 3. Register time, or import it from a CSV export (Excel, Toggl, Harvest ...)
-Add-LedgerTimeEntry -Hours '7:30' -Project P100 -Date '2024-03-04' -Text 'Design'
+Add-LedgerTimeEntry -Hours '7:30' -ProjectNumber P100 -Date '2024-03-04' -Text 'Design'
 Import-LedgerTimeEntry -Path .\tid-mars.csv
 
 # 4. Follow up and invoice the open time
-Get-LedgerTimeReport -GroupBy Project, Resource -From '2024-03-01' -To '2024-03-31'
+Get-LedgerTimeReport -GroupBy Project, Resource -FromDate '2024-03-01' -ToDate '2024-03-31'
 New-LedgerTimeInvoice -CustomerNumber 10 -Through '2024-03-31'
 ```
 

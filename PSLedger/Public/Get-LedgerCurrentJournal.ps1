@@ -20,6 +20,7 @@ Write-Output "Company: $($journal.Name) ($($journal.OrgNumber))"
 Captures the current journal metadata into a variable.
 #>
 function Get-LedgerCurrentJournal {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param ()
 

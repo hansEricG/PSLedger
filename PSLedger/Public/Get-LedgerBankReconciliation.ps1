@@ -60,6 +60,7 @@ Year-end bank reconciliation for the annual accounts, with the open items on
 both sides.
 #>
 function Get-LedgerBankReconciliation {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

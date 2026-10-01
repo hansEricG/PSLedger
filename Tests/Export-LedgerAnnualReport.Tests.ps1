@@ -259,7 +259,7 @@ Describe 'Export-LedgerAnnualReport' {
                 $cert | Should -Match 'Bertil Bengtsson'
             }
             finally {
-                Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy2 -AnnualMeetingDate '' -CertificatePlace '' -CertificateSigner ''
+                Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy2 -AnnualMeetingDate $null -CertificatePlace '' -CertificateSigner ''
             }
         }
 

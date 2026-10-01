@@ -21,21 +21,22 @@ The regelverk: 'K2' (default) or 'K3'.
 Return the principles as an array of paragraph strings instead of a single string.
 
 .EXAMPLE
-Get-LedgerAccountingPrinciples
+Get-LedgerAccountingPrinciple
 
 Returns the K2 accounting principles as a single block of text.
 
 .EXAMPLE
-Get-LedgerAccountingPrinciples -AsLines | ForEach-Object { "- $_" }
+Get-LedgerAccountingPrinciple -AsLines | ForEach-Object { "- $_" }
 
 Returns each principle paragraph on its own line, prefixed with a dash.
 
 .EXAMPLE
-Get-LedgerAccountingPrinciples -Framework K3 -AsLines
+Get-LedgerAccountingPrinciple -Framework K3 -AsLines
 
 Returns the general K3 principles, e.g. for Gävle Konsult AB's first K3 year.
 #>
-function Get-LedgerAccountingPrinciples {
+function Get-LedgerAccountingPrinciple {
+    [OutputType([string], [string[]])]
     [CmdletBinding()]
     param (
         [Parameter()]

@@ -73,7 +73,7 @@ Describe 'Add-LedgerDocument' {
             $testFile = Join-Path $TestDrive 'kontoutdrag-jan.pdf'
             'PDF content' | Set-Content $testFile -Encoding UTF8
 
-            $result = Add-LedgerDocument -Path $testFile
+            $result = Add-LedgerDocument -Path $testFile -PassThru
             $result.FileName | Should -Be 'kontoutdrag-jan.pdf'
             $result.FiscalYear | Should -Be '2024-01_2024-12'
 
@@ -87,7 +87,7 @@ Describe 'Add-LedgerDocument' {
             $testFile = Join-Path $TestDrive 'kontoutdrag-feb.pdf'
             'PDF content' | Set-Content $testFile -Encoding UTF8
 
-            Add-LedgerDocument -Path $testFile -Move
+            Add-LedgerDocument -Path $testFile -PassThru -Move
             # Original should be gone
             Test-Path $testFile | Should -BeFalse
         }
@@ -109,10 +109,10 @@ Describe 'Add-LedgerDocument' {
             $testFile = Join-Path $TestDrive 'rapport.xlsx'
             'XLS content' | Set-Content $testFile -Encoding UTF8
 
-            $result = Add-LedgerDocument -Path $testFile
+            $result = Add-LedgerDocument -Path $testFile -PassThru
             $result.FiscalYear | Should -Be '2024-01_2024-12'
             $result.FileName | Should -Be 'rapport.xlsx'
-            $result.DestinationPath | Should -Not -BeNullOrEmpty
+            $result.Path | Should -Not -BeNullOrEmpty
             $result.Size | Should -BeGreaterThan 0
         }
 
@@ -122,7 +122,7 @@ Describe 'Add-LedgerDocument' {
             'a' | Set-Content $a -Encoding UTF8
             'b' | Set-Content $b -Encoding UTF8
 
-            $result = Add-LedgerDocument -Path $a, $b
+            $result = Add-LedgerDocument -Path $a, $b -PassThru
             $result.Count | Should -Be 2
 
             $destDir = Join-Path $journalDir '2024-01_2024-12' 'documents'
@@ -137,7 +137,7 @@ Describe 'Add-LedgerDocument' {
             'y' | Set-Content (Join-Path $dir 'wild-2.pdf') -Encoding UTF8
             'z' | Set-Content (Join-Path $dir 'other.txt') -Encoding UTF8
 
-            $result = Add-LedgerDocument -Path (Join-Path $dir '*.pdf')
+            $result = Add-LedgerDocument -Path (Join-Path $dir '*.pdf') -PassThru
             $result.Count | Should -Be 2
             ($result.FileName | Sort-Object) | Should -Be @('wild-1.pdf', 'wild-2.pdf')
         }
@@ -148,7 +148,7 @@ Describe 'Add-LedgerDocument' {
             '1' | Set-Content (Join-Path $dir 'p1.pdf') -Encoding UTF8
             '2' | Set-Content (Join-Path $dir 'p2.pdf') -Encoding UTF8
 
-            $result = Get-ChildItem -Path $dir -File | Add-LedgerDocument
+            $result = Get-ChildItem -Path $dir -File | Add-LedgerDocument -PassThru
             $result.Count | Should -Be 2
 
             $destDir = Join-Path $journalDir '2024-01_2024-12' 'documents'
@@ -174,7 +174,7 @@ Describe 'Add-LedgerDocument' {
             'replacement' | Set-Content $second -Encoding UTF8
 
             $err = $null
-            $result = Add-LedgerDocument -Path $second -ErrorVariable err -ErrorAction SilentlyContinue
+            $result = Add-LedgerDocument -Path $second -PassThru -ErrorVariable err -ErrorAction SilentlyContinue
             $result | Should -BeNullOrEmpty
             $err | Should -Not -BeNullOrEmpty
 
@@ -192,7 +192,7 @@ Describe 'Add-LedgerDocument' {
             $second = Join-Path $secondDir 'forced.pdf'
             'replacement' | Set-Content $second -Encoding UTF8
 
-            $result = Add-LedgerDocument -Path $second -Force
+            $result = Add-LedgerDocument -Path $second -Force -PassThru
             $result.FileName | Should -Be 'forced.pdf'
 
             $destPath = Join-Path $journalDir '2024-01_2024-12' 'documents' 'forced.pdf'
@@ -211,7 +211,7 @@ Describe 'Add-LedgerDocument' {
             'dup' | Set-Content $collide -Encoding UTF8
             'fresh' | Set-Content $fresh -Encoding UTF8
 
-            $result = Add-LedgerDocument -Path $collide, $fresh -ErrorAction SilentlyContinue
+            $result = Add-LedgerDocument -Path $collide, $fresh -PassThru -ErrorAction SilentlyContinue
             $result.FileName | Should -Be 'batch-new.pdf'
 
             $destDir = Join-Path $journalDir '2024-01_2024-12' 'documents'

@@ -30,6 +30,7 @@ Displays the trial balance as a formatted table showing the opening balance
 (utgående saldo).
 #>
 function Get-LedgerBalance {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

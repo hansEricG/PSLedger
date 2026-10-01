@@ -20,6 +20,7 @@ Get-LedgerFirstFiscalYear | Get-LedgerBalance
 Gets the trial balance for the first fiscal year using pipeline.
 #>
 function Get-LedgerFirstFiscalYear {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

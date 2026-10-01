@@ -70,7 +70,7 @@ Exports the June 2024 declaration with explicit contact details, overwriting any
 existing file.
 #>
 function Export-LedgerEmployerDeclaration {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -258,6 +258,10 @@ function Export-LedgerEmployerDeclaration {
     }
 
     & $append '</Skatteverket>'
+
+    if (-not $PSCmdlet.ShouldProcess($DestPath, "Export employer declaration for $Period")) {
+        return
+    }
 
     $encoding = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($DestPath, $sb.ToString(), $encoding)

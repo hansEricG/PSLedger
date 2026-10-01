@@ -340,7 +340,7 @@ function Build-LedgerAnnualReportBlocks {
     $blocks += @{ Type = 'Heading'; Level = 1; Text = 'Noter' }
 
     $blocks += @{ Type = 'Heading'; Level = 2; Text = 'Redovisnings- och värderingsprinciper' }
-    foreach ($p in @(Get-LedgerAccountingPrinciples -Framework $framework -AsLines)) {
+    foreach ($p in @(Get-LedgerAccountingPrinciple -Framework $framework -AsLines)) {
         $blocks += @{ Type = 'Paragraph'; Text = $p }
     }
     if ($framework -eq 'K3') {

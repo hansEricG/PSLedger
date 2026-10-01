@@ -28,10 +28,10 @@ The customer to invoice.
 .PARAMETER Through
 The last date of time to include. Defaults to today.
 
-.PARAMETER From
+.PARAMETER FromDate
 Optional. The first date of time to include.
 
-.PARAMETER Project
+.PARAMETER ProjectNumber
 Optional. Only invoice time on these projects.
 
 .PARAMETER Date
@@ -65,13 +65,14 @@ New-LedgerTimeInvoice -CustomerNumber 10 -Through 2024-03-31 -Date 2024-03-31
 Invoices Volvo AB's open time up to the end of March.
 
 .EXAMPLE
-$inv = New-LedgerTimeInvoice -CustomerNumber 10 -Project 1001 -Through 2024-03-31 -PerEntry -PassThru
+$inv = New-LedgerTimeInvoice -CustomerNumber 10 -ProjectNumber 1001 -Through 2024-03-31 -PerEntry -PassThru
 Invoke-LedgerInvoicePosting -InvoiceNumber $inv.InvoiceNumber
 Export-LedgerInvoice -InvoiceNumber $inv.InvoiceNumber -Path ".\faktura-$($inv.InvoiceNumber).pdf"
 
 Invoices one project with a row per entry, posts the invoice and exports it.
 #>
 function New-LedgerTimeInvoice {
+    [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
@@ -84,10 +85,10 @@ function New-LedgerTimeInvoice {
         [datetime]$Through = (Get-Date).Date,
 
         [Parameter()]
-        [datetime]$From,
+        [datetime]$FromDate,
 
         [Parameter()]
-        [string[]]$Project,
+        [string[]]$ProjectNumber,
 
         [Parameter()]
         [datetime]$Date = (Get-Date).Date,
@@ -126,8 +127,8 @@ function New-LedgerTimeInvoice {
 
     $selected = @($entries | Where-Object {
             $_.CustomerNumber -eq $CustomerNumber -and $_.Billable -and $_.Date -le $Through.Date -and
-            (-not $PSBoundParameters.ContainsKey('From') -or $_.Date -ge $From.Date) -and
-            (-not $Project -or $_.ProjectNumber -in $Project) -and
+            (-not $PSBoundParameters.ContainsKey('FromDate') -or $_.Date -ge $FromDate.Date) -and
+            (-not $ProjectNumber -or $_.ProjectNumber -in $ProjectNumber) -and
             -not (Test-LedgerTimeEntryInvoiced -Entry $_ -InvoiceStatus $invoiceStatus)
         })
     if (-not $selected) {

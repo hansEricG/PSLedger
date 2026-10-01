@@ -35,6 +35,10 @@ If specified, overwrites an existing document with the same file name. By defaul
 a file that would overwrite an existing document is skipped with a non-terminating
 error, so the rest of a batch still completes.
 
+.PARAMETER PassThru
+If specified, returns the created/updated document. By default the command
+produces no output.
+
 .EXAMPLE
 Add-LedgerDocument -Path .\kontoutdrag-jan.pdf
 
@@ -77,7 +81,10 @@ function Add-LedgerDocument {
         [switch]$Move,
 
         [Parameter()]
-        [switch]$Force
+        [switch]$Force,
+
+        [Parameter()]
+        [switch]$PassThru
     )
 
     process {
@@ -133,11 +140,9 @@ function Add-LedgerDocument {
                     Copy-Item -LiteralPath $sourceFile.FullName -Destination $destPath -Force
                 }
 
-                [PSCustomObject]@{
-                    FiscalYear      = $FiscalYear
-                    FileName        = $sourceFile.Name
-                    DestinationPath = $destPath
-                    Size            = $sourceFile.Length
+                if ($PassThru) {
+                    Get-LedgerDocument -JournalPath $JournalPath -FiscalYear $FiscalYear -FileName $sourceFile.Name |
+                        Where-Object { $_.FileName -eq $sourceFile.Name }
                 }
             }
         }

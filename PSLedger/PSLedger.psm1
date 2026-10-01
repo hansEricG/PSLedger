@@ -58,7 +58,7 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Test-LedgerSie.ps1
 . $PSScriptRoot\Public\Export-LedgerSie.ps1
 . $PSScriptRoot\Public\Import-LedgerSie.ps1
-. $PSScriptRoot\Public\Get-LedgerLedger.ps1
+. $PSScriptRoot\Public\Get-LedgerGeneralLedger.ps1
 . $PSScriptRoot\Public\Get-LedgerVatReport.ps1
 . $PSScriptRoot\Public\Export-LedgerVatDeclaration.ps1
 . $PSScriptRoot\Public\Export-LedgerIncomeTaxReturn.ps1
@@ -87,7 +87,7 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Get-LedgerFixedAssetNote.ps1
 . $PSScriptRoot\Public\Get-LedgerShareholdingNote.ps1
 . $PSScriptRoot\Public\Get-LedgerEmployeeNote.ps1
-. $PSScriptRoot\Public\Get-LedgerAccountingPrinciples.ps1
+. $PSScriptRoot\Public\Get-LedgerAccountingPrinciple.ps1
 . $PSScriptRoot\Public\Get-LedgerCompanyProfile.ps1
 . $PSScriptRoot\Public\New-LedgerRecurringEntry.ps1
 . $PSScriptRoot\Public\Get-LedgerRecurringEntry.ps1
@@ -174,7 +174,7 @@ $script:BuiltInFunctions = @(
     'Get-LedgerIncomeStatement', 'Get-LedgerBalanceSheet', 'Copy-LedgerOpeningBalance',
     'Update-LedgerJournal',
     'Add-LedgerReversal', 'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie',
-    'Get-LedgerLedger', 'Get-LedgerVatReport', 'Export-LedgerVatDeclaration',
+    'Get-LedgerGeneralLedger', 'Get-LedgerVatReport', 'Export-LedgerVatDeclaration',
     'Export-LedgerIncomeTaxReturn',
     'Add-LedgerDimension', 'Get-LedgerDimension',
     'Add-LedgerObject', 'Get-LedgerObject', 'Add-LedgerAccrual', 'Add-LedgerDepreciation',
@@ -188,7 +188,7 @@ $script:BuiltInFunctions = @(
     'Get-LedgerProfitDisposition', 'Add-LedgerProfitDisposition',
     'Get-LedgerFixedAssetNote',
     'Get-LedgerShareholdingNote', 'Get-LedgerEmployeeNote',
-    'Get-LedgerAccountingPrinciples',
+    'Get-LedgerAccountingPrinciple',
     'Get-LedgerCompanyProfile',
     'New-LedgerRecurringEntry', 'Get-LedgerRecurringEntry',
     'Remove-LedgerRecurringEntry', 'Invoke-LedgerRecurringEntry',

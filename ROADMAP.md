@@ -40,10 +40,10 @@ The text files are the product, so their format is the most important contract.
 ### 4. Command review before freezing the API
 There are 129 public commands; renaming after 1.0 is expensive.
 
-- [ ] Review names and parameters for consistency across the registers
+- [x] Review names and parameters for consistency across the registers
       (e.g. how number, date and account parameters are named).
-- [ ] Consistent `-PassThru`, `-WhatIf`/`-Confirm` and pipeline support.
-- [ ] Every public command has complete comment-based help with at least two
+- [x] Consistent `-PassThru`, `-WhatIf`/`-Confirm` and pipeline support.
+- [x] Every public command has complete comment-based help with at least two
       examples (add a test that enforces it).
 
 ### 5. Publishing

@@ -25,6 +25,7 @@ Get-LedgerCustomer -JournalPath .\MinFirma.ledger -CustomerNumber '10'
 Returns only customer number 10.
 #>
 function Get-LedgerCustomer {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

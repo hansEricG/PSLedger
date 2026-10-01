@@ -37,6 +37,7 @@ $input = Get-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear '2024-09_20
 Captures the report input and formats the proposed dividend.
 #>
 function Get-LedgerReportInput {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

@@ -24,6 +24,7 @@ Get-LedgerTimeResource | Where-Object SupplierNumber | Format-Table ResourceId, 
 Lists the subcontractors and their cost per hour.
 #>
 function Get-LedgerTimeResource {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

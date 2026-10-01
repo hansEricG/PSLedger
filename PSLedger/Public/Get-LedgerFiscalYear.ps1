@@ -22,6 +22,7 @@ Get-LedgerFiscalYear -JournalPath .\MinFirma.ledger |
 Returns only open (unlocked) fiscal years.
 #>
 function Get-LedgerFiscalYear {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

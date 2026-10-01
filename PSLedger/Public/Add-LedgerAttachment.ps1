@@ -6,7 +6,7 @@ Attaches one or more files to a verification.
 Copies (or moves) one or more files into the verification's attachment
 directory. The directory is created on demand as a subdirectory of the fiscal
 year directory, named after the verification (e.g. ver0001/). One result object
-is returned per attached file.
+is returned per attached file when -PassThru is specified.
 
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal.
@@ -23,6 +23,10 @@ One or more paths to the files to attach.
 
 .PARAMETER Move
 If specified, moves the files instead of copying them.
+
+.PARAMETER PassThru
+If specified, returns the created/updated attachment. By default the command
+produces no output.
 
 .EXAMPLE
 Add-LedgerAttachment -VerificationNumber 3 -Path .\faktura-101.pdf
@@ -55,7 +59,10 @@ function Add-LedgerAttachment {
         [string[]]$Path,
 
         [Parameter()]
-        [switch]$Move
+        [switch]$Move,
+
+        [Parameter()]
+        [switch]$PassThru
     )
 
     process {
@@ -104,12 +111,9 @@ function Add-LedgerAttachment {
                 Copy-Item -Path $sourcePath -Destination $destPath -Force
             }
 
-            [PSCustomObject]@{
-                VerificationNumber = $VerificationNumber
-                FiscalYear         = $FiscalYear
-                FileName           = $sourceFile.Name
-                DestinationPath    = $destPath
-                Size               = $sourceFile.Length
+            if ($PassThru) {
+                Get-LedgerAttachment -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber $VerificationNumber |
+                    Where-Object { $_.FileName -eq $sourceFile.Name }
             }
         }
     }

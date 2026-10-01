@@ -30,6 +30,10 @@ The new hourly rate. Pass 0 to clear it so the customer's rate applies.
 .PARAMETER Status
 'Active' or 'Closed'.
 
+.PARAMETER PassThru
+If specified, returns the created/updated project. By default the command
+produces no output.
+
 .EXAMPLE
 Set-LedgerProject -ProjectNumber '1001' -HourlyRate 1200
 
@@ -62,7 +66,10 @@ function Set-LedgerProject {
 
         [Parameter()]
         [ValidateSet('Active', 'Closed')]
-        [string]$Status
+        [string]$Status,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
@@ -86,6 +93,9 @@ function Set-LedgerProject {
 
         if ($PSCmdlet.ShouldProcess($ProjectNumber, 'Update project')) {
             Save-LedgerProjects -JournalPath $JournalPath -Projects $projects
+            if ($PassThru) {
+                Get-LedgerProject -JournalPath $JournalPath -ProjectNumber $ProjectNumber
+            }
         }
     }
 }

@@ -44,6 +44,7 @@ Displays the balance sheet with the equity and tax-liability breakdown used in a
 printed årsredovisning.
 #>
 function Get-LedgerBalanceSheet {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

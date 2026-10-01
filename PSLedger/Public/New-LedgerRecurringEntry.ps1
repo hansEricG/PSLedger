@@ -33,6 +33,10 @@ Last date until which the template is active (inclusive).
 .PARAMETER Rows
 Array of row hashtables, each with Account and Amount keys.
 
+.PARAMETER PassThru
+If specified, returns the created/updated recurring entry. By default the command
+produces no output.
+
 .EXAMPLE
 New-LedgerRecurringEntry -JournalPath .\ab.ledger -Name 'Hyra' `
     -Description 'Hyra kontor månadsvis' -Schedule 'monthly' -DayOfMonth 1 `
@@ -55,6 +59,7 @@ New-LedgerRecurringEntry -JournalPath .\ab.ledger -Name 'Telefon' `
 Creates a monthly recurring entry for a phone subscription with VAT.
 #>
 function New-LedgerRecurringEntry {
+    [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
@@ -81,7 +86,10 @@ function New-LedgerRecurringEntry {
         [datetime]$EndDate,
 
         [Parameter(Mandatory)]
-        [hashtable[]]$Rows
+        [hashtable[]]$Rows,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
@@ -117,5 +125,8 @@ function New-LedgerRecurringEntry {
             New-Item -Path $recurringDir -ItemType Directory | Out-Null
         }
         $lines | Set-Content -Path $filePath -Encoding UTF8
+        if ($PassThru) {
+            Get-LedgerRecurringEntry -JournalPath $JournalPath -Name $Name
+        }
     }
 }

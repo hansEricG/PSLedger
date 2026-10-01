@@ -113,7 +113,7 @@ function ConvertTo-LedgerSupplierInvoiceObject {
     [PSCustomObject]@{
         InvoiceNumber      = [int]$meta['InvoiceNumber']
         SupplierNumber     = $meta['SupplierNumber']
-        SupplierInvoiceNo  = $meta['SupplierInvoiceNo']
+        SupplierReference  = $meta['SupplierInvoiceNo']
         InvoiceDate        = if ($meta['InvoiceDate']) { [datetime]::ParseExact($meta['InvoiceDate'], 'yyyy-MM-dd', $null) } else { $null }
         DueDate            = if ($meta['DueDate']) { [datetime]::ParseExact($meta['DueDate'], 'yyyy-MM-dd', $null) } else { $null }
         Description        = $meta['Description']
@@ -165,7 +165,7 @@ function Save-LedgerSupplierInvoiceFile {
         '; PSLedger Supplier Invoice'
         "InvoiceNumber:`t$($Invoice.InvoiceNumber)"
         "SupplierNumber:`t$($Invoice.SupplierNumber)"
-        "SupplierInvoiceNo:`t$($Invoice.SupplierInvoiceNo)"
+        "SupplierInvoiceNo:`t$($Invoice.SupplierReference)"
         "InvoiceDate:`t$($Invoice.InvoiceDate.ToString('yyyy-MM-dd'))"
         "DueDate:`t$($Invoice.DueDate.ToString('yyyy-MM-dd'))"
         "Description:`t$($Invoice.Description)"

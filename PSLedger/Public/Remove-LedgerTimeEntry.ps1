@@ -19,7 +19,7 @@ Remove-LedgerTimeEntry -EntryId 42
 Removes entry 42.
 
 .EXAMPLE
-Get-LedgerTimeEntry -From 2024-03-12 -To 2024-03-12 -Resource BK -Status Open | Remove-LedgerTimeEntry -WhatIf
+Get-LedgerTimeEntry -FromDate 2024-03-12 -ToDate 2024-03-12 -ResourceId BK -Status Open | Remove-LedgerTimeEntry -WhatIf
 
 Shows which of the subcontractor's entries on 12 March would be removed.
 #>

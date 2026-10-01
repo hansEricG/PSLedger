@@ -27,6 +27,7 @@ Get-LedgerObject -JournalPath .\MinFirma.ledger -DimensionNumber 1
 Returns all cost centres (dimension 1 objects).
 #>
 function Get-LedgerObject {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

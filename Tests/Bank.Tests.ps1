@@ -322,7 +322,7 @@ Describe 'Invoke-LedgerBankMatching' {
         $invNo = New-TestPostedInvoice -JournalPath $JournalPath -Date '2024-03-01'
         $ocr = (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $invNo).OcrReference
         New-LedgerSupplierInvoice -JournalPath $JournalPath -SupplierNumber '100' -Date '2024-03-10' -Description 'Hyra' `
-            -SupplierInvoiceNo 'F-99123' -Reference '1234567' `
+            -SupplierReference 'F-99123' -Reference '1234567' `
             -Rows @(@{ Account = '5010'; Amount = 8000; VatRate = 0.25; VatAccount = '2640' }) | Out-Null
         Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
         # A salary payment already booked by hand, two days before the bank date.

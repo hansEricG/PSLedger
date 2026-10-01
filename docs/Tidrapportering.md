@@ -63,10 +63,10 @@ Set-LedgerProject -ProjectNumber 'P100' -Status Closed
 ## 2. Registrera tid
 
 ```powershell
-Add-LedgerTimeEntry -Hours '7:30' -Project P100 -Date '2024-03-04' -Text 'Design av kassan'
-Add-LedgerTimeEntry -Hours 2,5 -Project P100 -Resource KON -Date '2024-03-05'
+Add-LedgerTimeEntry -Hours '7:30' -ProjectNumber P100 -Date '2024-03-04' -Text 'Design av kassan'
+Add-LedgerTimeEntry -Hours 2,5 -ProjectNumber P100 -ResourceId KON -Date '2024-03-05'
 Add-LedgerTimeEntry -Hours 3 -CustomerNumber 20 -Date '2024-03-06' -Text 'Support'
-Add-LedgerTimeEntry -Hours 1 -Project P100 -NonBillable -Text 'Garantiärende'
+Add-LedgerTimeEntry -Hours 1 -ProjectNumber P100 -NonBillable -Text 'Garantiärende'
 ```
 
 Timmar kan anges som `7.5`, `7,5`, `7:30` eller `7h`.
@@ -105,8 +105,8 @@ Import-LedgerTimeEntry -Path .\tid-mars.csv
   Beskrivning/Description, Debiterbar/Billable). Andra namn anges med
   `-DateColumn`, `-HoursColumn`, `-ProjectColumn` osv.
 - Projekt, kund och resurs matchas på nummer/id eller namn. Rader utan resurs
-  får `-Resource` eller standardresursen; rader utan projekt och kund får
-  `-Project`.
+  får `-ResourceId` eller standardresursen; rader utan projekt och kund får
+  `-ProjectNumber`.
 - Importen är allt eller inget: finns det fel på någon rad importeras ingenting
   och alla fel listas med radnummer.
 - Rader som redan har importerats hoppas över, så en export som överlappar en
@@ -116,8 +116,8 @@ Import-LedgerTimeEntry -Path .\tid-mars.csv
 
 ```powershell
 Get-LedgerTimeReport -GroupBy Customer
-Get-LedgerTimeReport -GroupBy Project, Resource -From '2024-03-01' -To '2024-03-31'
-Get-LedgerTimeReport -GroupBy Week -Resource HEG
+Get-LedgerTimeReport -GroupBy Project, Resource -FromDate '2024-03-01' -ToDate '2024-03-31'
+Get-LedgerTimeReport -GroupBy Week -ResourceId HEG
 ```
 
 Rapporten visar per grupp:
@@ -136,7 +136,7 @@ fakturerade ännu.
 New-LedgerTimeInvoice -CustomerNumber 10 -Through '2024-03-31' -Date '2024-04-01'
 
 # Bara ett projekt, en rad per tidrad
-New-LedgerTimeInvoice -CustomerNumber 10 -Project P100 -PerEntry
+New-LedgerTimeInvoice -CustomerNumber 10 -ProjectNumber P100 -PerEntry
 ```
 
 Fakturan får en rad per projekt, resurs och timpris, till exempel
@@ -159,7 +159,7 @@ Tid som är utförd men inte fakturerad vid årets slut är en upparbetad intäk
 Ta fram beloppet och boka upp det på 1620 med automatisk återföring nästa år:
 
 ```powershell
-$open = Get-LedgerTimeReport -To '2024-12-31' -GroupBy Customer |
+$open = Get-LedgerTimeReport -ToDate '2024-12-31' -GroupBy Customer |
     Measure-Object -Property OpenAmount -Sum
 
 Add-LedgerAccrual -FiscalYear '2024-01_2024-12' -Date '2024-12-31' `

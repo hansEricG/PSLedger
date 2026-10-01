@@ -10,7 +10,7 @@ journal's time/resources.txt.
 A resource may be linked to an employee (see Add-LedgerEmployee) or to a
 supplier (see Add-LedgerSupplier) and may have a cost per hour, which
 Get-LedgerTimeReport uses to compute the margin. The first resource added
-becomes the default resource used by Add-LedgerTimeEntry when -Resource is
+becomes the default resource used by Add-LedgerTimeEntry when -ResourceId is
 omitted.
 
 .PARAMETER JournalPath
@@ -35,6 +35,10 @@ employer contributions per hour) used for margin in Get-LedgerTimeReport.
 
 .PARAMETER Default
 Makes this the default resource for new time entries.
+
+.PARAMETER PassThru
+If specified, returns the created/updated time resource. By default the command
+produces no output.
 
 .EXAMPLE
 Add-LedgerTimeResource -ResourceId 'AA' -Name 'Anna Andersson'
@@ -72,7 +76,10 @@ function Add-LedgerTimeResource {
         [decimal]$CostRate,
 
         [Parameter()]
-        [switch]$Default
+        [switch]$Default,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
@@ -100,5 +107,8 @@ function Add-LedgerTimeResource {
 
     if ($PSCmdlet.ShouldProcess($ResourceId, 'Add time resource')) {
         Save-LedgerTimeResources -JournalPath $JournalPath -Resources $resources
+        if ($PassThru) {
+            Get-LedgerTimeResource -JournalPath $JournalPath -ResourceId $ResourceId
+        }
     }
 }

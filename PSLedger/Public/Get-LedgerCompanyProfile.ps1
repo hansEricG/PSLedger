@@ -36,6 +36,7 @@ $profile = Get-LedgerCompanyProfile -JournalPath .\HEG.ledger
 Captures the profile and lists the board members.
 #>
 function Get-LedgerCompanyProfile {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

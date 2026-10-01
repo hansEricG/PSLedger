@@ -407,9 +407,9 @@ function ConvertTo-LedgerTimeEntryOutput {
     [PSCustomObject]@{
         EntryId        = $Entry.EntryId
         Date           = $Entry.Date
-        Resource       = $Entry.ResourceId
+        ResourceId     = $Entry.ResourceId
         ResourceName   = if ($resource) { $resource.Name } else { '' }
-        Project        = $Entry.ProjectNumber
+        ProjectNumber  = $Entry.ProjectNumber
         ProjectName    = if ($project) { $project.Name } else { '' }
         CustomerNumber = $Entry.CustomerNumber
         CustomerName   = if ($customer) { $customer.Name } else { '' }

@@ -3,8 +3,8 @@
 Lists reported time.
 
 .DESCRIPTION
-Returns one object per time entry with EntryId, Date, Resource, ResourceName,
-Project, ProjectName, CustomerNumber, CustomerName, Hours, Billable, Rate,
+Returns one object per time entry with EntryId, Date, ResourceId, ResourceName,
+ProjectNumber, ProjectName, CustomerNumber, CustomerName, Hours, Billable, Rate,
 Amount (hours x rate for billable time), Text, Status and InvoiceNumber.
 
 Status is 'Invoiced' while the entry is on an invoice that has not been
@@ -17,38 +17,39 @@ set via Set-LedgerCurrentJournal.
 .PARAMETER EntryId
 Optional. Returns only these entries.
 
-.PARAMETER From
+.PARAMETER FromDate
 Optional. Only entries on or after this date.
 
-.PARAMETER To
+.PARAMETER ToDate
 Optional. Only entries on or before this date.
 
-.PARAMETER Project
+.PARAMETER ProjectNumber
 Optional. Only entries on this project.
 
 .PARAMETER CustomerNumber
 Optional. Only entries for this customer.
 
-.PARAMETER Resource
+.PARAMETER ResourceId
 Optional. Only entries for this resource.
 
 .PARAMETER Status
 Optional. 'Open' or 'Invoiced'.
 
 .PARAMETER Billable
-Only billable entries.
+Optional. $true for billable entries only, $false for non-billable entries only.
 
 .EXAMPLE
-Get-LedgerTimeEntry -From 2024-03-01 -To 2024-03-31 | Format-Table Date, Resource, Project, Hours, Text
+Get-LedgerTimeEntry -FromDate 2024-03-01 -ToDate 2024-03-31 | Format-Table Date, ResourceId, ProjectNumber, Hours, Text
 
 Lists the time reported in March.
 
 .EXAMPLE
-Get-LedgerTimeEntry -CustomerNumber 10 -Status Open -Billable | Measure-Object -Property Amount -Sum
+Get-LedgerTimeEntry -CustomerNumber 10 -Status Open -Billable $true | Measure-Object -Property Amount -Sum
 
 Shows the value of Volvo AB's time that has not been invoiced yet.
 #>
 function Get-LedgerTimeEntry {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]
@@ -58,26 +59,26 @@ function Get-LedgerTimeEntry {
         [int[]]$EntryId,
 
         [Parameter()]
-        [datetime]$From,
+        [datetime]$FromDate,
 
         [Parameter()]
-        [datetime]$To,
+        [datetime]$ToDate,
 
         [Parameter()]
-        [string]$Project,
+        [string]$ProjectNumber,
 
         [Parameter()]
         [string]$CustomerNumber,
 
         [Parameter()]
-        [string]$Resource,
+        [string]$ResourceId,
 
         [Parameter()]
         [ValidateSet('Open', 'Invoiced')]
         [string]$Status,
 
         [Parameter()]
-        [switch]$Billable
+        [Nullable[bool]]$Billable
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
@@ -88,12 +89,12 @@ function Get-LedgerTimeEntry {
 
     foreach ($e in $entries) {
         if ($EntryId -and $e.EntryId -notin $EntryId) { continue }
-        if ($PSBoundParameters.ContainsKey('From') -and $e.Date -lt $From.Date) { continue }
-        if ($PSBoundParameters.ContainsKey('To') -and $e.Date -gt $To.Date) { continue }
-        if ($Project -and $e.ProjectNumber -ne $Project) { continue }
+        if ($PSBoundParameters.ContainsKey('FromDate') -and $e.Date -lt $FromDate.Date) { continue }
+        if ($PSBoundParameters.ContainsKey('ToDate') -and $e.Date -gt $ToDate.Date) { continue }
+        if ($ProjectNumber -and $e.ProjectNumber -ne $ProjectNumber) { continue }
         if ($CustomerNumber -and $e.CustomerNumber -ne $CustomerNumber) { continue }
-        if ($Resource -and $e.ResourceId -ne $Resource) { continue }
-        if ($Billable -and -not $e.Billable) { continue }
+        if ($ResourceId -and $e.ResourceId -ne $ResourceId) { continue }
+        if ($null -ne $Billable -and [bool]$e.Billable -ne $Billable) { continue }
         $out = ConvertTo-LedgerTimeEntryOutput -Entry $e -Context $context -InvoiceStatus $invoiceStatus
         if ($Status -and $out.Status -ne $Status) { continue }
         $out

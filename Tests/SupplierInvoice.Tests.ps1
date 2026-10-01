@@ -49,8 +49,8 @@ Describe 'New-LedgerSupplierInvoice' {
         }
 
         It 'Should store the supplier invoice number and reference' {
-            $inv = New-LedgerSupplierInvoice -JournalPath $JournalPath -SupplierNumber '100' -Date '2024-03-10' -Description 'Hyra' -SupplierInvoiceNo 'F-99123' -Reference '1234567' -Rows $rows -PassThru
-            $inv.SupplierInvoiceNo | Should -Be 'F-99123'
+            $inv = New-LedgerSupplierInvoice -JournalPath $JournalPath -SupplierNumber '100' -Date '2024-03-10' -Description 'Hyra' -SupplierReference 'F-99123' -Reference '1234567' -Rows $rows -PassThru
+            $inv.SupplierReference | Should -Be 'F-99123'
             $inv.Reference | Should -Be '1234567'
         }
 

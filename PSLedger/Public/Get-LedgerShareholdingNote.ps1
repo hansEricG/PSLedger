@@ -54,6 +54,7 @@ Get-LedgerShareholdingNote -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-0
 Reports a short-term holding's carrying amount with an explicit market value.
 #>
 function Get-LedgerShareholdingNote {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]
@@ -64,10 +65,12 @@ function Get-LedgerShareholdingNote {
         [string]$FiscalYear,
 
         [Parameter()]
-        [int]$FromAccount = 1300,
+        [ValidatePattern('^\d+$')]
+        [string]$FromAccount = '1300',
 
         [Parameter()]
-        [int]$ToAccount = 1399,
+        [ValidatePattern('^\d+$')]
+        [string]$ToAccount = '1399',
 
         [Parameter()]
         [decimal]$MarketValue,

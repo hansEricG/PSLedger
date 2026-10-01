@@ -21,10 +21,10 @@ Add-LedgerAccrual.
 The path to an existing journal directory. If omitted, uses the current journal
 set via Set-LedgerCurrentJournal.
 
-.PARAMETER From
+.PARAMETER FromDate
 Optional. Only time on or after this date.
 
-.PARAMETER To
+.PARAMETER ToDate
 Optional. Only time on or before this date.
 
 .PARAMETER GroupBy
@@ -34,34 +34,35 @@ Defaults to 'Project'.
 .PARAMETER CustomerNumber
 Optional. Only this customer's time.
 
-.PARAMETER Project
+.PARAMETER ProjectNumber
 Optional. Only time on this project.
 
-.PARAMETER Resource
+.PARAMETER ResourceId
 Optional. Only this resource's time.
 
 .EXAMPLE
-Get-LedgerTimeReport -From 2024-03-01 -To 2024-03-31 -GroupBy Resource | Format-Table
+Get-LedgerTimeReport -FromDate 2024-03-01 -ToDate 2024-03-31 -GroupBy Resource | Format-Table
 
 Shows each person's hours, billable share and margin for March.
 
 .EXAMPLE
-Get-LedgerTimeReport -To 2024-12-31 -GroupBy Customer | Where-Object OpenAmount -gt 0 | Format-Table CustomerName, OpenHours, OpenAmount
+Get-LedgerTimeReport -ToDate 2024-12-31 -GroupBy Customer | Where-Object OpenAmount -gt 0 | Format-Table CustomerName, OpenHours, OpenAmount
 
 Lists the work in progress per customer at year end, as a basis for booking
 upparbetad ej fakturerad intäkt.
 #>
 function Get-LedgerTimeReport {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]
         [string]$JournalPath,
 
         [Parameter()]
-        [datetime]$From,
+        [datetime]$FromDate,
 
         [Parameter()]
-        [datetime]$To,
+        [datetime]$ToDate,
 
         [Parameter()]
         [ValidateSet('Customer', 'Project', 'Resource', 'Month', 'Week')]
@@ -71,15 +72,15 @@ function Get-LedgerTimeReport {
         [string]$CustomerNumber,
 
         [Parameter()]
-        [string]$Project,
+        [string]$ProjectNumber,
 
         [Parameter()]
-        [string]$Resource
+        [string]$ResourceId
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
     $params = @{ JournalPath = $JournalPath }
-    foreach ($name in 'From', 'To', 'CustomerNumber', 'Project', 'Resource') {
+    foreach ($name in 'FromDate', 'ToDate', 'CustomerNumber', 'ProjectNumber', 'ResourceId') {
         if ($PSBoundParameters.ContainsKey($name)) { $params[$name] = $PSBoundParameters[$name] }
     }
     $entries = @(Get-LedgerTimeEntry @params)
@@ -95,8 +96,8 @@ function Get-LedgerTimeReport {
         foreach ($g in $GroupBy) {
             switch ($g) {
                 'Customer' { $e.CustomerNumber }
-                'Project' { $e.Project }
-                'Resource' { $e.Resource }
+                'Project' { $e.ProjectNumber }
+                'Resource' { $e.ResourceId }
                 'Month' { $e.Date.ToString('yyyy-MM') }
                 'Week' { '{0}-W{1:00}' -f [System.Globalization.ISOWeek]::GetYear($e.Date), [System.Globalization.ISOWeek]::GetWeekOfYear($e.Date) }
             }
@@ -110,8 +111,8 @@ function Get-LedgerTimeReport {
         foreach ($g in $GroupBy) {
             switch ($g) {
                 'Customer' { $result.CustomerNumber = $first.CustomerNumber; $result.CustomerName = $first.CustomerName }
-                'Project' { $result.Project = $first.Project; $result.ProjectName = $first.ProjectName }
-                'Resource' { $result.Resource = $first.Resource; $result.ResourceName = $first.ResourceName }
+                'Project' { $result.ProjectNumber = $first.ProjectNumber; $result.ProjectName = $first.ProjectName }
+                'Resource' { $result.ResourceId = $first.ResourceId; $result.ResourceName = $first.ResourceName }
                 'Month' { $result.Month = $first.Date.ToString('yyyy-MM') }
                 'Week' { $result.Week = '{0}-W{1:00}' -f [System.Globalization.ISOWeek]::GetYear($first.Date), [System.Globalization.ISOWeek]::GetWeekOfYear($first.Date) }
             }
@@ -121,7 +122,7 @@ function Get-LedgerTimeReport {
             InvoicedAmount = [decimal]0; OpenHours = [decimal]0; OpenAmount = [decimal]0; Cost = [decimal]0 }
         foreach ($e in $group.Group) {
             $sum.Hours += $e.Hours
-            $sum.Cost += [decimal]$e.Hours * $(if ($costRates.ContainsKey($e.Resource)) { $costRates[$e.Resource] } else { [decimal]0 })
+            $sum.Cost += [decimal]$e.Hours * $(if ($costRates.ContainsKey($e.ResourceId)) { $costRates[$e.ResourceId] } else { [decimal]0 })
             if (-not $e.Billable) { continue }
             $sum.Billable += $e.Hours
             $sum.BillableAmount += $e.Amount

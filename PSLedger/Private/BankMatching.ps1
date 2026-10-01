@@ -184,8 +184,8 @@ function Find-LedgerBankSupplierInvoiceMatch {
         $refDigits = ([string]$inv.Reference) -replace '[\s-]', ''
         $paid -le $inv.RemainingAmount -and (
             ($refDigits -and $refDigits -in $tokens) -or
-            ($inv.SupplierInvoiceNo -and $inv.SupplierInvoiceNo.Length -ge 3 -and
-                $haystack.IndexOf($inv.SupplierInvoiceNo, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
+            ($inv.SupplierReference -and $inv.SupplierReference.Length -ge 3 -and
+                $haystack.IndexOf($inv.SupplierReference, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
         )
     })
     if ($byRef.Count -eq 1) { return $byRef[0] }

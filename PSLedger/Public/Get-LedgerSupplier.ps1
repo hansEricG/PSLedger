@@ -25,6 +25,7 @@ Get-LedgerSupplier -JournalPath .\MinFirma.ledger -SupplierNumber '100'
 Returns only supplier number 100.
 #>
 function Get-LedgerSupplier {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

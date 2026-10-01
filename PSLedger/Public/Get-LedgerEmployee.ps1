@@ -25,6 +25,7 @@ Get-LedgerEmployee -JournalPath .\MinFirma.ledger -EmployeeNumber '1'
 Returns only employee number 1.
 #>
 function Get-LedgerEmployee {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

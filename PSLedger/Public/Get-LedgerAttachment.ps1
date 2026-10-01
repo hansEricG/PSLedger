@@ -33,6 +33,7 @@ Get-LedgerEntry | Select-Object -Last 1 | Get-LedgerAttachment
 Lists attachments for the most recent verification using pipeline.
 #>
 function Get-LedgerAttachment {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

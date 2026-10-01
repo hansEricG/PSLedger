@@ -40,6 +40,7 @@ Displays the annual report as a two-column table with the current and previous
 year's figures side by side.
 #>
 function Get-LedgerAnnualReport {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

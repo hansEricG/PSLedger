@@ -24,6 +24,7 @@ Get-LedgerNextFiscalYear -Name '2024-01_2024-12'
 Returns the fiscal year that follows 2024.
 #>
 function Get-LedgerNextFiscalYear {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter(Mandatory, ValueFromPipelineByPropertyName)]

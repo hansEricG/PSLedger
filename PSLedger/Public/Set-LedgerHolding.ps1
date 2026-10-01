@@ -7,7 +7,7 @@ Stores a holding at the balance date in the fiscal year's holdings.txt (UTF-8,
 tab-separated). A holding is identified by Account and Name: if a holding with
 the same Account and Name exists it is updated, otherwise a new one is added.
 When updating, only the supplied fields are changed; pass an empty string to
-clear Isin, PriceDate or Source, and $null to clear BookValue or Cost.
+clear Isin or Source, and $null to clear PriceDate, BookValue or Cost.
 
 The market value in SEK is computed as Quantity * Price * FxRate. It is used by
 Get-LedgerShareholdingNote and the annual report instead of the single
@@ -49,7 +49,8 @@ Exchange rate in SEK per one unit of Currency at the balance date. Required when
 Currency is not SEK; must be 1 (or omitted) for SEK.
 
 .PARAMETER PriceDate
-The date of the price, in yyyy-MM-dd format (normally the balance date).
+The date of the price (normally the balance date), e.g. '2025-08-29'. Stored as
+yyyy-MM-dd.
 
 .PARAMETER Source
 Where the price was taken from, e.g. 'Nasdaq Stockholm' or 'Avanza årsbesked'.
@@ -64,6 +65,10 @@ Optional acquisition cost (anskaffningsvärde) of this holding in SEK. Together
 with BookValue it shows how much of an earlier write-down may be reversed
 (återföring) when the market value recovers; a reversal never takes the book
 value above the cost.
+
+.PARAMETER PassThru
+If specified, returns the created/updated holding. By default the command
+produces no output.
 
 .EXAMPLE
 Set-LedgerHolding -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' `
@@ -117,8 +122,8 @@ function Set-LedgerHolding {
         [decimal]$FxRate,
 
         [Parameter()]
-        [AllowEmptyString()]
-        [string]$PriceDate,
+        [AllowNull()]
+        [Nullable[datetime]]$PriceDate,
 
         [Parameter()]
         [AllowEmptyString()]
@@ -130,7 +135,10 @@ function Set-LedgerHolding {
 
         [Parameter()]
         [AllowNull()]
-        [Nullable[decimal]]$Cost
+        [Nullable[decimal]]$Cost,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
@@ -151,13 +159,6 @@ function Set-LedgerHolding {
         if ($PSBoundParameters.ContainsKey('Isin') -and $Isin -and -not (Test-LedgerIsin -Isin $Isin)) {
             throw "Invalid ISIN '$Isin'. Expected 2 letters, 9 alphanumerics and a valid check digit (e.g. SE0015811963)."
         }
-        if ($PriceDate) {
-            $parsed = [datetime]::MinValue
-            if (-not [datetime]::TryParseExact($PriceDate, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture,
-                    [System.Globalization.DateTimeStyles]::None, [ref]$parsed)) {
-                throw "Invalid PriceDate '$PriceDate'. Expected yyyy-MM-dd."
-            }
-        }
 
         $existing = Read-LedgerHoldings -YearDir $YearDir
         $current = $existing | Where-Object { $_.Account -eq $Account -and $_.Name -eq $Name } | Select-Object -First 1
@@ -170,7 +171,10 @@ function Set-LedgerHolding {
             }
         }
 
-        $bound = $PSBoundParameters
+        $bound = @{} + $PSBoundParameters
+        if ($bound.ContainsKey('PriceDate') -and $null -ne $PriceDate) {
+            $bound['PriceDate'] = $PriceDate.ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture)
+        }
         $pick = {
             param($Key, $Fallback)
             if ($bound.ContainsKey($Key)) { $bound[$Key] } else { $Fallback }
@@ -217,6 +221,9 @@ function Set-LedgerHolding {
         $Path = Get-LedgerHoldingsPath -YearDir $YearDir
         if ($PSCmdlet.ShouldProcess($Path, $action)) {
             Write-LedgerHoldings -YearDir $YearDir -Rows $rows
+            if ($PassThru) {
+                Get-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account $Account -Name $Name
+            }
         }
     }
 }

@@ -20,8 +20,8 @@ set via Set-LedgerCurrentJournal.
 The number of hours, as a decimal (7.5 or '7,5') or a duration ('7:30').
 Must be greater than 0 and at most 24.
 
-.PARAMETER Project
-The project number. Either -Project or -CustomerNumber is required.
+.PARAMETER ProjectNumber
+The project number. Either -ProjectNumber or -CustomerNumber is required.
 
 .PARAMETER CustomerNumber
 The customer, for time that is not reported on a project.
@@ -29,7 +29,7 @@ The customer, for time that is not reported on a project.
 .PARAMETER Date
 The date the work was done. Defaults to today.
 
-.PARAMETER Resource
+.PARAMETER ResourceId
 The resource (person) who did the work. Defaults to the default resource (see
 Add-LedgerTimeResource).
 
@@ -47,13 +47,13 @@ Overrides the hourly rate for this entry.
 Returns the created entry.
 
 .EXAMPLE
-Add-LedgerTimeEntry 7.5 -Project 1001
+Add-LedgerTimeEntry 7.5 -ProjectNumber 1001
 
 Reports 7.5 hours today on project 1001 for the default resource.
 
 .EXAMPLE
-Add-LedgerTimeEntry '3:45' -Project 1001 -Date 2024-03-12 -Resource BK -Text 'Workshop kravställning'
-Add-LedgerTimeEntry 1 -Project 1001 -Date 2024-03-12 -NonBillable -Text 'Felrättning under garanti'
+Add-LedgerTimeEntry '3:45' -ProjectNumber 1001 -Date 2024-03-12 -ResourceId BK -Text 'Workshop kravställning'
+Add-LedgerTimeEntry 1 -ProjectNumber 1001 -Date 2024-03-12 -NonBillable -Text 'Felrättning under garanti'
 
 Reports a subcontractor's workshop and an hour of non-billable warranty work.
 #>
@@ -67,7 +67,7 @@ function Add-LedgerTimeEntry {
         [string]$Hours,
 
         [Parameter()]
-        [string]$Project,
+        [string]$ProjectNumber,
 
         [Parameter()]
         [string]$CustomerNumber,
@@ -76,7 +76,7 @@ function Add-LedgerTimeEntry {
         [datetime]$Date = (Get-Date).Date,
 
         [Parameter()]
-        [string]$Resource,
+        [string]$ResourceId,
 
         [Parameter()]
         [string]$Text,
@@ -98,7 +98,7 @@ function Add-LedgerTimeEntry {
 
     $context = Get-LedgerTimeContext -JournalPath $JournalPath
     $rateArg = if ($PSBoundParameters.ContainsKey('Rate')) { $Rate } else { $null }
-    $target = Resolve-LedgerTimeEntryTarget -Context $context -ResourceId $Resource -ProjectNumber $Project `
+    $target = Resolve-LedgerTimeEntryTarget -Context $context -ResourceId $ResourceId -ProjectNumber $ProjectNumber `
         -CustomerNumber $CustomerNumber -Billable (-not $NonBillable) -Rate $rateArg
 
     $entries = @(Read-LedgerTimeEntries -JournalPath $JournalPath)

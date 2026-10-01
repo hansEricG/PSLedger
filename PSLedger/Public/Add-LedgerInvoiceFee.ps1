@@ -57,7 +57,7 @@ function Add-LedgerInvoiceFee {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
         [int]$InvoiceNumber,
 
         [Parameter(Mandatory)]
@@ -75,16 +75,18 @@ function Add-LedgerInvoiceFee {
         [Parameter()]
         [switch]$PassThru
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", "Book fee of $Amount")) {
-        return
-    }
+        if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", "Book fee of $Amount")) {
+            return
+        }
 
-    Add-LedgerInvoiceChargeInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
-        -Type 'Fee' -Amount $Amount -Account $Account -Date $Date -FiscalYear $FiscalYear
+        Add-LedgerInvoiceChargeInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
+            -Type 'Fee' -Amount $Amount -Account $Account -Date $Date -FiscalYear $FiscalYear
 
-    if ($PassThru) {
-        Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+        if ($PassThru) {
+            Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+        }
     }
 }

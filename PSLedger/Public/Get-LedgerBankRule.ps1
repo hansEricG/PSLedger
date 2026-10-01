@@ -24,6 +24,7 @@ Get-LedgerBankRule | Format-Table Priority, Pattern, Account, Description, VatRa
 Shows the rules as a table in the order they are tried.
 #>
 function Get-LedgerBankRule {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

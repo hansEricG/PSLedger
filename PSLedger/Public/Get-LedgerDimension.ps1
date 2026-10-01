@@ -23,6 +23,7 @@ Get-LedgerDimension -JournalPath .\MinFirma.ledger -DimensionNumber 1
 Returns only dimension 1 (e.g. Kostnadsställe).
 #>
 function Get-LedgerDimension {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

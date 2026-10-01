@@ -39,12 +39,12 @@ Export-LedgerPayslip -PayslipNumber 1 -Path .\lonebesked-1.docx -Format Word -Fo
 Writes payslip 1 as a Word document, overwriting any existing file.
 #>
 function Export-LedgerPayslip {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
         [int]$PayslipNumber,
 
         [Parameter(Mandatory)]
@@ -57,27 +57,33 @@ function Export-LedgerPayslip {
         [Parameter()]
         [switch]$Force
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
 
-    if ((Test-Path $Path) -and -not $Force) {
-        throw "Destination file already exists: $Path. Use -Force to overwrite."
-    }
+        if ((Test-Path $Path) -and -not $Force) {
+            throw "Destination file already exists: $Path. Use -Force to overwrite."
+        }
 
-    $payslip = Get-LedgerPayslip -JournalPath $JournalPath -PayslipNumber $PayslipNumber
-    if (-not $payslip) {
-        throw "Payslip $PayslipNumber does not exist."
-    }
+        $payslip = Get-LedgerPayslip -JournalPath $JournalPath -PayslipNumber $PayslipNumber
+        if (-not $payslip) {
+            throw "Payslip $PayslipNumber does not exist."
+        }
 
-    $journal = Get-LedgerJournal -Path $JournalPath
-    $employee = Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber $payslip.EmployeeNumber
+        $journal = Get-LedgerJournal -Path $JournalPath
+        $employee = Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber $payslip.EmployeeNumber
 
-    $blocks = @(Build-LedgerPayslipBlock -Payslip $payslip -Journal $journal -Employee $employee)
+        $blocks = @(Build-LedgerPayslipBlock -Payslip $payslip -Journal $journal -Employee $employee)
 
-    switch ($Format) {
-        'Word' { ConvertTo-LedgerReportDocx -Block $blocks -Path $Path }
-        'Pdf' { ConvertTo-LedgerReportPdf -Block $blocks -Path $Path }
-        'Markdown' { ConvertTo-LedgerReportMarkdown -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
-        default { ConvertTo-LedgerReportText -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
+        if (-not $PSCmdlet.ShouldProcess($Path, "Export payslip $PayslipNumber")) {
+            return
+        }
+
+        switch ($Format) {
+            'Word' { ConvertTo-LedgerReportDocx -Block $blocks -Path $Path }
+            'Pdf' { ConvertTo-LedgerReportPdf -Block $blocks -Path $Path }
+            'Markdown' { ConvertTo-LedgerReportMarkdown -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
+            default { ConvertTo-LedgerReportText -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
+        }
     }
 }
 

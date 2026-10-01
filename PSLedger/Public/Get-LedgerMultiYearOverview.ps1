@@ -44,6 +44,7 @@ Get-LedgerMultiYearOverview -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-
 Displays a five-year overview as a table similar to a printed flerårsöversikt.
 #>
 function Get-LedgerMultiYearOverview {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

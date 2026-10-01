@@ -43,6 +43,7 @@ Posts all unmatched interest payments to 8310 (Ränteintäkter från
 omsättningstillgångar).
 #>
 function Get-LedgerBankTransaction {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

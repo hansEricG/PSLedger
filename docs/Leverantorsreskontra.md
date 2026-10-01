@@ -61,12 +61,12 @@ $rows = @(
     @{ Account = '5010'; Amount = 8000; VatRate = 0.25; VatAccount = '2640' }
 )
 New-LedgerSupplierInvoice -SupplierNumber '100' -Date '2024-03-10' `
-    -Description 'Lokalhyra mars' -SupplierInvoiceNo 'F-99123' -Reference '1234567' -Rows $rows
+    -Description 'Lokalhyra mars' -SupplierReference 'F-99123' -Reference '1234567' -Rows $rows
 ```
 
 - Förfallodatum sätts automatiskt till fakturadatum + leverantörens
   betalningsvillkor. Ange `-DueDate` för att styra det manuellt.
-- `-SupplierInvoiceNo` sparar leverantörens eget fakturanummer och `-Reference`
+- `-SupplierReference` sparar leverantörens eget fakturanummer och `-Reference`
   leverantörens betalningsreferens/OCR.
 - En momsfri rad utelämnar momsen (`VatRate = 0` och inget `VatAccount`).
 - `-PayableAccount` styr skuldkontot (standard `2440`).

@@ -30,7 +30,10 @@ Describe 'SupportsShouldProcess coverage' {
             # Time reporting
             'Add-LedgerTimeResource', 'Set-LedgerTimeResource', 'Add-LedgerProject', 'Set-LedgerProject',
             'Add-LedgerTimeEntry', 'Set-LedgerTimeEntry', 'Remove-LedgerTimeEntry', 'Import-LedgerTimeEntry',
-            'New-LedgerTimeInvoice'
+            'New-LedgerTimeInvoice',
+            # File exports
+            'Export-LedgerAnnualReport', 'Export-LedgerEmployerDeclaration', 'Export-LedgerIncomeTaxReturn',
+            'Export-LedgerInvoice', 'Export-LedgerPayslip', 'Export-LedgerSie', 'Export-LedgerVatDeclaration'
         )
 
         It '<_> supports ShouldProcess' -ForEach $WriteCommands {
@@ -115,6 +118,33 @@ Describe 'SupportsShouldProcess coverage' {
             $invoice.Status | Should -Be 'Draft'
             $invoice.BookedVerification | Should -BeNullOrEmpty
             Test-Path (Join-Path $JournalPath '2024-01_2024-12' 'ver0001.txt') | Should -BeFalse
+        }
+
+        It 'Export-LedgerSie -WhatIf does not write the file' {
+            New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB'
+            New-LedgerFiscalYear -JournalPath $JournalPath -StartDate '2024-01-01' -EndDate '2024-12-31'
+            $dest = Join-Path $TestDrive 'export.se'
+
+            Export-LedgerSie -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Path $dest -WhatIf
+
+            Test-Path $dest | Should -BeFalse
+        }
+
+        It 'Export-LedgerInvoice -WhatIf does not write the file' {
+            New-LedgerJournal -Path $JournalPath -Name 'Testföretaget AB'
+            New-LedgerFiscalYear -JournalPath $JournalPath -StartDate '2024-01-01' -EndDate '2024-12-31'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1510' -AccountName 'Kundfordringar'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '3010' -AccountName 'Försäljning'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2610' -AccountName 'Utgående moms'
+            Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name 'Kund AB'
+            New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2024-03-01' `
+                -Description 'Konsultarvode' `
+                -Rows @(@{ Account = '3010'; Amount = 1000; VatRate = 0.25; VatAccount = '2610' })
+            $dest = Join-Path $TestDrive 'faktura.txt'
+
+            Export-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Path $dest -WhatIf
+
+            Test-Path $dest | Should -BeFalse
         }
     }
 }

@@ -4,10 +4,10 @@ BeforeAll {
     Import-Module TDDUtils -Force
 }
 
-Describe 'Get-LedgerAccountingPrinciples' {
+Describe 'Get-LedgerAccountingPrinciple' {
     Context 'Function metadata' {
         BeforeAll {
-            $Command = Get-Command Get-LedgerAccountingPrinciples
+            $Command = Get-Command Get-LedgerAccountingPrinciple
         }
 
         It 'Should exist as a command in the module' {
@@ -25,7 +25,7 @@ Describe 'Get-LedgerAccountingPrinciples' {
 
     Context 'Behavior' {
         It 'Should return the K2 principles as a single string by default' {
-            $result = Get-LedgerAccountingPrinciples
+            $result = Get-LedgerAccountingPrinciple
             $result | Should -BeOfType [string]
             $result | Should -Match 'K2'
             $result | Should -Match 'BFNAR 2016:10'
@@ -33,29 +33,29 @@ Describe 'Get-LedgerAccountingPrinciples' {
         }
 
         It 'Should contain a newline between paragraphs in the single-string form' {
-            $result = Get-LedgerAccountingPrinciples
+            $result = Get-LedgerAccountingPrinciple
             $result | Should -Match "`n"
         }
 
         It 'Should return an array of paragraphs with -AsLines' {
-            $result = @(Get-LedgerAccountingPrinciples -AsLines)
+            $result = @(Get-LedgerAccountingPrinciple -AsLines)
             $result.Count | Should -BeGreaterThan 1
             $result[0] | Should -Match 'årsredovisningslagen'
         }
 
         It 'Should not contain empty paragraphs with -AsLines' {
-            $result = @(Get-LedgerAccountingPrinciples -AsLines)
+            $result = @(Get-LedgerAccountingPrinciple -AsLines)
             ($result | Where-Object { $_.Trim() -eq '' }).Count | Should -Be 0
         }
 
         It 'Should return the K3 principles with -Framework K3' {
-            $result = @(Get-LedgerAccountingPrinciples -Framework K3 -AsLines)
+            $result = @(Get-LedgerAccountingPrinciple -Framework K3 -AsLines)
             $result[0] | Should -Match 'BFNAR 2012:1'
             $result[0] | Should -Match 'K3'
             ($result -join ' ') | Should -Not -Match 'K2'
         }
         It 'Should preserve Swedish characters (UTF-8)' {
-            $result = Get-LedgerAccountingPrinciples
+            $result = Get-LedgerAccountingPrinciple
             $result | Should -Match 'Fordringar'
             $result | Should -Match 'å|ä|ö'
         }

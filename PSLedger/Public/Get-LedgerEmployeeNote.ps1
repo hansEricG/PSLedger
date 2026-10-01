@@ -35,6 +35,7 @@ Get-LedgerEmployeeNote -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' -
 Reports three average employees for the year regardless of the recorded value.
 #>
 function Get-LedgerEmployeeNote {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

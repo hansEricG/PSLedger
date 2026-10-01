@@ -29,17 +29,18 @@ Optional. Only include transactions on or after this date.
 Optional. Only include transactions on or before this date.
 
 .EXAMPLE
-Get-LedgerLedger -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Account '1910'
+Get-LedgerGeneralLedger -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Account '1910'
 
 Returns all transactions for account 1910 (Kassa och bank) with running balance.
 
 .EXAMPLE
-Get-LedgerLedger -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Account '3010' -FromDate '2024-04-01' -ToDate '2024-06-30' |
+Get-LedgerGeneralLedger -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Account '3010' -FromDate '2024-04-01' -ToDate '2024-06-30' |
     Format-Table VerificationNumber, Date, Description, Debit, Credit, Balance
 
 Displays Q2 activity for the sales account as a formatted table.
 #>
-function Get-LedgerLedger {
+function Get-LedgerGeneralLedger {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

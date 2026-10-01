@@ -33,6 +33,10 @@ The salary cost account the employee's gross pay is booked to. Defaults to '7210
 The default preliminary tax rate as a decimal (e.g. 0.30 for 30%) used when a
 payslip does not specify the tax. Defaults to 0.
 
+.PARAMETER PassThru
+If specified, returns the created/updated employee. By default the command
+produces no output.
+
 .EXAMPLE
 Add-LedgerEmployee -JournalPath .\MinFirma.ledger -EmployeeNumber '1' -Name 'Anna Andersson'
 
@@ -63,7 +67,10 @@ function Add-LedgerEmployee {
 
         [Parameter()]
         [ValidateRange(0, 1)]
-        [decimal]$TaxRate = 0
+        [decimal]$TaxRate = 0,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
@@ -89,5 +96,8 @@ function Add-LedgerEmployee {
     if ($PSCmdlet.ShouldProcess($EmployeeNumber, 'Add employee')) {
         "$EmployeeNumber`t$Name`t$PersonalNumber`t$SalaryAccount`t$rate" |
             Add-Content -Path $EmployeeFile -Encoding UTF8
+        if ($PassThru) {
+            Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber $EmployeeNumber
+        }
     }
 }

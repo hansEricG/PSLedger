@@ -23,6 +23,7 @@ if (-not $result.IsValid) { $result.Errors | ForEach-Object { Write-Warning $_ }
 Inspect errors before deciding whether to import.
 #>
 function Test-LedgerSie {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]

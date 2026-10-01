@@ -99,7 +99,7 @@ Describe 'Time resources and projects' {
     }
 
     It 'Refuses to change the customer of a project with time' {
-        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -Project P1 -Date 2024-03-04
+        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -ProjectNumber P1 -Date 2024-03-04
         { Set-LedgerProject -JournalPath $J -ProjectNumber 'P1' -CustomerNumber 20 } | Should -Throw
     }
 }
@@ -116,17 +116,17 @@ Describe 'Add-LedgerTimeEntry' {
         @{ Text = '2h'; Expected = 2 }
         @{ Text = '0:45:00'; Expected = 0.75 }
     ) {
-        $e = Add-LedgerTimeEntry -JournalPath $J -Hours $Text -Project P1 -Date 2024-03-04 -PassThru
+        $e = Add-LedgerTimeEntry -JournalPath $J -Hours $Text -ProjectNumber P1 -Date 2024-03-04 -PassThru
         $e.Hours | Should -Be $Expected
     }
 
     It 'Rejects <_> hours' -ForEach @('0', '25', 'abc') {
-        { Add-LedgerTimeEntry -JournalPath $J -Hours $_ -Project P1 -Date 2024-03-04 } | Should -Throw
+        { Add-LedgerTimeEntry -JournalPath $J -Hours $_ -ProjectNumber P1 -Date 2024-03-04 } | Should -Throw
     }
 
     It 'Uses the default resource and the project rate' {
-        $e = Add-LedgerTimeEntry -JournalPath $J -Hours 2 -Project P1 -Date 2024-03-04 -PassThru
-        $e.Resource | Should -Be 'HEG'
+        $e = Add-LedgerTimeEntry -JournalPath $J -Hours 2 -ProjectNumber P1 -Date 2024-03-04 -PassThru
+        $e.ResourceId | Should -Be 'HEG'
         $e.CustomerNumber | Should -Be '10'
         $e.Rate | Should -Be 1100
         $e.Amount | Should -Be 2200
@@ -137,7 +137,7 @@ Describe 'Add-LedgerTimeEntry' {
     }
 
     It 'Lets an explicit rate override the project rate' {
-        (Add-LedgerTimeEntry -JournalPath $J -Hours 1 -Project P1 -Rate 1500 -Date 2024-03-04 -PassThru).Rate | Should -Be 1500
+        (Add-LedgerTimeEntry -JournalPath $J -Hours 1 -ProjectNumber P1 -Rate 1500 -Date 2024-03-04 -PassThru).Rate | Should -Be 1500
     }
 
     It 'Throws for billable time without any rate' {
@@ -149,24 +149,24 @@ Describe 'Add-LedgerTimeEntry' {
     }
 
     It 'Makes time on an internal project non-billable' {
-        (Add-LedgerTimeEntry -JournalPath $J -Hours 1 -Project INT -Date 2024-03-04 -PassThru).Billable | Should -BeFalse
+        (Add-LedgerTimeEntry -JournalPath $J -Hours 1 -ProjectNumber INT -Date 2024-03-04 -PassThru).Billable | Should -BeFalse
     }
 
     It 'Rejects time on a closed project' {
         Set-LedgerProject -JournalPath $J -ProjectNumber 'P1' -Status Closed
-        { Add-LedgerTimeEntry -JournalPath $J -Hours 1 -Project P1 -Date 2024-03-04 } | Should -Throw '*closed*'
+        { Add-LedgerTimeEntry -JournalPath $J -Hours 1 -ProjectNumber P1 -Date 2024-03-04 } | Should -Throw '*closed*'
     }
 
     It 'Stores entries in one file per month with increasing ids' {
-        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -Project P1 -Date 2024-03-04
-        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -Project P1 -Date 2024-04-02
+        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -ProjectNumber P1 -Date 2024-03-04
+        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -ProjectNumber P1 -Date 2024-04-02
         Join-Path $J 'time' '2024-03.txt' | Should -Exist
         Join-Path $J 'time' '2024-04.txt' | Should -Exist
         (Get-LedgerTimeEntry -JournalPath $J).EntryId | Should -Be @(1, 2)
     }
 
     It 'Stores the rate on the entry so later rate changes do not affect it' {
-        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -Project P1 -Date 2024-03-04
+        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -ProjectNumber P1 -Date 2024-03-04
         Set-LedgerProject -JournalPath $J -ProjectNumber 'P1' -HourlyRate 2000
         (Get-LedgerTimeEntry -JournalPath $J -EntryId 1).Rate | Should -Be 1100
     }
@@ -175,14 +175,14 @@ Describe 'Add-LedgerTimeEntry' {
 Describe 'Get-, Set- and Remove-LedgerTimeEntry' {
     BeforeEach {
         $script:J = New-TimeTestJournal -Root $TestDrive
-        Add-LedgerTimeEntry -JournalPath $J -Hours 2 -Project P1 -Date 2024-03-04
-        Add-LedgerTimeEntry -JournalPath $J -Hours 3 -Project P1 -Date 2024-03-20 -Resource KON
+        Add-LedgerTimeEntry -JournalPath $J -Hours 2 -ProjectNumber P1 -Date 2024-03-04
+        Add-LedgerTimeEntry -JournalPath $J -Hours 3 -ProjectNumber P1 -Date 2024-03-20 -ResourceId KON
         Add-LedgerTimeEntry -JournalPath $J -Hours 1 -CustomerNumber 20 -Date 2024-04-02
     }
 
     It 'Filters by date, resource and customer' {
-        (Get-LedgerTimeEntry -JournalPath $J -From 2024-03-10 -To 2024-03-31).EntryId | Should -Be 2
-        (Get-LedgerTimeEntry -JournalPath $J -Resource KON).EntryId | Should -Be 2
+        (Get-LedgerTimeEntry -JournalPath $J -FromDate 2024-03-10 -ToDate 2024-03-31).EntryId | Should -Be 2
+        (Get-LedgerTimeEntry -JournalPath $J -ResourceId KON).EntryId | Should -Be 2
         (Get-LedgerTimeEntry -JournalPath $J -CustomerNumber 20).EntryId | Should -Be 3
     }
 
@@ -194,7 +194,7 @@ Describe 'Get-, Set- and Remove-LedgerTimeEntry' {
     }
 
     It 'Re-resolves the rate when the customer changes' {
-        Set-LedgerTimeEntry -JournalPath $J -EntryId 1 -Project '' -CustomerNumber 20
+        Set-LedgerTimeEntry -JournalPath $J -EntryId 1 -ProjectNumber '' -CustomerNumber 20
         $e = Get-LedgerTimeEntry -JournalPath $J -EntryId 1
         $e.CustomerNumber | Should -Be '20'
         $e.Rate | Should -Be 900
@@ -223,11 +223,11 @@ Describe 'Get-, Set- and Remove-LedgerTimeEntry' {
 Describe 'New-LedgerTimeInvoice' {
     BeforeEach {
         $script:J = New-TimeTestJournal -Root $TestDrive
-        Add-LedgerTimeEntry -JournalPath $J -Hours 2 -Project P1 -Date 2024-03-04 -Text 'Design'
-        Add-LedgerTimeEntry -JournalPath $J -Hours 1.5 -Project P1 -Date 2024-03-05
-        Add-LedgerTimeEntry -JournalPath $J -Hours 3 -Project P1 -Date 2024-03-20 -Resource KON
-        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -Project P1 -Date 2024-03-21 -NonBillable
-        Add-LedgerTimeEntry -JournalPath $J -Hours 4 -Project P1 -Date 2024-04-02
+        Add-LedgerTimeEntry -JournalPath $J -Hours 2 -ProjectNumber P1 -Date 2024-03-04 -Text 'Design'
+        Add-LedgerTimeEntry -JournalPath $J -Hours 1.5 -ProjectNumber P1 -Date 2024-03-05
+        Add-LedgerTimeEntry -JournalPath $J -Hours 3 -ProjectNumber P1 -Date 2024-03-20 -ResourceId KON
+        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -ProjectNumber P1 -Date 2024-03-21 -NonBillable
+        Add-LedgerTimeEntry -JournalPath $J -Hours 4 -ProjectNumber P1 -Date 2024-04-02
     }
 
     It 'Groups open billable time per project, resource and rate' {
@@ -278,9 +278,9 @@ Describe 'New-LedgerTimeInvoice' {
 Describe 'Get-LedgerTimeReport' {
     BeforeEach {
         $script:J = New-TimeTestJournal -Root $TestDrive
-        Add-LedgerTimeEntry -JournalPath $J -Hours 2 -Project P1 -Date 2024-03-04
-        Add-LedgerTimeEntry -JournalPath $J -Hours 3 -Project P1 -Date 2024-03-12 -Resource KON
-        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -Project INT -Date 2024-03-12
+        Add-LedgerTimeEntry -JournalPath $J -Hours 2 -ProjectNumber P1 -Date 2024-03-04
+        Add-LedgerTimeEntry -JournalPath $J -Hours 3 -ProjectNumber P1 -Date 2024-03-12 -ResourceId KON
+        Add-LedgerTimeEntry -JournalPath $J -Hours 1 -ProjectNumber INT -Date 2024-03-12
         Add-LedgerTimeEntry -JournalPath $J -Hours 2 -CustomerNumber 20 -Date 2024-04-02
     }
 
@@ -293,7 +293,7 @@ Describe 'Get-LedgerTimeReport' {
     }
 
     It 'Computes cost and margin from the resource cost rate' {
-        $kon = Get-LedgerTimeReport -JournalPath $J -GroupBy Resource | Where-Object Resource -eq 'KON'
+        $kon = Get-LedgerTimeReport -JournalPath $J -GroupBy Resource | Where-Object ResourceId -eq 'KON'
         $kon.Cost | Should -Be 2100
         $kon.Margin | Should -Be 1200
     }
@@ -325,16 +325,16 @@ Describe 'Import-LedgerTimeEntry' {
             '2024-03-08;P1;;1:15;Möte;nej'
             '2024-03-08;;;2;Support;'
         ) | Set-Content $Csv -Encoding utf8
-        $result = Import-LedgerTimeEntry -JournalPath $J -Path $Csv -Project INT
+        $result = Import-LedgerTimeEntry -JournalPath $J -Path $Csv -ProjectNumber INT
         $result.Imported | Should -Be 3
         $result.Hours | Should -Be 7.25
         $e = Get-LedgerTimeEntry -JournalPath $J
-        $e[0].Resource | Should -Be 'KON'
-        $e[0].Project | Should -Be 'P1'
+        $e[0].ResourceId | Should -Be 'KON'
+        $e[0].ProjectNumber | Should -Be 'P1'
         $e[0].Text | Should -Be 'Kodning'
-        $e[1].Resource | Should -Be 'HEG'
+        $e[1].ResourceId | Should -Be 'HEG'
         $e[1].Billable | Should -BeFalse
-        $e[2].Project | Should -Be 'INT'
+        $e[2].ProjectNumber | Should -Be 'INT'
     }
 
     It 'Imports an English comma-separated export with a customer column' {

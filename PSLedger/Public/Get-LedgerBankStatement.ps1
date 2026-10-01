@@ -30,6 +30,7 @@ Shows the statements for the business account and how many transactions are
 still unmatched in each.
 #>
 function Get-LedgerBankStatement {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

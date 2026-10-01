@@ -22,6 +22,7 @@ Get-LedgerExtension -Source Journal
 Lists only extensions loaded from the current journal's Extensions folder.
 #>
 function Get-LedgerExtension {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

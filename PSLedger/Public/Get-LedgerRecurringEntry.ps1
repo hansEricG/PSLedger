@@ -23,6 +23,7 @@ Get-LedgerRecurringEntry -JournalPath .\ab.ledger -Name 'Hyra'
 Returns the specific recurring entry template named 'Hyra'.
 #>
 function Get-LedgerRecurringEntry {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

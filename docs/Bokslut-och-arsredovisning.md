@@ -364,7 +364,7 @@ Set-LedgerReportInput -JournalPath .\HEG.ledger -FiscalYear '2026-09_2027-08' -F
 
 Med K3 ändras årsredovisningen så här:
 
-- **Principer:** K3-texten från `Get-LedgerAccountingPrinciples -Framework K3` samt
+- **Principer:** K3-texten från `Get-LedgerAccountingPrinciple -Framework K3` samt
   principer för de poster bolaget har: kryptotillgångar (anskaffningsvärde, ingen
   avskrivning, nedskrivningsprövning), övriga immateriella och materiella
   anläggningstillgångar, finansiella anläggningstillgångar och inkomstskatter
@@ -502,7 +502,7 @@ Add-LedgerProfitDisposition -JournalPath .\HEG.ledger -FiscalYear '2025-09_2026-
 | `Get-LedgerFixedAssetNote` | Anläggningsnot (rörelse) |
 | `Get-LedgerShareholdingNote` | Not för aktier och andelar |
 | `Get-LedgerEmployeeNote` | Not för medelantal anställda |
-| `Get-LedgerAccountingPrinciples` | K2- eller K3-redovisningsprinciper (`-Framework`) |
+| `Get-LedgerAccountingPrinciple` | K2- eller K3-redovisningsprinciper (`-Framework`) |
 | `Get-LedgerAnnualReport` | Kombinerad resultat + balans med jämförelseår |
 | `Export-LedgerAnnualReport` | Exportera hela årsredovisningen (Text/Markdown/Word) |
 | `Close-LedgerFiscalYear` | Stäng och lås räkenskapsåret |

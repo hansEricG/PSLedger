@@ -66,7 +66,7 @@ function Add-LedgerInvoiceInterest {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
         [int]$InvoiceNumber,
 
         [Parameter()]
@@ -88,37 +88,39 @@ function Add-LedgerInvoiceInterest {
         [Parameter()]
         [switch]$PassThru
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $invoiceDir = Get-LedgerInvoiceDirectory -JournalPath $JournalPath
-    $filePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber)
-    if (-not (Test-Path $filePath)) {
-        throw "Invoice $InvoiceNumber does not exist."
-    }
-    $invoice = Read-LedgerInvoiceFile -Path $filePath
-
-    if (-not $PSBoundParameters.ContainsKey('Amount')) {
-        if (-not $PSBoundParameters.ContainsKey('AnnualRate')) {
-            throw "Specify either -AnnualRate (to calculate interest) or -Amount (to book an explicit amount)."
+        $invoiceDir = Get-LedgerInvoiceDirectory -JournalPath $JournalPath
+        $filePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber)
+        if (-not (Test-Path $filePath)) {
+            throw "Invoice $InvoiceNumber does not exist."
         }
-        $daysOverdue = [int]([datetime]$Date - [datetime]$invoice.DueDate).TotalDays
-        if ($daysOverdue -le 0) {
-            throw "Invoice $InvoiceNumber is not overdue on $($Date.ToString('yyyy-MM-dd')) (due $($invoice.DueDate.ToString('yyyy-MM-dd'))). No interest to charge."
+        $invoice = Read-LedgerInvoiceFile -Path $filePath
+
+        if (-not $PSBoundParameters.ContainsKey('Amount')) {
+            if (-not $PSBoundParameters.ContainsKey('AnnualRate')) {
+                throw "Specify either -AnnualRate (to calculate interest) or -Amount (to book an explicit amount)."
+            }
+            $daysOverdue = [int]([datetime]$Date - [datetime]$invoice.DueDate).TotalDays
+            if ($daysOverdue -le 0) {
+                throw "Invoice $InvoiceNumber is not overdue on $($Date.ToString('yyyy-MM-dd')) (due $($invoice.DueDate.ToString('yyyy-MM-dd'))). No interest to charge."
+            }
+            $Amount = [Math]::Round([decimal]$invoice.RemainingAmount * $AnnualRate * $daysOverdue / 365, 2)
+            if ($Amount -le 0) {
+                throw "The calculated interest for invoice $InvoiceNumber is zero. Nothing to book."
+            }
         }
-        $Amount = [Math]::Round([decimal]$invoice.RemainingAmount * $AnnualRate * $daysOverdue / 365, 2)
-        if ($Amount -le 0) {
-            throw "The calculated interest for invoice $InvoiceNumber is zero. Nothing to book."
+
+        if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", "Book interest of $Amount")) {
+            return
         }
-    }
 
-    if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", "Book interest of $Amount")) {
-        return
-    }
+        Add-LedgerInvoiceChargeInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
+            -Type 'Interest' -Amount $Amount -Account $Account -Date $Date -FiscalYear $FiscalYear
 
-    Add-LedgerInvoiceChargeInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
-        -Type 'Interest' -Amount $Amount -Account $Account -Date $Date -FiscalYear $FiscalYear
-
-    if ($PassThru) {
-        Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+        if ($PassThru) {
+            Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+        }
     }
 }

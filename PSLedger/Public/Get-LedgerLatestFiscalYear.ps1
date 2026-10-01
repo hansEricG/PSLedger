@@ -20,6 +20,7 @@ Get-LedgerLatestFiscalYear | Get-LedgerEntry
 Gets all entries from the latest fiscal year using pipeline.
 #>
 function Get-LedgerLatestFiscalYear {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

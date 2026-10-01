@@ -148,7 +148,7 @@ Grönlund Konsult AB prepared its annual report itself and has no auditor, so
 Nej is answered to both questions at the bottom of INK2S (SRU 8041 and 8045).
 #>
 function Export-LedgerIncomeTaxReturn {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -508,15 +508,19 @@ function Export-LedgerIncomeTaxReturn {
 
         # --- Write both files ------------------------------------------------
         $DestDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
-        if (-not (Test-Path -LiteralPath $DestDir)) {
-            New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
-        }
         $infoPath = Join-Path $DestDir 'INFO.SRU'
         $blkPath = Join-Path $DestDir 'BLANKETTER.SRU'
         foreach ($p in $infoPath, $blkPath) {
             if ((Test-Path -LiteralPath $p) -and -not $Force) {
                 throw "Destination file already exists: $p. Use -Force to overwrite."
             }
+        }
+
+        if (-not $PSCmdlet.ShouldProcess($DestDir, "Export SRU income tax return for $FiscalYear")) {
+            return
+        }
+        if (-not (Test-Path -LiteralPath $DestDir)) {
+            New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
         }
 
         $encoding = [System.Text.Encoding]::GetEncoding('ISO-8859-1')

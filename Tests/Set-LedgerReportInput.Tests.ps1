@@ -43,6 +43,14 @@ Describe 'Set-LedgerReportInput' {
         It 'Should have a ProposedDividend parameter' {
             $Command.Parameters.ContainsKey('ProposedDividend') | Should -BeTrue
         }
+
+        It 'Should have a nullable Int32 AverageEmployees parameter' {
+            $Command.Parameters['AverageEmployees'].ParameterType | Should -Be ([Nullable[int]])
+        }
+
+        It 'Should have nullable DateTime <_> parameter' -ForEach 'SigningDate', 'AnnualMeetingDate' {
+            $Command.Parameters[$_].ParameterType | Should -Be ([Nullable[datetime]])
+        }
     }
 
     Context 'Behavior' {
@@ -94,6 +102,25 @@ Describe 'Set-LedgerReportInput' {
             Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy -SigningPlace ''
             $result = Get-LedgerReportInput -JournalPath $jp -FiscalYear $fy
             $result.SigningPlace | Should -BeNullOrEmpty
+        }
+
+        It 'Should store dates as yyyy-MM-dd and numbers as text' {
+            Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy -SigningDate (Get-Date -Year 2025 -Month 10 -Day 1 -Hour 14) -AverageEmployees 3
+            $result = Get-LedgerReportInput -JournalPath $jp -FiscalYear $fy
+            $result.SigningDate | Should -Be '2025-10-01'
+            $result.AverageEmployees | Should -Be '3'
+        }
+
+        It 'Should remove a date or number field when passed $null' {
+            Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy -AnnualMeetingDate '2025-10-01' -AverageEmployees 2
+            Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy -AnnualMeetingDate $null -AverageEmployees $null
+            $result = Get-LedgerReportInput -JournalPath $jp -FiscalYear $fy
+            $result.AnnualMeetingDate | Should -BeNullOrEmpty
+            $result.AverageEmployees | Should -BeNullOrEmpty
+        }
+
+        It 'Should reject an invalid date' {
+            { Set-LedgerReportInput -JournalPath $jp -FiscalYear $fy -SigningDate 'inte ett datum' } | Should -Throw '*SigningDate*'
         }
 
         It 'Should persist the K3 fields' {

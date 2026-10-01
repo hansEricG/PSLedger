@@ -34,7 +34,7 @@ Export-LedgerSie -JournalPath .\Konsult.ledger -FiscalYear '2024-07_2025-06' -Pa
 Exports a broken fiscal year, overwriting any existing destination file.
 #>
 function Export-LedgerSie {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
         [string]$JournalPath,
@@ -147,7 +147,9 @@ function Export-LedgerSie {
             & $append '}'
         }
 
-        Write-SieText -Path $Path -Text $sb.ToString()
+        if ($PSCmdlet.ShouldProcess($Path, "Export SIE file for $FiscalYear")) {
+            Write-SieText -Path $Path -Text $sb.ToString()
+        }
     }
 }
 

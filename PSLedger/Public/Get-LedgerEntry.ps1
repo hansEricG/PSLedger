@@ -43,6 +43,7 @@ Get-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Fr
 Returns all verifications from March 2024.
 #>
 function Get-LedgerEntry {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

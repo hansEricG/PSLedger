@@ -39,11 +39,16 @@ Describe 'Set-LedgerHolding' {
             $Command.Parameters['BookValue'].ParameterType | Should -Be ([Nullable[decimal]])
         }
 
-        It 'Should have optional String parameters Isin, Currency, PriceDate and Source' {
-            foreach ($p in 'Isin', 'Currency', 'PriceDate', 'Source') {
+        It 'Should have optional String parameters Isin, Currency and Source' {
+            foreach ($p in 'Isin', 'Currency', 'Source') {
                 $Command.Parameters[$p].ParameterType.Name | Should -Be 'String'
                 $Command.Parameters[$p].Attributes.Mandatory | Should -Not -Contain $true
             }
+        }
+
+        It 'Should have an optional nullable DateTime PriceDate parameter' {
+            $Command.Parameters['PriceDate'].ParameterType | Should -Be ([Nullable[datetime]])
+            $Command.Parameters['PriceDate'].Attributes.Mandatory | Should -Not -Contain $true
         }
     }
 
@@ -170,6 +175,13 @@ Describe 'Set-LedgerHolding' {
         It 'Should reject a malformed PriceDate' {
             { Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Investor B' -Quantity 1 -Price 1 -PriceDate '31/12/2024' } |
                 Should -Throw '*PriceDate*'
+        }
+
+        It 'Should store a DateTime PriceDate as yyyy-MM-dd and clear it with $null' {
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Datumtest' -Quantity 1 -Price 1 -PriceDate (Get-Date -Year 2024 -Month 12 -Day 31 -Hour 17)
+            (Get-LedgerHolding -JournalPath $jp -FiscalYear $fy | Where-Object Name -eq 'Datumtest').PriceDate | Should -Be '2024-12-31'
+            Set-LedgerHolding -JournalPath $jp -FiscalYear $fy -Account 1350 -Name 'Datumtest' -PriceDate $null
+            (Get-LedgerHolding -JournalPath $jp -FiscalYear $fy | Where-Object Name -eq 'Datumtest').PriceDate | Should -BeNullOrEmpty
         }
 
         It 'Should reject a name containing a tab' {

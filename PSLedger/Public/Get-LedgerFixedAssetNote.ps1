@@ -58,6 +58,7 @@ Returns the acquisition value roll-forward for long-term securities held as
 financial fixed assets.
 #>
 function Get-LedgerFixedAssetNote {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]
@@ -68,16 +69,20 @@ function Get-LedgerFixedAssetNote {
         [string]$FiscalYear,
 
         [Parameter(Mandatory)]
-        [int]$FromAccount,
+        [ValidatePattern('^\d+$')]
+        [string]$FromAccount,
 
         [Parameter(Mandatory)]
-        [int]$ToAccount,
+        [ValidatePattern('^\d+$')]
+        [string]$ToAccount,
 
         [Parameter()]
-        [int]$DepreciationFromAccount,
+        [ValidatePattern('^\d+$')]
+        [string]$DepreciationFromAccount,
 
         [Parameter()]
-        [int]$DepreciationToAccount,
+        [ValidatePattern('^\d+$')]
+        [string]$DepreciationToAccount,
 
         [Parameter()]
         [string]$Label

@@ -26,6 +26,10 @@ The new email address. Pass an empty string to clear it.
 .PARAMETER PaymentTermsDays
 The new default payment terms in days.
 
+.PARAMETER PassThru
+If specified, returns the created/updated supplier. By default the command
+produces no output.
+
 .EXAMPLE
 Set-LedgerSupplier -JournalPath .\MinFirma.ledger -SupplierNumber '100' -Email 'ny@leverantor.se'
 
@@ -42,7 +46,7 @@ function Set-LedgerSupplier {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
         [string]$SupplierNumber,
 
         [Parameter()]
@@ -57,57 +61,65 @@ function Set-LedgerSupplier {
 
         [Parameter()]
         [ValidateRange(0, 3650)]
-        [int]$PaymentTermsDays
+        [int]$PaymentTermsDays,
+
+        [Parameter()]
+        [switch]$PassThru
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    if (-not (Test-Path $JournalPath -PathType Container)) {
-        throw "Journal not found: $JournalPath"
-    }
-
-    $SupplierFile = Join-Path $JournalPath 'suppliers.txt'
-    if (-not (Test-Path $SupplierFile)) {
-        throw "Supplier '$SupplierNumber' does not exist."
-    }
-
-    $updateName = $PSBoundParameters.ContainsKey('Name')
-    $updateOrg = $PSBoundParameters.ContainsKey('OrgNumber')
-    $updateEmail = $PSBoundParameters.ContainsKey('Email')
-    $updateTerms = $PSBoundParameters.ContainsKey('PaymentTermsDays')
-
-    if (-not ($updateName -or $updateOrg -or $updateEmail -or $updateTerms)) {
-        throw "Nothing to update. Specify -Name, -OrgNumber, -Email and/or -PaymentTermsDays."
-    }
-
-    $lines = @(Get-Content $SupplierFile -Encoding UTF8)
-    $found = $false
-    $newLines = foreach ($line in $lines) {
-        if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        $parts = $line -split "`t"
-        if ($parts[0] -eq $SupplierNumber) {
-            $found = $true
-            $curName = if ($parts.Count -ge 2) { $parts[1] } else { '' }
-            $curOrg = if ($parts.Count -ge 3) { $parts[2] } else { '' }
-            $curEmail = if ($parts.Count -ge 4) { $parts[3] } else { '' }
-            $curTerms = if ($parts.Count -ge 5) { $parts[4] } else { '30' }
-
-            if ($updateName) { $curName = $Name }
-            if ($updateOrg) { $curOrg = $OrgNumber }
-            if ($updateEmail) { $curEmail = $Email }
-            if ($updateTerms) { $curTerms = $PaymentTermsDays }
-
-            "$SupplierNumber`t$curName`t$curOrg`t$curEmail`t$curTerms"
+        if (-not (Test-Path $JournalPath -PathType Container)) {
+            throw "Journal not found: $JournalPath"
         }
-        else {
-            $line
+
+        $SupplierFile = Join-Path $JournalPath 'suppliers.txt'
+        if (-not (Test-Path $SupplierFile)) {
+            throw "Supplier '$SupplierNumber' does not exist."
         }
-    }
 
-    if (-not $found) {
-        throw "Supplier '$SupplierNumber' does not exist."
-    }
+        $updateName = $PSBoundParameters.ContainsKey('Name')
+        $updateOrg = $PSBoundParameters.ContainsKey('OrgNumber')
+        $updateEmail = $PSBoundParameters.ContainsKey('Email')
+        $updateTerms = $PSBoundParameters.ContainsKey('PaymentTermsDays')
 
-    if ($PSCmdlet.ShouldProcess($SupplierNumber, "Update supplier")) {
-        $newLines | Set-Content -Path $SupplierFile -Encoding UTF8
+        if (-not ($updateName -or $updateOrg -or $updateEmail -or $updateTerms)) {
+            throw "Nothing to update. Specify -Name, -OrgNumber, -Email and/or -PaymentTermsDays."
+        }
+
+        $lines = @(Get-Content $SupplierFile -Encoding UTF8)
+        $found = $false
+        $newLines = foreach ($line in $lines) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            $parts = $line -split "`t"
+            if ($parts[0] -eq $SupplierNumber) {
+                $found = $true
+                $curName = if ($parts.Count -ge 2) { $parts[1] } else { '' }
+                $curOrg = if ($parts.Count -ge 3) { $parts[2] } else { '' }
+                $curEmail = if ($parts.Count -ge 4) { $parts[3] } else { '' }
+                $curTerms = if ($parts.Count -ge 5) { $parts[4] } else { '30' }
+
+                if ($updateName) { $curName = $Name }
+                if ($updateOrg) { $curOrg = $OrgNumber }
+                if ($updateEmail) { $curEmail = $Email }
+                if ($updateTerms) { $curTerms = $PaymentTermsDays }
+
+                "$SupplierNumber`t$curName`t$curOrg`t$curEmail`t$curTerms"
+            }
+            else {
+                $line
+            }
+        }
+
+        if (-not $found) {
+            throw "Supplier '$SupplierNumber' does not exist."
+        }
+
+        if ($PSCmdlet.ShouldProcess($SupplierNumber, "Update supplier")) {
+            $newLines | Set-Content -Path $SupplierFile -Encoding UTF8
+            if ($PassThru) {
+                Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber
+            }
+        }
     }
 }

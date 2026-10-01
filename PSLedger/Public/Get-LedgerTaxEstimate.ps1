@@ -48,6 +48,7 @@ Adds back 15 000 kr of non-deductible expenses and removes 2 000 kr of non-taxab
 income before applying the tax rate, returning the taxable result and estimated tax.
 #>
 function Get-LedgerTaxEstimate {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

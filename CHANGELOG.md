@@ -54,6 +54,39 @@
 - **PowerShell 7.4 or later is required** (`CompatiblePSEditions = 'Core'`). The
   manifest previously claimed Windows PowerShell 5.1 support, but the module
   already relied on PowerShell 7 features.
+- **Breaking: consistent command API ahead of 1.0.** Old names are not kept as aliases.
+  - Renamed commands: `Get-LedgerLedger` → `Get-LedgerGeneralLedger` and
+    `Get-LedgerAccountingPrinciples` → `Get-LedgerAccountingPrinciple`.
+  - Time reporting: `-From`/`-To` → `-FromDate`/`-ToDate`, and `-Project`/`-Resource`
+    → `-ProjectNumber`/`-ResourceId`. The output properties are renamed to
+    `ProjectNumber` and `ResourceId` as well.
+  - `New-LedgerSupplierInvoice -SupplierInvoiceNo` → `-SupplierReference`, and the
+    output property is renamed too. The stored file format is unchanged.
+  - The account parameters of `Get-LedgerFixedAssetNote` and
+    `Get-LedgerShareholdingNote` are strings (like all other account parameters).
+  - Typed parameters:
+    - `Get-LedgerTimeEntry -Billable` takes `$true`/`$false`.
+    - `Set-LedgerReportInput -AverageEmployees`, `-SigningDate` and `-AnnualMeetingDate`
+      take an int or a date, and `$null` clears them.
+    - `Set-LedgerHolding -PriceDate` takes a date.
+  - Write commands produce no output by default. Use `-PassThru` to get the
+    created or changed object; it was added to the register commands (accounts,
+    customers, suppliers, employees, projects, time resources and entries,
+    dimensions, objects, holdings, report input), to `New-LedgerJournal`,
+    `New-LedgerFiscalYear`, `Set-LedgerJournal`, `New-LedgerRecurringEntry` and
+    `Add-LedgerReversal`. `Add-LedgerDocument` and `Add-LedgerAttachment` now
+    need `-PassThru` to return the copied file.
+
+    Commands that compute or run something still return their result: period-end
+    entries such as `Add-LedgerDepreciation`, imports, `Invoke-*`, `Backup-` and
+    `Update-LedgerJournal`.
+  - Pipeline input: invoice, payslip, customer, supplier and employee commands
+    accept their number by property name. For example,
+    `Get-LedgerInvoice -Status Draft | Invoke-LedgerInvoicePosting` posts every
+    draft.
+  - All `Export-*` commands support `-WhatIf` and `-Confirm`.
+  - `Get-*`, `New-*` and `Test-*` commands declare `[OutputType()]`. A test now
+    checks that every public command has complete help.
 
 ### Fixed
 - `Export-LedgerInvoice` rendered a single-row invoice as one table row per cell.

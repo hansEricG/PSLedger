@@ -36,6 +36,10 @@ identifiers; the reserved keys Name, OrgNumber, SchemaVersion and CompanyType ar
 not allowed (use the dedicated parameters instead). Set a key's value to an empty
 string or `$null` to remove that field.
 
+.PARAMETER PassThru
+If specified, returns the created/updated journal. By default the command
+produces no output.
+
 .EXAMPLE
 Set-LedgerJournal -JournalPath .\MinFirma.ledger -Name 'MinFirma Bokföring AB'
 
@@ -68,7 +72,10 @@ function Set-LedgerJournal {
         [string]$CompanyType,
 
         [Parameter()]
-        [hashtable]$Metadata
+        [hashtable]$Metadata,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
@@ -148,6 +155,9 @@ function Set-LedgerJournal {
 
         if ($PSCmdlet.ShouldProcess($JournalPath, "Update journal metadata")) {
             $NewLines | Set-Content -Path $JournalFile -Encoding UTF8
+            if ($PassThru) {
+                Get-LedgerJournal -Path $JournalPath
+            }
         }
     }
 }

@@ -4,9 +4,9 @@ BeforeAll {
     Import-Module TDDUtils -Force
 }
 
-Describe 'Get-LedgerLedger' {
+Describe 'Get-LedgerGeneralLedger' {
     BeforeAll {
-        $CommandName = 'Get-LedgerLedger'
+        $CommandName = 'Get-LedgerGeneralLedger'
         $Command = Get-Command -Name $CommandName
     }
 
@@ -77,7 +77,7 @@ Describe 'Get-LedgerLedger' {
         }
 
         It 'Should return transactions in chronological order' {
-            $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+            $result = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
             $result.Count | Should -Be 3
             $result[0].Date | Should -Be '2024-01-15'
             $result[1].Date | Should -Be '2024-02-01'
@@ -85,14 +85,14 @@ Describe 'Get-LedgerLedger' {
         }
 
         It 'Should calculate running balance correctly' {
-            $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+            $result = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
             $result[0].Balance | Should -Be 5000
             $result[1].Balance | Should -Be -3000
             $result[2].Balance | Should -Be 0
         }
 
         It 'Should split amount into Debit and Credit columns' {
-            $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+            $result = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
             $result[0].Debit | Should -Be 5000
             $result[0].Credit | Should -Be 0
             $result[1].Debit | Should -Be 0
@@ -100,37 +100,37 @@ Describe 'Get-LedgerLedger' {
         }
 
         It 'Should include VerificationNumber and Description' {
-            $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+            $result = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
             $result[0].VerificationNumber | Should -Be 1
             $result[0].Description | Should -Be 'Försäljning kontant'
         }
 
         It 'Should filter by FromDate' {
-            $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -FromDate '2024-02-01')
+            $result = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -FromDate '2024-02-01')
             $result.Count | Should -Be 2
             $result[0].Date | Should -Be '2024-02-01'
         }
 
         It 'Should filter by ToDate' {
-            $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -ToDate '2024-01-31')
+            $result = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -ToDate '2024-01-31')
             $result.Count | Should -Be 1
             $result[0].Date | Should -Be '2024-01-15'
         }
 
         It 'Should filter by both FromDate and ToDate' {
-            $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -FromDate '2024-02-01' -ToDate '2024-02-28')
+            $result = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -FromDate '2024-02-01' -ToDate '2024-02-28')
             $result.Count | Should -Be 1
             $result[0].Description | Should -Be 'Hyra kontor'
         }
 
         It 'Should return nothing for an account with no transactions' {
-            $result = Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '5010' -FromDate '2024-06-01'
+            $result = Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '5010' -FromDate '2024-06-01'
             $result | Should -BeNullOrEmpty
         }
 
         It 'Should return nothing when the fiscal year has no entries' {
             New-LedgerFiscalYear -JournalPath $JournalPath -StartDate '2025-01-01' -EndDate '2025-12-31'
-            $result = Get-LedgerLedger -JournalPath $JournalPath -FiscalYear '2025-01_2025-12' -Account '1910'
+            $result = Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear '2025-01_2025-12' -Account '1910'
             $result | Should -BeNullOrEmpty
         }
 
@@ -146,7 +146,7 @@ Describe 'Get-LedgerLedger' {
             }
 
             It 'Should show the opening balance as the first row' {
-                $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+                $result = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
                 $result[0].Description | Should -Be 'Ingående balans'
                 $result[0].Debit | Should -Be 0
                 $result[0].Credit | Should -Be 0
@@ -154,7 +154,7 @@ Describe 'Get-LedgerLedger' {
             }
 
             It 'Should continue the running balance from the opening balance' {
-                $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+                $result = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
                 # IB 4000, +5000 sale, -8000 rent, +3000 sale
                 $result[1].Balance | Should -Be 9000
                 $result[2].Balance | Should -Be 1000
@@ -162,7 +162,7 @@ Describe 'Get-LedgerLedger' {
             }
 
             It 'Should not list the opening balance as a regular transaction row' {
-                $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+                $result = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
                 # 1 opening row + 3 transaction rows
                 $result.Count | Should -Be 4
                 $transactionRows = $result | Select-Object -Skip 1
@@ -171,7 +171,7 @@ Describe 'Get-LedgerLedger' {
 
             It 'Should carry pre-FromDate transactions into the opening row balance' {
                 # IB 4000 + 5000 (2024-01-15, before FromDate) = 9000 brought forward.
-                $result = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -FromDate '2024-02-01')
+                $result = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -FromDate '2024-02-01')
                 $result[0].Description | Should -Be 'Ingående balans'
                 $result[0].Balance | Should -Be 9000
                 $result[0].Date | Should -Be '2024-02-01'
@@ -182,8 +182,8 @@ Describe 'Get-LedgerLedger' {
             }
 
             It 'Should keep the closing balance correct regardless of FromDate' {
-                $full = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
-                $filtered = @(Get-LedgerLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -FromDate '2024-02-01')
+                $full = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910')
+                $filtered = @(Get-LedgerGeneralLedger -JournalPath $JournalPath -FiscalYear $FiscalYear -Account '1910' -FromDate '2024-02-01')
                 $filtered[-1].Balance | Should -Be $full[-1].Balance
             }
         }

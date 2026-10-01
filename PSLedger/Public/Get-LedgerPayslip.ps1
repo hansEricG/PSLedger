@@ -37,6 +37,7 @@ Get-LedgerPayslip -JournalPath .\MinFirma.ledger -PayslipNumber 1
 Returns the details of payslip number 1.
 #>
 function Get-LedgerPayslip {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

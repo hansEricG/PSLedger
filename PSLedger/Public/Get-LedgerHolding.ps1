@@ -45,6 +45,7 @@ Get-LedgerHolding -JournalPath .\HEG.ledger -FiscalYear '2024-09_2025-08' -Accou
 Exports a per-holding schedule for account 1350 as supporting documentation.
 #>
 function Get-LedgerHolding {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

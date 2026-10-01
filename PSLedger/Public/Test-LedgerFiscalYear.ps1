@@ -49,6 +49,7 @@ if (-not $failures) { Close-LedgerFiscalYear -JournalPath .\MinFirma.ledger -Fis
 Closes the year only when no hard check fails.
 #>
 function Test-LedgerFiscalYear {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

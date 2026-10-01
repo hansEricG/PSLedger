@@ -86,6 +86,7 @@ New-LedgerPayslip -EmployeeNumber '2' -GrossSalary 42000 -TaxAmount 12600 -Perio
 Creates a payslip with an explicit tax amount and pay period, and returns it.
 #>
 function New-LedgerPayslip {
+    [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]

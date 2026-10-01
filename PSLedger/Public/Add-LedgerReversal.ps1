@@ -20,6 +20,10 @@ The verification number to reverse.
 .PARAMETER Date
 The date for the reversal entry. Defaults to today if not specified.
 
+.PARAMETER PassThru
+If specified, returns the created/updated reversal verification. By default the command
+produces no output.
+
 .EXAMPLE
 Add-LedgerReversal -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -VerificationNumber 3
 
@@ -43,7 +47,10 @@ function Add-LedgerReversal {
         [Parameter(Mandatory)]
         [int]$VerificationNumber,
 
-        [datetime]$Date = (Get-Date)
+        [datetime]$Date = (Get-Date),
+
+        [Parameter()]
+        [switch]$PassThru
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
@@ -63,7 +70,7 @@ function Add-LedgerReversal {
         $Description = "Rättelse ver $VerificationNumber - $($Original.Description)"
 
         if ($PSCmdlet.ShouldProcess("$FiscalYear ver $VerificationNumber", 'Add reversal verification')) {
-            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description -Rows $ReversedRows
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description -Rows $ReversedRows -PassThru:$PassThru
         }
     }
 }

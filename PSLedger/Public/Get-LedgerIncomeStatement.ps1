@@ -37,6 +37,7 @@ Displays the income statement as a formatted table similar to a printed
 resultaträkning.
 #>
 function Get-LedgerIncomeStatement {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

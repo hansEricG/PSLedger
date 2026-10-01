@@ -89,6 +89,7 @@ Invoices hours with text, quantity and unit price to Volvo AB. The net amounts
 (35 750 kr and 7 500 kr) are computed from quantity x unit price.
 #>
 function New-LedgerInvoice {
+    [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]

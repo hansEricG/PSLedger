@@ -42,6 +42,7 @@ Get-LedgerInvoice -JournalPath .\MinFirma.ledger -InvoiceNumber 1
 Returns the details of invoice number 1.
 #>
 function Get-LedgerInvoice {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

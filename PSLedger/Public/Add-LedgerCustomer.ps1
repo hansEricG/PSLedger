@@ -36,6 +36,10 @@ Default number of days from invoice date until the invoice is due. Defaults to
 Optional default hourly rate (net, excluding VAT) for time reported against the
 customer. A project's own hourly rate takes precedence (see Add-LedgerProject).
 
+.PARAMETER PassThru
+If specified, returns the created/updated customer. By default the command
+produces no output.
+
 .EXAMPLE
 Add-LedgerCustomer -JournalPath .\MinFirma.ledger -CustomerNumber '10' -Name 'Volvo AB'
 
@@ -75,7 +79,10 @@ function Add-LedgerCustomer {
 
         [Parameter()]
         [ValidateRange(0, 1000000)]
-        [decimal]$HourlyRate
+        [decimal]$HourlyRate,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
@@ -101,5 +108,8 @@ function Add-LedgerCustomer {
         $rateField = if ($PSBoundParameters.ContainsKey('HourlyRate')) { "`t$(Format-LedgerInvoiceAmount -Value $HourlyRate)" } else { '' }
         "$CustomerNumber`t$Name`t$OrgNumber`t$Email`t$PaymentTermsDays$rateField" |
             Add-Content -Path $CustomerFile -Encoding UTF8
+        if ($PassThru) {
+            Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $CustomerNumber
+        }
     }
 }

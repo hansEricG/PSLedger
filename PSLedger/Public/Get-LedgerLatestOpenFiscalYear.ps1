@@ -20,6 +20,7 @@ Get-LedgerLatestOpenFiscalYear | Add-LedgerEntry -Date '2024-06-15' -Description
 Adds an entry to the latest open fiscal year using pipeline.
 #>
 function Get-LedgerLatestOpenFiscalYear {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]

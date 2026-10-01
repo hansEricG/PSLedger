@@ -48,7 +48,7 @@ and may optionally have:
 The accounts-payable account the invoice total is booked to when posted.
 Defaults to '2440' (Leverantörsskulder).
 
-.PARAMETER SupplierInvoiceNo
+.PARAMETER SupplierReference
 Optional. The supplier's own invoice number, recorded for reference.
 
 .PARAMETER Reference
@@ -70,12 +70,13 @@ Creates a supplier invoice for 8 000 kr plus 25% input VAT from supplier 100.
 $rows = @(
     @{ Account = '6110'; Amount = 1200; VatRate = 0.25; VatAccount = '2640' }
 )
-New-LedgerSupplierInvoice -JournalPath .\MinFirma.ledger -SupplierNumber 'L012' -Description 'Kontorsmateriel' -SupplierInvoiceNo 'F-99123' -Reference '1234567' -Rows $rows -PassThru
+New-LedgerSupplierInvoice -JournalPath .\MinFirma.ledger -SupplierNumber 'L012' -Description 'Kontorsmateriel' -SupplierReference 'F-99123' -Reference '1234567' -Rows $rows -PassThru
 
 Creates a supplier invoice recording the supplier's invoice number and payment
 reference, and returns the created object.
 #>
 function New-LedgerSupplierInvoice {
+    [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
@@ -100,7 +101,7 @@ function New-LedgerSupplierInvoice {
         [string]$PayableAccount = '2440',
 
         [Parameter()]
-        [string]$SupplierInvoiceNo,
+        [string]$SupplierReference,
 
         [Parameter()]
         [string]$Reference,
@@ -175,7 +176,7 @@ function New-LedgerSupplierInvoice {
     $invoice = [PSCustomObject]@{
         InvoiceNumber      = $nextNum
         SupplierNumber     = $SupplierNumber
-        SupplierInvoiceNo  = if ($PSBoundParameters.ContainsKey('SupplierInvoiceNo')) { $SupplierInvoiceNo } else { '' }
+        SupplierReference  = if ($PSBoundParameters.ContainsKey('SupplierReference')) { $SupplierReference } else { '' }
         InvoiceDate        = $Date
         DueDate            = $DueDate
         Description        = $Description

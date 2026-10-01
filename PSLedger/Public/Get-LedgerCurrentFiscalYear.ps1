@@ -19,6 +19,7 @@ Write-Output "Working in fiscal year $year"
 Captures the current fiscal year into a variable.
 #>
 function Get-LedgerCurrentFiscalYear {
+    [OutputType([string])]
     [CmdletBinding()]
     param ()
 

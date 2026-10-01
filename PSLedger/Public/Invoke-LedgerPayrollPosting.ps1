@@ -53,7 +53,7 @@ function Invoke-LedgerPayrollPosting {
         [Parameter()]
         [string]$JournalPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)]
         [int]$PayslipNumber,
 
         [Parameter()]
@@ -62,72 +62,74 @@ function Invoke-LedgerPayrollPosting {
         [Parameter()]
         [switch]$PassThru
     )
-    $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
+    process {
+        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $payslipDir = Get-LedgerPayslipDirectory -JournalPath $JournalPath
-    $filePath = Join-Path $payslipDir (Get-LedgerPayslipFileName -PayslipNumber $PayslipNumber)
-    if (-not (Test-Path $filePath)) {
-        throw "Payslip $PayslipNumber does not exist."
-    }
+        $payslipDir = Get-LedgerPayslipDirectory -JournalPath $JournalPath
+        $filePath = Join-Path $payslipDir (Get-LedgerPayslipFileName -PayslipNumber $PayslipNumber)
+        if (-not (Test-Path $filePath)) {
+            throw "Payslip $PayslipNumber does not exist."
+        }
 
-    $payslip = Read-LedgerPayslipFile -Path $filePath
+        $payslip = Read-LedgerPayslipFile -Path $filePath
 
-    if ($payslip.Status -ne 'Draft') {
-        throw "Payslip $PayslipNumber is already posted (status '$($payslip.Status)', verification $($payslip.BookedVerification))."
-    }
+        if ($payslip.Status -ne 'Draft') {
+            throw "Payslip $PayslipNumber is already posted (status '$($payslip.Status)', verification $($payslip.BookedVerification))."
+        }
 
-    # Resolve the fiscal year from the pay date unless one was supplied.
-    if (-not $FiscalYear) {
-        $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $payslip.PayDate
+        # Resolve the fiscal year from the pay date unless one was supplied.
         if (-not $FiscalYear) {
-            throw "No fiscal year covers the pay date $($payslip.PayDate.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+            $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $payslip.PayDate
+            if (-not $FiscalYear) {
+                throw "No fiscal year covers the pay date $($payslip.PayDate.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+            }
         }
-    }
 
-    # Aggregate amounts per account so the verification is compact.
-    $accountSums = [ordered]@{}
-    $addAmount = {
-        param($account, $amount)
-        if ($accountSums.Contains($account)) {
-            $accountSums[$account] += $amount
+        # Aggregate amounts per account so the verification is compact.
+        $accountSums = [ordered]@{}
+        $addAmount = {
+            param($account, $amount)
+            if ($accountSums.Contains($account)) {
+                $accountSums[$account] += $amount
+            }
+            else {
+                $accountSums[$account] = $amount
+            }
         }
-        else {
-            $accountSums[$account] = $amount
+
+        # Salary: debit cost, credit tax liability, credit net pay to bank.
+        & $addAmount $payslip.SalaryAccount $payslip.GrossSalary
+        if ($payslip.TaxAmount -ne 0) {
+            & $addAmount $payslip.TaxLiabilityAccount (-$payslip.TaxAmount)
         }
-    }
+        & $addAmount $payslip.NetPayAccount (-$payslip.NetPay)
 
-    # Salary: debit cost, credit tax liability, credit net pay to bank.
-    & $addAmount $payslip.SalaryAccount $payslip.GrossSalary
-    if ($payslip.TaxAmount -ne 0) {
-        & $addAmount $payslip.TaxLiabilityAccount (-$payslip.TaxAmount)
-    }
-    & $addAmount $payslip.NetPayAccount (-$payslip.NetPay)
+        # Employer contribution: debit cost, credit liability.
+        if ($payslip.EmployerContribution -ne 0) {
+            & $addAmount $payslip.EmployerContributionAccount $payslip.EmployerContribution
+            & $addAmount $payslip.EmployerContributionLiabilityAccount (-$payslip.EmployerContribution)
+        }
 
-    # Employer contribution: debit cost, credit liability.
-    if ($payslip.EmployerContribution -ne 0) {
-        & $addAmount $payslip.EmployerContributionAccount $payslip.EmployerContribution
-        & $addAmount $payslip.EmployerContributionLiabilityAccount (-$payslip.EmployerContribution)
-    }
+        $entryRows = foreach ($account in $accountSums.Keys) {
+            @{ Account = $account; Amount = [Math]::Round([decimal]$accountSums[$account], 2) }
+        }
 
-    $entryRows = foreach ($account in $accountSums.Keys) {
-        @{ Account = $account; Amount = [Math]::Round([decimal]$accountSums[$account], 2) }
-    }
+        $description = "Lön $PayslipNumber - $($payslip.Description)"
 
-    $description = "Lön $PayslipNumber - $($payslip.Description)"
+        if (-not $PSCmdlet.ShouldProcess("Payslip $PayslipNumber", "Post to fiscal year $FiscalYear")) {
+            return
+        }
 
-    if (-not $PSCmdlet.ShouldProcess("Payslip $PayslipNumber", "Post to fiscal year $FiscalYear")) {
-        return
-    }
+        $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+            -Date $payslip.PayDate -Description $description -Rows @($entryRows) -PassThru
 
-    $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-        -Date $payslip.PayDate -Description $description -Rows @($entryRows) -PassThru
+        $payslip.Status = 'Booked'
+        $payslip.BookedVerification = $verification.VerificationNumber
+        $payslip.BookedFiscalYear = $FiscalYear
+        Save-LedgerPayslipFile -Payslip $payslip
 
-    $payslip.Status = 'Booked'
-    $payslip.BookedVerification = $verification.VerificationNumber
-    $payslip.BookedFiscalYear = $FiscalYear
-    Save-LedgerPayslipFile -Payslip $payslip
-
-    if ($PassThru) {
-        Get-LedgerPayslip -JournalPath $JournalPath -PayslipNumber $PayslipNumber
+        if ($PassThru) {
+            Get-LedgerPayslip -JournalPath $JournalPath -PayslipNumber $PayslipNumber
+        }
     }
 }

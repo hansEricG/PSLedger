@@ -27,6 +27,10 @@ Optional. The customer the project is invoiced to.
 .PARAMETER HourlyRate
 Optional hourly rate (net, excluding VAT) for the project.
 
+.PARAMETER PassThru
+If specified, returns the created/updated project. By default the command
+produces no output.
+
 .EXAMPLE
 Add-LedgerProject -ProjectNumber '1001' -Name 'Nytt kundportal' -CustomerNumber '10'
 
@@ -57,7 +61,10 @@ function Add-LedgerProject {
 
         [Parameter()]
         [ValidateRange(0, 1000000)]
-        [decimal]$HourlyRate
+        [decimal]$HourlyRate,
+
+        [Parameter()]
+        [switch]$PassThru
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
@@ -79,5 +86,8 @@ function Add-LedgerProject {
 
     if ($PSCmdlet.ShouldProcess($ProjectNumber, 'Add project')) {
         Save-LedgerProjects -JournalPath $JournalPath -Projects $projects
+        if ($PassThru) {
+            Get-LedgerProject -JournalPath $JournalPath -ProjectNumber $ProjectNumber
+        }
     }
 }

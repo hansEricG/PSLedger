@@ -43,6 +43,7 @@ directory), then lists the result so you can verify what was imported. Add -Forc
 to Add-LedgerDocument to overwrite documents whose name already exists.
 #>
 function Get-LedgerDocument {
+    [OutputType([pscustomobject])]
     [CmdletBinding()]
     param (
         [Parameter()]
