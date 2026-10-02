@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-02
+
 ### Added
 - **Bank import and reconciliation (bankavstämning).** Bank statements are stored
   under the journal's new `bank/` directory (additive, no schema migration).
