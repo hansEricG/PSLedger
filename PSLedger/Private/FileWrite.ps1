@@ -38,7 +38,22 @@ function Set-LedgerFileContent {
         # File.Move with overwrite replaces the target in one step (rename(2) on
         # Unix, MoveFileEx with MOVEFILE_REPLACE_EXISTING on Windows). Move-Item
         # -Force deletes the target first, leaving a moment without the file.
-        [System.IO.File]::Move($tempPath, $fullPath, $true)
+        # On Windows a virus scanner, the search indexer or a sync client can hold
+        # the target open for a moment, so retry briefly before giving up.
+        $attempt = 0
+        while ($true) {
+            try {
+                [System.IO.File]::Move($tempPath, $fullPath, $true)
+                break
+            }
+            catch {
+                $ex = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
+                $transient = ($ex -is [System.UnauthorizedAccessException] -or $ex -is [System.IO.IOException]) -and
+                    $ex -isnot [System.IO.FileNotFoundException] -and $ex -isnot [System.IO.DirectoryNotFoundException]
+                if (-not $transient -or ++$attempt -ge 5) { throw }
+                Start-Sleep -Milliseconds (50 * $attempt)
+            }
+        }
     }
     catch {
         if (Test-Path -LiteralPath $tempPath) {

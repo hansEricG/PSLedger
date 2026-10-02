@@ -12,6 +12,7 @@
 . $PSScriptRoot\Private\FileWrite.ps1
 . $PSScriptRoot\Private\TextField.ps1
 . $PSScriptRoot\Private\Integrity.ps1
+. $PSScriptRoot\Private\Archive.ps1
 . $PSScriptRoot\Private\OpeningBalance.ps1
 . $PSScriptRoot\Private\Holdings.ps1
 . $PSScriptRoot\Private\JournalSchema.ps1
@@ -61,6 +62,8 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Add-LedgerReversal.ps1
 . $PSScriptRoot\Public\Test-LedgerSie.ps1
 . $PSScriptRoot\Public\Export-LedgerSie.ps1
+. $PSScriptRoot\Public\Export-LedgerArchive.ps1
+. $PSScriptRoot\Public\Test-LedgerArchive.ps1
 . $PSScriptRoot\Public\Import-LedgerSie.ps1
 . $PSScriptRoot\Public\Get-LedgerGeneralLedger.ps1
 . $PSScriptRoot\Public\Get-LedgerVatReport.ps1
@@ -177,7 +180,7 @@ $script:BuiltInFunctions = @(
     'Get-LedgerFiscalYear', 'Close-LedgerFiscalYear', 'Test-LedgerFiscalYear', 'Test-LedgerIntegrity', 'Protect-LedgerFiscalYear', 'Import-LedgerChart',
     'Get-LedgerIncomeStatement', 'Get-LedgerBalanceSheet', 'Copy-LedgerOpeningBalance',
     'Update-LedgerJournal',
-    'Add-LedgerReversal', 'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie',
+    'Add-LedgerReversal', 'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie', 'Export-LedgerArchive', 'Test-LedgerArchive',
     'Get-LedgerGeneralLedger', 'Get-LedgerVatReport', 'Export-LedgerVatDeclaration',
     'Export-LedgerIncomeTaxReturn',
     'Add-LedgerDimension', 'Get-LedgerDimension',

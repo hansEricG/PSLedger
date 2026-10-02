@@ -15,6 +15,9 @@ A simple command-line double-entry bookkeeping system built as a PowerShell modu
 - **Corrections** — reversal entries following Swedish bookkeeping law
 - **Tamper detection** — verifications and attachments are sealed in a SHA-256 hash
   chain per fiscal year, so later edits can be detected (varaktighet)
+- **Archiving** — export a closed fiscal year as a self-contained package (SIE, grundbok,
+  huvudbok and statements as text and PDF, annual report, all vouchers and attachments)
+  with SHA-256 checksums, for the seven-year retention period
 - **SIE 4 import/export** — exchange data with other Swedish accounting systems (incl. dimensions)
 - **Dimensions & objects** — cost centres, projects with SIE round-trip support
 - **Accruals** — automated accrual + reversal across fiscal years
@@ -89,6 +92,8 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Close-LedgerFiscalYear` | Lock a fiscal year (no more entries) and return its final chain hash |
 | `Test-LedgerIntegrity` | Detect changed, missing or unsealed verifications and attachments |
 | `Protect-LedgerFiscalYear` | Seal existing verifications and attachments in a fiscal year |
+| `Export-LedgerArchive` | Export a fiscal year as an archive package for long-term storage |
+| `Test-LedgerArchive` | Verify an archive package against its checksums and integrity chain |
 | `Add-LedgerEntry` | Create a verification (journal entry) |
 | `New-LedgerEntryRow` | Build a verification row using -Debit/-Credit (no sign juggling) |
 | `Get-LedgerEntry` | Query entries with optional filters |
@@ -668,6 +673,41 @@ Test-LedgerIntegrity -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12
 The chain detects edits made without rebuilding it. Someone who rewrites both
 the files and the chain is only caught by `-ExpectedHash`. Opening balances,
 `year.txt`, year documents and the registers are not part of the chain.
+
+## Archiving (Arkivering)
+
+Bokföringslagen requires the accounting records to be kept for seven years in a
+readable form. `Export-LedgerArchive` writes a closed fiscal year as one zip file
+that does not need PSLedger to be read:
+
+```
+MinFirma_2024-01_2024-12_archive/
+├── README.txt        # What the package contains and how to verify it
+├── manifest.txt      # Company, fiscal year, integrity status, final chain hash
+├── checksums.txt     # SHA-256 of every file (sha256sum -c compatible)
+├── sie/              # The year as a SIE 4 file
+├── reports/          # Grundbok, huvudbok, saldobalans, resultat- och balansräkning,
+│                     # momsrapport (.txt + .pdf), årsredovisning (.md, .docx, .pdf)
+└── journal/          # The year's verifications, attachments, documents and
+                      # integrity.txt, the registers, and the year's invoices,
+                      # supplier invoices, payslips and bank statements
+```
+
+```powershell
+# Archive a closed year next to the journal (.\archive\)
+Export-LedgerArchive -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
+
+# Archive every closed year to an external disk, then verify the packages
+Get-LedgerFiscalYear -JournalPath .\MinFirma.ledger | Where-Object Status -eq 'Closed' |
+    Export-LedgerArchive -JournalPath .\MinFirma.ledger -DestinationPath E:\Arkiv
+Get-ChildItem E:\Arkiv -Filter '*_archive.zip' | Test-LedgerArchive |
+    Format-Table FiscalYear, Status, Files
+```
+
+`journal/` is itself a PSLedger journal, so the archived year can also be read with
+`Get-LedgerEntry`, `Test-LedgerIntegrity` and the other commands after unpacking.
+An open year, or a year whose integrity check fails, is only archived with `-Force`
+(an open year is marked as preliminary).
 
 ## Custom Extensions
 

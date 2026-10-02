@@ -75,6 +75,27 @@ function ConvertTo-LedgerReportPdf {
             }
             'Paragraph' { & $addWrapped 'F1' 10 $b.Text }
             'Spacer' { & $addSpacer 6 }
+            'PageBreak' { $lines.Add(@{ PageBreak = $true; Size = 0 }) }
+            'Signatures' {
+                foreach ($name in $b.Names) {
+                    & $addSpacer 24
+                    & $addLine 'F1' 10 ('_' * [Math]::Max(30, ([string]$name).Length))
+                    & $addLine 'F1' 10 $name
+                }
+                & $addSpacer 6
+            }
+            'Certificate' {
+                & $addSpacer 2
+                & $addLine 'F2' 12 $b.Heading
+                & $addSpacer 2
+                & $addWrapped 'F1' 10 $b.Text
+                & $addSpacer 6
+                & $addLine 'F1' 10 $b.Place
+                & $addSpacer 24
+                & $addLine 'F1' 10 ('_' * [Math]::Max(30, ([string]$b.Signer).Length))
+                & $addLine 'F1' 10 $b.Signer
+                & $addSpacer 6
+            }
             'Table' {
                 # Reuse the plain-text column padding so Courier lines align.
                 $cols = $b.Header.Count
@@ -115,6 +136,14 @@ function ConvertTo-LedgerReportPdf {
     $currentPage = New-Object System.Collections.Generic.List[object]
     $y = $yTop
     foreach ($ln in $lines) {
+        if ($ln.PageBreak) {
+            if ($currentPage.Count -gt 0) {
+                $pages.Add($currentPage)
+                $currentPage = New-Object System.Collections.Generic.List[object]
+                $y = $yTop
+            }
+            continue
+        }
         $lineHeight = [Math]::Round($ln.Size * 1.4)
         if ($lineHeight -lt 8) { $lineHeight = 8 }
         if (($y - $lineHeight) -lt $marginBottom) {

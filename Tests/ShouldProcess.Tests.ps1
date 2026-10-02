@@ -35,7 +35,8 @@ Describe 'SupportsShouldProcess coverage' {
             'New-LedgerTimeInvoice',
             # File exports
             'Export-LedgerAnnualReport', 'Export-LedgerEmployerDeclaration', 'Export-LedgerIncomeTaxReturn',
-            'Export-LedgerInvoice', 'Export-LedgerPayslip', 'Export-LedgerSie', 'Export-LedgerVatDeclaration'
+            'Export-LedgerInvoice', 'Export-LedgerPayslip', 'Export-LedgerSie', 'Export-LedgerVatDeclaration',
+            'Export-LedgerArchive'
         )
 
         It '<_> supports ShouldProcess' -ForEach $WriteCommands {

@@ -29,6 +29,7 @@ when it reads a file; they are not an invitation to write files that way.
 - [Bank](#bank): `bank/stmtNNNN.txt`, `bank/rules.txt`
 - [Time reporting](#time-reporting): `time/`
 - [Other directories](#other-directories)
+- [Archive packages](#archive-packages): `manifest.txt`, `checksums.txt`
 - [Schema versions and compatibility](#schema-versions-and-compatibility)
 
 ## General conventions
@@ -887,6 +888,56 @@ Invoiced entries are locked: they cannot be changed or removed.
 - **Backups** (`Backup-LedgerJournal`) are zip files of the whole journal
   directory, named `<journal>_yyyy-MM-dd_HHmmss.zip`. They are stored outside the
   journal and contain the files exactly as specified here.
+
+## Archive packages
+
+`Export-LedgerArchive` writes a fiscal year as a package outside the journal: a
+zip file `<journal>_<fiscal year>_archive.zip` holding one folder with the same
+name, or that folder alone with `-AsDirectory`. The package is not read back by
+PSLedger, apart from `Test-LedgerArchive`.
+
+```
+<journal>_<fiscal year>_archive/
+├── README.txt        description in Swedish
+├── manifest.txt      see below
+├── checksums.txt     see below
+├── sie/<journal>_<fiscal year>.se
+├── reports/          grundbok, huvudbok, saldobalans, resultatrakning,
+│                     balansrakning, momsrapport (.txt, .pdf);
+│                     arsredovisning (.md, .docx, .pdf)
+└── journal/          a journal in the format of this document with only the
+                      fiscal year: the journal-level registers, the whole
+                      fiscal-year directory, and the year's invoices/,
+                      supplierinvoices/, payslips/ and bank/stmtNNNN.txt
+```
+
+Journal files are copied byte for byte, so `integrity.txt` in `journal/` still
+verifies. A report that could not be produced is left out and listed in the
+manifest.
+
+### `manifest.txt`
+
+`Key<TAB>Value` lines; lines starting with `;` are comments.
+
+| Key | Value |
+|---|---|
+| ArchiveFormat | `1` |
+| Journal, OrgNumber | From `journal.txt`. |
+| FiscalYear, StartDate, EndDate, YearStatus | From `year.txt`. |
+| Preliminary | `True` if the year was open when it was archived. |
+| Created | UTC, `yyyy-MM-ddTHH:mm:ssZ`. |
+| PSLedgerVersion, SchemaVersion | The PSLedger version that wrote the package and the journal's schema version. |
+| IntegrityStatus, ChainHash | The `Test-LedgerIntegrity` result for the year when it was archived. ChainHash is empty for an unsealed year. |
+| Verifications, Attachments, Invoices, SupplierInvoices, Payslips, BankStatements | Counts. |
+| Omitted | One line per report left out: `<path>: <reason>`. May repeat. |
+
+### `checksums.txt`
+
+One line per file in the package except `checksums.txt` itself, in the format
+of `sha256sum`: the SHA-256 of the file's bytes as 64 lowercase hex digits, two
+spaces and the path relative to the package folder with `/` separators. Lines
+are sorted by path (ordinal). Unlike `integrity.txt`, line endings are not
+normalised, because the package is stored as it was written.
 
 ## Schema versions and compatibility
 

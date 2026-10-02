@@ -248,4 +248,40 @@ Describe 'Atomic register writes' {
         }
         (Get-LedgerAccount -JournalPath $JournalPath -AccountNumber '1930').AccountName | Should -Be 'Företagskonto'
     }
+
+    # Only Windows refuses to replace a file another process holds open.
+    It 'Retries when another process briefly holds the file open' -Skip:(-not $IsWindows) {
+        Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name 'Volvo AB'
+        $file = Join-Path $JournalPath 'customers.txt'
+        $script:Lock = [System.IO.File]::Open($file, 'Open', 'Read', 'Read')
+        Mock -ModuleName PSLedger Start-Sleep { $script:Lock.Dispose() }
+        try {
+            Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '11' -Name 'Scania AB'
+        }
+        finally {
+            $script:Lock.Dispose()
+        }
+
+        Should -Invoke -ModuleName PSLedger Start-Sleep -Times 1 -Exactly
+        @(Get-LedgerCustomer -JournalPath $JournalPath).CustomerNumber | Should -Be @('10', '11')
+        @(Get-ChildItem -Path $JournalPath -Force -Filter '.tmp_*').Count | Should -Be 0
+    }
+
+    It 'Gives up and leaves the file unchanged when it stays locked' -Skip:(-not $IsWindows) {
+        Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name 'Volvo AB'
+        $file = Join-Path $JournalPath 'customers.txt'
+        $before = Get-Content -Raw $file
+        Mock -ModuleName PSLedger Start-Sleep { }
+        $lock = [System.IO.File]::Open($file, 'Open', 'Read', 'Read')
+        try {
+            { Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '11' -Name 'Scania AB' } | Should -Throw
+        }
+        finally {
+            $lock.Dispose()
+        }
+
+        Should -Invoke -ModuleName PSLedger Start-Sleep -Times 4 -Exactly
+        Get-Content -Raw $file | Should -Be $before
+        @(Get-ChildItem -Path $JournalPath -Force -Filter '.tmp_*').Count | Should -Be 0
+    }
 }

@@ -97,6 +97,15 @@ Describe 'Export-LedgerSie' {
             $text | Should -Match '#TRANS 3010 \{\} -1000\.50'
         }
 
+        It 'Should write #IB records for every opening balance row' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2081' -AccountName 'Aktiekapital'
+            Set-Content -Path (Join-Path $JournalPath $FiscalYear 'ib.txt') -Value "2081`t-25000", "1910`t25000" -Encoding utf8
+            Export-LedgerSie -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $SieFile
+            $lines = [System.IO.File]::ReadAllLines($SieFile, [System.Text.Encoding]::GetEncoding(437))
+            $ib = @($lines | Where-Object { $_ -like '#IB *' })
+            $ib | Should -Be @('#IB 0 1910 25000.00', '#IB 0 2081 -25000.00')
+        }
+
         It 'Should produce a file that validates as a valid SIE' {
             Export-LedgerSie -JournalPath $JournalPath -FiscalYear $FiscalYear -Path $SieFile
             $result = Test-LedgerSie -Path $SieFile

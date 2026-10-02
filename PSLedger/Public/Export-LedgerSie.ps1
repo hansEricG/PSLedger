@@ -117,7 +117,10 @@ function Export-LedgerSie {
         #   #IB  opening balances (ingående balans), from ib.txt
         #   #UB  closing balances for balance-sheet accounts (1xxx-2xxx)
         #   #RES period result for result accounts (3xxx-8xxx)
-        $openingRows = @(Read-LedgerOpeningBalance -YearDir $YearDir | Sort-Object Account)
+        # Read-LedgerOpeningBalance returns its rows as one array object, so
+        # assign it before piping or Sort-Object receives a single item.
+        $openingRows = Read-LedgerOpeningBalance -YearDir $YearDir
+        $openingRows = @($openingRows | Sort-Object Account)
         foreach ($ib in $openingRows) {
             & $append (Format-SieRecord -Tag 'IB' -Fields @('0', $ib.Account, [decimal]$ib.Amount))
         }

@@ -67,8 +67,10 @@ Verifications are plain text files and can be edited afterwards.
       `Close-LedgerFiscalYear` returns the final chain hash.
 
 ### 7. Archiving
-- [ ] Export a closed fiscal year as an archive package (SIE, PDF/Markdown
-      reports and all supporting documents) suitable for seven years' storage.
+- [x] Export a closed fiscal year as an archive package (SIE, PDF/Markdown
+      reports and all supporting documents) suitable for seven years' storage:
+      `Export-LedgerArchive` writes a zip with SHA-256 checksums and the
+      year's chain hash, and `Test-LedgerArchive` verifies it.
 
 ## Later (1.x)
 

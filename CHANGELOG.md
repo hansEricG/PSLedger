@@ -21,6 +21,18 @@
   `-ExpectedHash` checks the chain against a hash kept outside the journal.
 - **`Protect-LedgerFiscalYear`** seals the verifications and attachments of an
   existing fiscal year, for journals created with older versions.
+- **`Export-LedgerArchive`** writes a fiscal year as an archive package for the
+  seven-year retention period: a zip (or directory with `-AsDirectory`) with the
+  SIE file, grundbok, huvudbok, saldobalans, resultaträkning, balansräkning and
+  momsrapport as text and PDF, the annual report as Markdown, Word and PDF, and a
+  journal with the year's verifications, attachments, documents, integrity chain,
+  registers, invoices, supplier invoices, payslips and bank statements.
+  `manifest.txt` records the integrity status and chain hash and `checksums.txt`
+  the SHA-256 of every file.
+- **`Test-LedgerArchive`** verifies a package against its checksums and checks
+  the archived integrity chain against the recorded chain hash.
+- **PDF output** now renders page breaks, signature lines and the audit
+  certificate (fastställelseintyg), so the annual report can be written as PDF.
 
 ### Changed
 - **`Close-LedgerFiscalYear`** seals the year and returns an object with
@@ -30,6 +42,8 @@
   which records the removal in the chain.
 
 ### Fixed
+- **`Export-LedgerSie` failed for fiscal years with an opening balance** (`ib.txt`)
+  with "Cannot convert the System.Object[] value ... to type System.Decimal".
 - **Tabs and line breaks no longer corrupt the files.** Free text written to the
   registers, verifications, invoices, supplier invoices, payslips, recurring
   entries and `journal.txt` (names, descriptions, e-mail, org and personal
@@ -43,6 +57,8 @@
   `year.txt` and recurring entries, now goes through a temporary file that
   replaces the target in one step, so an interrupted write cannot leave a
   half-written file. The replace itself no longer deletes the target first.
+  On Windows the replace is retried briefly when another process (a virus
+  scanner, the search indexer, a sync client) holds the file open.
 
 ## [0.13.0] - 2026-10-02
 
