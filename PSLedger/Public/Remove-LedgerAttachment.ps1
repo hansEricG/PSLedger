@@ -68,6 +68,13 @@ function Remove-LedgerAttachment {
         }
 
         if ($PSCmdlet.ShouldProcess($filePath, 'Remove attachment')) {
+            # A sealed attachment is not deleted silently: the removal is logged in
+            # the integrity chain so Test-LedgerIntegrity does not report it missing.
+            $integrityKey = "$VerificationNumber/$FileName"
+            if (Test-LedgerIntegrityAttachmentSealed -YearDir $YearDir -Key $integrityKey) {
+                $removed = [pscustomobject]@{ Kind = 'AttachmentRemoved'; Key = $integrityKey; Hash = (Get-LedgerContentHash -Path $filePath) }
+                Write-LedgerIntegrityRecord -YearDir $YearDir -Record @($removed)
+            }
             Remove-Item -Path $filePath -Force
 
             # Remove directory if empty

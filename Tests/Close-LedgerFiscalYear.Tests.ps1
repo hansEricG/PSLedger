@@ -99,6 +99,29 @@ Describe 'Close-LedgerFiscalYear' {
                 Should -Throw '*Closed*'
         }
 
+        It 'Should seal the year and return the result verification and chain hash' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1910' -AccountName 'Kassa'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '3010' -AccountName 'Försäljning'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2099' -AccountName 'Årets resultat'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '8999' -AccountName 'Årets resultat'
+            Set-LedgerJournal -JournalPath $JournalPath -CompanyType AB
+            $Rows = @(
+                @{ Account = '1910'; Amount = 1000 }
+                @{ Account = '3010'; Amount = -1000 }
+            )
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-06-01' -Description 'Försäljning' -Rows $Rows
+            Remove-Item (Join-Path $JournalPath $FiscalYear 'integrity.txt')
+
+            $Result = Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $Result.FiscalYear | Should -Be $FiscalYear
+            $Result.ResultVerification | Should -Be 2
+            $Result.ChainHash | Should -Match '^[0-9a-f]{64}$'
+
+            $Integrity = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear -ExpectedHash $Result.ChainHash
+            $Integrity.Status | Should -Be 'Valid'
+            $Integrity.Verifications | Should -Be 2
+        }
+
         It 'Should throw if fiscal year does not exist' {
             { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2099-01_2099-12' } | Should -Throw
         }

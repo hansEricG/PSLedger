@@ -20,7 +20,7 @@ when it reads a file; they are not an invitation to write files that way.
 - [Journal-level files](#journal-level-files): `journal.txt`, `accounts.txt`,
   `dimensions.txt`, `objects.txt`
 - [Fiscal years](#fiscal-years): `year.txt`, `verNNNN.txt`, `verNNNN/`, `ib.txt`,
-  `holdings.txt`, `report.txt`, `documents/`
+  `holdings.txt`, `report.txt`, `documents/`, `integrity.txt`
 - [Recurring entries](#recurring-entries): `recurring/`
 - [Customers and invoices](#customers-and-invoices): `customers.txt`, `invoices/`
 - [Suppliers and supplier invoices](#suppliers-and-supplier-invoices):
@@ -119,6 +119,10 @@ one. Registers such as `customers.txt` are rewritten in full this way when a lin
 is added. Attachments and documents are copied or moved into place. A leftover
 `.tmp_*` file after a crash can be deleted.
 
+The one exception is `integrity.txt`, which is append-only: new records are
+appended to the end of the file. An interrupted append can leave an incomplete
+last line, which `Test-LedgerIntegrity` reports as `Malformed`.
+
 ### Unknown content
 
 Readers ignore keys and columns they do not know.
@@ -145,6 +149,7 @@ to store their own data SHOULD use their own files.
 │   ├── report.txt              annual report input
 │   ├── ver0001.txt             verifications
 │   ├── ver0001/                attachments of verification 1
+│   ├── integrity.txt           hash chain sealing verifications and attachments
 │   └── documents/              other documents for the year
 ├── recurring/<name>.txt        recurring entry templates
 ├── invoices/inv0001.txt        customer invoices and credit notes
@@ -402,6 +407,55 @@ keys other than those listed above are dropped.
 Documents that belong to the fiscal year but not to a single verification (for
 example contracts or the signed annual report). They are stored unchanged under
 their original file names.
+
+### `integrity.txt` — tamper detection
+
+An append-only hash chain that seals the year's verifications and attachments
+(varaktighet). Optional: a year without it is reported as `Unsealed` by
+`Test-LedgerIntegrity` until `Protect-LedgerFiscalYear` creates it. Year
+documents (`documents/`), `ib.txt`, `holdings.txt` and `report.txt` are not
+covered.
+
+```
+; PSLedger integrity chain
+; Kind<TAB>Key<TAB>Sealed<TAB>Hash<TAB>ChainHash
+Verification<TAB>1<TAB>2024-02-01T09:12:44Z<TAB>f323cf28…<TAB>0dd791c3…
+Attachment<TAB>1/kvitto.pdf<TAB>2024-02-01T09:12:44Z<TAB>c0d47590…<TAB>b7844674…
+AttachmentRemoved<TAB>1/kvitto.pdf<TAB>2024-02-03T15:00:02Z<TAB>c0d47590…<TAB>9a01c2e7…
+```
+
+Lines starting with `;` are comments. Each record has five tab-separated fields:
+
+| Field | Description |
+|---|---|
+| Kind | `Verification`, `Attachment` or `AttachmentRemoved`. |
+| Key | The verification number without zero padding (`1`), or `<number>/<file name>` for attachments. |
+| Sealed | When the record was written, UTC, `yyyy-MM-ddTHH:mm:ssZ`. |
+| Hash | SHA-256 of the item, 64 lowercase hex digits. For `AttachmentRemoved`, the hash of the file when it was removed. |
+| ChainHash | SHA-256 of the UTF-8 text `<previous ChainHash><TAB><Kind><TAB><Key><TAB><Sealed><TAB><Hash>`, 64 lowercase hex digits. The first record uses 64 zeros as the previous ChainHash. |
+
+**Content hash.** The hash is taken over the file's bytes, except that a file
+without a NUL byte in its first 8000 bytes (the rule Git uses to detect text)
+has every CRLF replaced by LF first. A journal checked out by Git on Windows and
+on Linux therefore gives the same hashes. Binary files are hashed byte for byte.
+
+**Rules.**
+
+- `Add-LedgerEntry` appends a `Verification` record and `Add-LedgerAttachment`
+  an `Attachment` record. When the year has no `integrity.txt` yet, every
+  verification and attachment already in the year is sealed first, in
+  verification-number order, each verification followed by its attachments.
+- A sealed attachment cannot be replaced. `Remove-LedgerAttachment` appends an
+  `AttachmentRemoved` record before deleting the file, after which the same name
+  can be attached again.
+- A verification is sealed once. Records are never changed or removed, except
+  that a write that fails and is rolled back removes its own last record.
+- `Close-LedgerFiscalYear` seals anything not yet sealed and returns the final
+  ChainHash. The final ChainHash is the ChainHash of the last readable record.
+
+The chain detects changes made without rebuilding it. Anyone who can edit the
+files can also rebuild the chain, so keep the final ChainHash outside the journal
+and check it with `Test-LedgerIntegrity -ExpectedHash`.
 
 ## Recurring entries
 

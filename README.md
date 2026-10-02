@@ -13,6 +13,8 @@ A simple command-line double-entry bookkeeping system built as a PowerShell modu
   flerårsöversikt, vinstdisposition) exported to Text, Markdown or Word (`.docx`)
 - **Year-end workflow** — close fiscal year, copy opening balances
 - **Corrections** — reversal entries following Swedish bookkeeping law
+- **Tamper detection** — verifications and attachments are sealed in a SHA-256 hash
+  chain per fiscal year, so later edits can be detected (varaktighet)
 - **SIE 4 import/export** — exchange data with other Swedish accounting systems (incl. dimensions)
 - **Dimensions & objects** — cost centres, projects with SIE round-trip support
 - **Accruals** — automated accrual + reversal across fiscal years
@@ -66,7 +68,7 @@ Add-LedgerEntry -FiscalYear '2024-01_2024-12' `
 Get-LedgerBalance -FiscalYear '2024-01_2024-12' |
     Format-Table AccountNumber, AccountName, Debit, Credit, Balance
 
-# 7. Year-end
+# 7. Year-end (save the returned ChainHash outside the journal)
 Close-LedgerFiscalYear -FiscalYear '2024-01_2024-12'
 New-LedgerFiscalYear -StartDate '2025-01-01' -EndDate '2025-12-31'
 Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
@@ -84,7 +86,9 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerAccount` | List or look up accounts |
 | `New-LedgerFiscalYear` | Create a fiscal year |
 | `Get-LedgerFiscalYear` | List fiscal years |
-| `Close-LedgerFiscalYear` | Lock a fiscal year (no more entries) |
+| `Close-LedgerFiscalYear` | Lock a fiscal year (no more entries) and return its final chain hash |
+| `Test-LedgerIntegrity` | Detect changed, missing or unsealed verifications and attachments |
+| `Protect-LedgerFiscalYear` | Seal existing verifications and attachments in a fiscal year |
 | `Add-LedgerEntry` | Create a verification (journal entry) |
 | `New-LedgerEntryRow` | Build a verification row using -Debit/-Credit (no sign juggling) |
 | `Get-LedgerEntry` | Query entries with optional filters |
@@ -641,6 +645,30 @@ New-LedgerTimeInvoice -CustomerNumber 10 -Through '2024-03-31'
 
 For a full walkthrough see [docs/Tidrapportering.md](docs/Tidrapportering.md).
 
+## Tamper Detection (Varaktighet)
+
+Each fiscal year has an append-only hash chain, `integrity.txt`. `Add-LedgerEntry`
+and `Add-LedgerAttachment` seal what they write; a sealed attachment can only be
+removed with `Remove-LedgerAttachment`, which records the removal in the chain.
+
+```powershell
+# Check every fiscal year
+Test-LedgerIntegrity -JournalPath .\MinFirma.ledger
+
+# Journals created with older PSLedger versions: seal what is already there
+Protect-LedgerFiscalYear -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
+
+# Closing returns the final chain hash. Store it somewhere else (e-mail, the
+# signed annual report) and check against it later.
+$closed = Close-LedgerFiscalYear -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
+Test-LedgerIntegrity -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' `
+    -ExpectedHash $closed.ChainHash
+```
+
+The chain detects edits made without rebuilding it. Someone who rewrites both
+the files and the chain is only caught by `-ExpectedHash`. Opening balances,
+`year.txt`, year documents and the registers are not part of the chain.
+
 ## Custom Extensions
 
 Extend PSLedger with your own PowerShell functions. Extensions are `.ps1` files
@@ -763,6 +791,7 @@ MinFirma.ledger/
     ├── ib.txt               # Opening balance metadata (optional)
     ├── report.txt           # Annual report input (optional)
     ├── holdings.txt         # Securities holdings at the balance date (optional)
+    ├── integrity.txt        # Hash chain sealing verifications and attachments
     ├── ver0001.txt          # Verification #1
     └── ver0002.txt          # Verification #2
 ```

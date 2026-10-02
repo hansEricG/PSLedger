@@ -60,9 +60,11 @@ There are 129 public commands; renaming after 1.0 is expensive.
 ### 6. Tamper detection
 Verifications are plain text files and can be edited afterwards.
 
-- [ ] `Test-LedgerIntegrity`: checksums or a hash chain per verification so
-      changes to posted entries can be detected (supports the permanence
-      requirement, varaktighet).
+- [x] `Test-LedgerIntegrity`: a SHA-256 hash chain per fiscal year
+      (`integrity.txt`) seals verifications and attachments, so changes to
+      posted entries can be detected (supports the permanence requirement,
+      varaktighet). `Protect-LedgerFiscalYear` seals existing journals, and
+      `Close-LedgerFiscalYear` returns the final chain hash.
 
 ### 7. Archiving
 - [ ] Export a closed fiscal year as an archive package (SIE, PDF/Markdown

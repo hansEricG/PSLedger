@@ -235,6 +235,7 @@ function Add-LedgerEntry {
             }
 
             Set-LedgerFileContent -Path $FilePath -Value $Lines
+            Register-LedgerIntegrityItem -YearDir $YearDir -Kind Verification -Key "$NextNum" -Path $FilePath
 
             # Attach any supplied files to the new verification
             $attached = @()

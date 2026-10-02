@@ -94,6 +94,10 @@ function Add-LedgerAttachment {
         foreach ($sourcePath in $Path) {
             $sourceFile = Get-Item $sourcePath
             $destPath = Join-Path $attachDir $sourceFile.Name
+            $integrityKey = "$VerificationNumber/$($sourceFile.Name)"
+            if (Test-LedgerIntegrityAttachmentSealed -YearDir $YearDir -Key $integrityKey) {
+                throw "Attachment '$($sourceFile.Name)' on verification $VerificationNumber is sealed and cannot be replaced. Remove it with Remove-LedgerAttachment first."
+            }
 
             $verb = if ($Move) { 'Move' } else { 'Copy' }
             if (-not $PSCmdlet.ShouldProcess($destPath, "$verb attachment")) {
@@ -110,6 +114,7 @@ function Add-LedgerAttachment {
             else {
                 Copy-Item -Path $sourcePath -Destination $destPath -Force
             }
+            Register-LedgerIntegrityItem -YearDir $YearDir -Kind Attachment -Key $integrityKey -Path $destPath
 
             if ($PassThru) {
                 Get-LedgerAttachment -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber $VerificationNumber |

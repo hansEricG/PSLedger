@@ -20,6 +20,13 @@ After any result entry has been written the Status field in year.txt is set to
 'Closed'. Once closed, Add-LedgerEntry refuses to create new verifications in that
 fiscal year.
 
+Finally every verification and attachment in the year that is not yet in the
+integrity chain is sealed (see Protect-LedgerFiscalYear), and the command returns
+an object with FiscalYear, ResultVerification (the result entry's number, or
+empty) and ChainHash. Save the ChainHash outside the journal, for example in the
+annual report archive, and check it later with
+Test-LedgerIntegrity -ExpectedHash.
+
 .PARAMETER JournalPath
 The path to an existing journal directory.
 
@@ -45,7 +52,8 @@ synthetically by Copy-LedgerOpeningBalance instead of being booked.
 Close-LedgerFiscalYear -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
 
 Books the 2024 net result to equity (using the journal's CompanyType to pick the
-account) and closes the year so no more entries can be added.
+account), closes the year so no more entries can be added and returns the chain
+hash to keep.
 
 .EXAMPLE
 Close-LedgerFiscalYear -JournalPath .\Enskild.ledger -FiscalYear '2024-01_2024-12' -EquityAccount '2019'
@@ -61,6 +69,7 @@ Get-LedgerFiscalYear -JournalPath .\MinFirma.ledger |
 Closes all open fiscal years without booking a result verification.
 #>
 function Close-LedgerFiscalYear {
+    [OutputType([pscustomobject])]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
@@ -97,6 +106,7 @@ function Close-LedgerFiscalYear {
 
         # Check current status and capture the year's end date for the result entry.
         $EndDate = $null
+        $resultEntry = $null
         foreach ($Line in $Lines) {
             if ($Line -match '^Status:\s*Closed') {
                 throw "Fiscal year $FiscalYear is already closed."
@@ -144,8 +154,8 @@ function Close-LedgerFiscalYear {
                     @{ Account = $Equity; Amount = $RawResult }
                 )
 
-                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-                    -Date $EndDate -Description 'Årets resultat (bokslut)' -Rows $Rows
+                $resultEntry = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                    -Date $EndDate -Description 'Årets resultat (bokslut)' -Rows $Rows -PassThru
             }
         }
 
@@ -160,5 +170,17 @@ function Close-LedgerFiscalYear {
         }
 
         Set-LedgerFileContent -Path $YearFile -Value $NewLines
+
+        [void](Protect-LedgerYearContent -YearDir $YearDir)
+        $integrity = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
+        if (-not $integrity.IsValid) {
+            Write-Warning "Fiscal year $FiscalYear has integrity issues: $(@($integrity.Issues | ForEach-Object Detail) -join ' ')"
+        }
+
+        [PSCustomObject]@{
+            FiscalYear         = $FiscalYear
+            ResultVerification = if ($resultEntry) { $resultEntry.VerificationNumber } else { $null }
+            ChainHash          = $integrity.ChainHash
+        }
     }
 }

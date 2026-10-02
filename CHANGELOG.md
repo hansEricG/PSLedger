@@ -12,6 +12,22 @@
 - **File format contract test.** `Tests/FileFormat.Tests.ps1` reads a reference
   journal (`Tests/Fixtures/FileFormat/Exempel.ledger`) covering every file and
   checks the values the commands return.
+- **Tamper detection.** Each fiscal year gets an append-only SHA-256 hash chain,
+  `integrity.txt`, that seals verifications and attachments (varaktighet).
+  `Add-LedgerEntry` and `Add-LedgerAttachment` seal what they write; the first
+  write to a year without a chain seals everything already there.
+- **`Test-LedgerIntegrity`** reports modified, missing and unsealed
+  verifications and attachments and a broken chain, per fiscal year.
+  `-ExpectedHash` checks the chain against a hash kept outside the journal.
+- **`Protect-LedgerFiscalYear`** seals the verifications and attachments of an
+  existing fiscal year, for journals created with older versions.
+
+### Changed
+- **`Close-LedgerFiscalYear`** seals the year and returns an object with
+  `FiscalYear`, `ResultVerification` and `ChainHash` (it returned nothing before).
+- **Sealed attachments cannot be overwritten.** `Add-LedgerAttachment` throws
+  if the attachment is sealed; remove it with `Remove-LedgerAttachment` first,
+  which records the removal in the chain.
 
 ### Fixed
 - **Tabs and line breaks no longer corrupt the files.** Free text written to the

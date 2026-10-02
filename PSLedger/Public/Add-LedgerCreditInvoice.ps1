@@ -183,6 +183,7 @@ function Add-LedgerCreditInvoice {
                 if (Test-Path -LiteralPath $verPath) {
                     Remove-Item -LiteralPath $verPath -Force -ErrorAction SilentlyContinue
                 }
+                Remove-LedgerIntegrityTail -YearDir (Join-Path $JournalPath $FiscalYear) -Kind Verification -Key "$($verification.VerificationNumber)"
             }
             if (Test-Path -LiteralPath $creditNotePath) {
                 Remove-Item -LiteralPath $creditNotePath -Force -ErrorAction SilentlyContinue

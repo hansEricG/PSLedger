@@ -287,6 +287,23 @@ Describe 'File format contract' {
         }
     }
 
+    Context 'Integrity chain' {
+        It 'Should verify integrity.txt with the hashes recorded in the fixture' {
+            # The chain hashes are fixed: they only match if the hashing rules
+            # (SHA-256, CRLF normalised to LF for text files, chain input) are unchanged.
+            $expected = @{
+                '2023-01_2023-12' = '5364aa894e1d60cf65d1942ee1b8b2ab9b64f8ddc33f13db03f6530a78ce96e1'
+                '2024-01_2024-12' = '85bf3eb0161b59585358f1586201364c56fdefaf8194fe9aa1663dd8e7bf666e'
+            }
+            foreach ($year in $expected.Keys) {
+                $result = Test-LedgerIntegrity -JournalPath $J -FiscalYear $year -ExpectedHash $expected[$year]
+                $result.Issues | Should -BeNullOrEmpty -Because $year
+                $result.Status | Should -Be 'Valid'
+            }
+            (Test-LedgerIntegrity -JournalPath $J -FiscalYear $Y).Attachments | Should -Be 1
+        }
+    }
+
     Context 'Writing' {
         It 'Should write a verification in the documented format' {
             $rows = @(
@@ -300,6 +317,10 @@ Describe 'File format contract' {
             $lines | Should -Contain 'Description: Kontorsmaterial'
             $lines | Should -Contain "6110`t120.5`t{1:10}`tPapper"
             $lines | Should -Contain "1930`t-120.5"
+
+            $chain = @(Get-Content (Join-Path $J $Y 'integrity.txt'))
+            $chain[-1] | Should -Match "^Verification`t8`t\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`t[0-9a-f]{64}`t[0-9a-f]{64}$"
+            (Test-LedgerIntegrity -JournalPath $J -FiscalYear $Y).Status | Should -Be 'Valid'
         }
     }
 }

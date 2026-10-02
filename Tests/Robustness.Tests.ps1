@@ -61,6 +61,9 @@ Describe 'Atomic file writes and rollback' {
             $entries = @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12')
             $entries.Count | Should -Be 1
             Test-Path (Join-Path $JournalPath '2024-01_2024-12' 'ver0002.txt') | Should -BeFalse
+
+            # The rolled-back verification is also removed from the integrity chain.
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Status | Should -Be 'Valid'
         }
     }
 }

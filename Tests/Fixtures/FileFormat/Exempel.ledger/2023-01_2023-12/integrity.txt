@@ -1,0 +1,3 @@
+; PSLedger integrity chain
+; Kind	Key	Sealed	Hash	ChainHash
+Verification	1	2026-10-02T18:59:30Z	3c58c988eb835042640fa5995adad11570d769d7620f659c9af3cd0ef3853869	5364aa894e1d60cf65d1942ee1b8b2ab9b64f8ddc33f13db03f6530a78ce96e1

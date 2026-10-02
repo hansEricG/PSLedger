@@ -27,6 +27,8 @@ Describe 'SupportsShouldProcess coverage' {
             # Bank import and reconciliation
             'Import-LedgerBankStatement', 'Invoke-LedgerBankMatching', 'Set-LedgerBankTransaction',
             'Add-LedgerBankRule', 'Remove-LedgerBankRule',
+            # Tamper detection
+            'Protect-LedgerFiscalYear',
             # Time reporting
             'Add-LedgerTimeResource', 'Set-LedgerTimeResource', 'Add-LedgerProject', 'Set-LedgerProject',
             'Add-LedgerTimeEntry', 'Set-LedgerTimeEntry', 'Remove-LedgerTimeEntry', 'Import-LedgerTimeEntry',

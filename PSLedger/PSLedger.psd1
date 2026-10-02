@@ -178,6 +178,7 @@ FunctionsToExport = @(
     'New-LedgerRecurringEntry',
     'New-LedgerSupplierInvoice',
     'New-LedgerTimeInvoice',
+    'Protect-LedgerFiscalYear',
     'Remove-LedgerAttachment',
     'Remove-LedgerBankRule',
     'Remove-LedgerDocument',
@@ -198,6 +199,7 @@ FunctionsToExport = @(
     'Set-LedgerTimeEntry',
     'Set-LedgerTimeResource',
     'Test-LedgerFiscalYear',
+    'Test-LedgerIntegrity',
     'Test-LedgerSie',
     'Update-LedgerJournal'
 )
