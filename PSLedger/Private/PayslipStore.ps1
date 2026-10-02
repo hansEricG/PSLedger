@@ -149,7 +149,7 @@ function Save-LedgerPayslipFile {
         "PayDate:`t$($Payslip.PayDate.ToString('yyyy-MM-dd'))"
         "PeriodStart:`t$periodStart"
         "PeriodEnd:`t$periodEnd"
-        "Description:`t$($Payslip.Description)"
+        "Description:`t$(ConvertTo-LedgerTextField $Payslip.Description)"
         "Status:`t$($Payslip.Status)"
         "GrossSalary:`t$(Format-LedgerInvoiceAmount -Value ([decimal]$Payslip.GrossSalary))"
         "TaxAmount:`t$(Format-LedgerInvoiceAmount -Value ([decimal]$Payslip.TaxAmount))"

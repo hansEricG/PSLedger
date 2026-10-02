@@ -98,7 +98,7 @@ function Invoke-LedgerRecurringEntry {
                 }
                 else { $_ }
             }
-            $updated | Set-Content -Path $tmpl.FilePath -Encoding UTF8
+            Set-LedgerFileContent -Path $tmpl.FilePath -Value $updated
         }
     }
 

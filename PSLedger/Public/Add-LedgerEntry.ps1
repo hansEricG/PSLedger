@@ -104,6 +104,7 @@ function Add-LedgerEntry {
         $WriteEntry = {
             param([hashtable[]]$EntryRows)
 
+            $Description = ConvertTo-LedgerTextField $Description
             $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
             $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 

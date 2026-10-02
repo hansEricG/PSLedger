@@ -102,6 +102,6 @@ function Import-LedgerChart {
     # Copy content
     $Content = Get-Content $SourceFile
     if ($PSCmdlet.ShouldProcess($KontoplanFile, "Import chart of accounts ($($Content.Count) lines)")) {
-        $Content | Set-Content -Path $KontoplanFile -Encoding UTF8
+        Set-LedgerFileContent -Path $KontoplanFile -Value $Content
     }
 }

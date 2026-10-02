@@ -10,6 +10,7 @@
 . $PSScriptRoot\Private\ResolveFiscalYear.ps1
 . $PSScriptRoot\Private\PathSafety.ps1
 . $PSScriptRoot\Private\FileWrite.ps1
+. $PSScriptRoot\Private\TextField.ps1
 . $PSScriptRoot\Private\OpeningBalance.ps1
 . $PSScriptRoot\Private\Holdings.ps1
 . $PSScriptRoot\Private\JournalSchema.ps1

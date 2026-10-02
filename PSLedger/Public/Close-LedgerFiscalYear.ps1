@@ -159,6 +159,6 @@ function Close-LedgerFiscalYear {
             }
         }
 
-        $NewLines | Set-Content -Path $YearFile -Encoding UTF8
+        Set-LedgerFileContent -Path $YearFile -Value $NewLines
     }
 }

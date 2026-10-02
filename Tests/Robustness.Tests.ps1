@@ -110,3 +110,139 @@ Describe 'Warnings for malformed data files' {
         }
     }
 }
+
+Describe 'Single-line text fields' {
+    BeforeEach {
+        $JournalPath = Join-Path $TestDrive ([guid]::NewGuid().ToString('N') + '.ledger')
+        New-LedgerJournal -Path $JournalPath -Name 'Text AB' -CompanyType AB
+        New-LedgerFiscalYear -JournalPath $JournalPath -StartDate '2024-01-01' -EndDate '2024-12-31'
+        Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1930' -AccountName 'Företagskonto'
+        Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '6110' -AccountName 'Kontorsmateriel'
+        $multi = "Rad ett`r`nrad`ttvå`n"
+    }
+
+    It 'Normalises tabs and line breaks in register text fields' {
+        Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name $multi -Email "a@b.se`t"
+        Add-LedgerSupplier -JournalPath $JournalPath -SupplierNumber '20' -Name $multi
+        Add-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber '1' -Name $multi
+        Add-LedgerDimension -JournalPath $JournalPath -DimensionNumber 1 -Name $multi
+        Add-LedgerObject -JournalPath $JournalPath -DimensionNumber 1 -ObjectNumber '10' -Name $multi
+        Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '6570' -AccountName $multi
+
+        foreach ($file in 'customers.txt', 'suppliers.txt', 'employees.txt', 'dimensions.txt', 'objects.txt') {
+            @(Get-Content (Join-Path $JournalPath $file)).Count | Should -Be 1 -Because $file
+        }
+        (Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10').Name | Should -Be 'Rad ett rad två'
+        (Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10').Email | Should -Be 'a@b.se'
+        (Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10').PaymentTermsDays | Should -Be 30
+        (Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber '20').Name | Should -Be 'Rad ett rad två'
+        (Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber '1').Name | Should -Be 'Rad ett rad två'
+        (Get-LedgerObject -JournalPath $JournalPath -DimensionNumber 1 -ObjectNumber '10').Name | Should -Be 'Rad ett rad två'
+        (Get-LedgerAccount -JournalPath $JournalPath -AccountNumber '6570').AccountName | Should -Be 'Rad ett rad två'
+    }
+
+    It 'Normalises text when a register entry is updated' {
+        Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name 'Volvo AB'
+        Add-LedgerSupplier -JournalPath $JournalPath -SupplierNumber '20' -Name 'Telia AB'
+        Add-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber '1' -Name 'Anna'
+        Set-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name $multi
+        Set-LedgerSupplier -JournalPath $JournalPath -SupplierNumber '20' -Name $multi
+        Set-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber '1' -Name $multi
+
+        (Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10').Name | Should -Be 'Rad ett rad två'
+        (Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber '20').Name | Should -Be 'Rad ett rad två'
+        (Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber '1').Name | Should -Be 'Rad ett rad två'
+    }
+
+    It 'Normalises the verification description' {
+        $rows = @(
+            New-LedgerEntryRow -Debit 6110 -Amount 100
+            New-LedgerEntryRow -Credit 1930 -Amount 100
+        )
+        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Date '2024-02-01' -Description $multi -Rows $rows
+
+        $entry = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -VerificationNumber 1
+        $entry.Description | Should -Be 'Rad ett rad två'
+        $entry.Rows.Count | Should -Be 2
+    }
+
+    It 'Normalises document descriptions and references' {
+        Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1510' -AccountName 'Kundfordringar'
+        Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '3010' -AccountName 'Försäljning'
+        Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2610' -AccountName 'Utgående moms'
+        Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2440' -AccountName 'Leverantörsskulder'
+        Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2640' -AccountName 'Ingående moms'
+        Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name 'Volvo AB'
+        Add-LedgerSupplier -JournalPath $JournalPath -SupplierNumber '20' -Name 'Telia AB'
+        Add-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber '1' -Name 'Anna' -TaxRate 0.3
+
+        New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2024-03-01' -Description $multi `
+            -Rows @(@{ Account = '3010'; Amount = 1000; VatRate = 0.25; VatAccount = '2610' })
+        New-LedgerSupplierInvoice -JournalPath $JournalPath -SupplierNumber '20' -Date '2024-03-05' -Description $multi `
+            -SupplierReference "T-1`n2" -Rows @(@{ Account = '6110'; Amount = 400; VatRate = 0.25; VatAccount = '2640' })
+        New-LedgerPayslip -JournalPath $JournalPath -EmployeeNumber '1' -PayDate '2024-03-25' -GrossSalary 30000 -Description $multi
+
+        $invoice = Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1
+        $invoice.Description | Should -Be 'Rad ett rad två'
+        $invoice.Rows.Count | Should -Be 1
+        $supplierInvoice = Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber 1
+        $supplierInvoice.Description | Should -Be 'Rad ett rad två'
+        $supplierInvoice.SupplierReference | Should -Be 'T-1 2'
+        (Get-LedgerPayslip -JournalPath $JournalPath -PayslipNumber 1).Description | Should -Be 'Rad ett rad två'
+    }
+
+    It 'Normalises the journal name and metadata' {
+        Set-LedgerJournal -JournalPath $JournalPath -Name $multi -Metadata @{ Address = "Gatan 1`nVåning 2" }
+        $journal = Get-LedgerJournal -Path $JournalPath
+        $journal.Name | Should -Be 'Rad ett rad två'
+        $journal.Metadata['Address'] | Should -Be 'Gatan 1 Våning 2'
+    }
+
+    It 'Rejects identifiers with tabs or line breaks' {
+        { Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber "1`n0" -Name 'X' } | Should -Throw '*CustomerNumber must not contain tabs or line breaks*'
+        { Add-LedgerSupplier -JournalPath $JournalPath -SupplierNumber "2`t0" -Name 'X' } | Should -Throw '*SupplierNumber must not contain*'
+        { Add-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber "1`r" -Name 'X' } | Should -Throw '*EmployeeNumber must not contain*'
+        { Add-LedgerAccount -JournalPath $JournalPath -AccountNumber "1`t2" -AccountName 'X' } | Should -Throw '*AccountNumber must not contain*'
+        Add-LedgerDimension -JournalPath $JournalPath -DimensionNumber 1 -Name 'Kostnadsställe'
+        { Add-LedgerObject -JournalPath $JournalPath -DimensionNumber 1 -ObjectNumber "1`n0" -Name 'X' } | Should -Throw '*ObjectNumber must not contain*'
+    }
+}
+
+Describe 'Atomic register writes' {
+    BeforeEach {
+        $JournalPath = Join-Path $TestDrive ([guid]::NewGuid().ToString('N') + '.ledger')
+        New-LedgerJournal -Path $JournalPath -Name 'Register AB' -CompanyType AB
+    }
+
+    It 'Appends to a register without temporary files and keeps the existing lines' {
+        Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name 'Volvo AB'
+        Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '11' -Name 'Scania AB'
+        Set-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Email 'faktura@volvo.example'
+
+        @(Get-LedgerCustomer -JournalPath $JournalPath).CustomerNumber | Should -Be @('10', '11')
+        @(Get-ChildItem -Path $JournalPath -Force -Filter '.tmp_*').Count | Should -Be 0
+    }
+
+    It 'Leaves the register unchanged when the write fails' {
+        Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name 'Volvo AB'
+        $file = Join-Path $JournalPath 'customers.txt'
+        $before = Get-Content -Raw $file
+
+        Mock -ModuleName PSLedger Set-Content { throw 'simulated write failure' }
+        { Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '11' -Name 'Scania AB' } | Should -Throw '*simulated write failure*'
+
+        Get-Content -Raw $file | Should -Be $before
+        @(Get-ChildItem -Path $JournalPath -Force -Filter '.tmp_*').Count | Should -Be 0
+    }
+
+    It 'Resolves relative paths against the PowerShell location' {
+        Push-Location $JournalPath
+        try {
+            Add-LedgerAccount -JournalPath . -AccountNumber '1930' -AccountName 'Företagskonto'
+        }
+        finally {
+            Pop-Location
+        }
+        (Get-LedgerAccount -JournalPath $JournalPath -AccountNumber '1930').AccountName | Should -Be 'Företagskonto'
+    }
+}

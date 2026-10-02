@@ -76,7 +76,7 @@ function New-LedgerFiscalYear {
     )
 
     $YearFile = Join-Path $YearDir 'year.txt'
-    $Lines | Set-Content -Path $YearFile -Encoding UTF8
+    Set-LedgerFileContent -Path $YearFile -Value $Lines
     if ($PassThru) {
         Get-LedgerFiscalYear -JournalPath $JournalPath | Where-Object { $_.Name -eq $DirName }
     }

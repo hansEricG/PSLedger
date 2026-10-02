@@ -99,9 +99,9 @@ function Set-LedgerSupplier {
                 $curEmail = if ($parts.Count -ge 4) { $parts[3] } else { '' }
                 $curTerms = if ($parts.Count -ge 5) { $parts[4] } else { '30' }
 
-                if ($updateName) { $curName = $Name }
-                if ($updateOrg) { $curOrg = $OrgNumber }
-                if ($updateEmail) { $curEmail = $Email }
+                if ($updateName) { $curName = ConvertTo-LedgerTextField $Name }
+                if ($updateOrg) { $curOrg = ConvertTo-LedgerTextField $OrgNumber }
+                if ($updateEmail) { $curEmail = ConvertTo-LedgerTextField $Email }
                 if ($updateTerms) { $curTerms = $PaymentTermsDays }
 
                 "$SupplierNumber`t$curName`t$curOrg`t$curEmail`t$curTerms"
@@ -116,7 +116,7 @@ function Set-LedgerSupplier {
         }
 
         if ($PSCmdlet.ShouldProcess($SupplierNumber, "Update supplier")) {
-            $newLines | Set-Content -Path $SupplierFile -Encoding UTF8
+            Set-LedgerFileContent -Path $SupplierFile -Value $newLines
             if ($PassThru) {
                 Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber
             }

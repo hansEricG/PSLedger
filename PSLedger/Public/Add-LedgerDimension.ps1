@@ -62,7 +62,7 @@ function Add-LedgerDimension {
     }
 
     if ($PSCmdlet.ShouldProcess("$DimensionNumber", 'Add dimension')) {
-        "$DimensionNumber`t$Name" | Add-Content -Path $DimFile -Encoding UTF8
+        Add-LedgerFileLine -Path $DimFile -Line "$DimensionNumber`t$(ConvertTo-LedgerTextField $Name)"
         if ($PassThru) {
             Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $DimensionNumber
         }

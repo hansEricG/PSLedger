@@ -13,6 +13,21 @@
   journal (`Tests/Fixtures/FileFormat/Exempel.ledger`) covering every file and
   checks the values the commands return.
 
+### Fixed
+- **Tabs and line breaks no longer corrupt the files.** Free text written to the
+  registers, verifications, invoices, supplier invoices, payslips, recurring
+  entries and `journal.txt` (names, descriptions, e-mail, org and personal
+  numbers, references) now has each run of tabs and line breaks replaced by one
+  space and is trimmed. Identifiers (customer, supplier, employee, account and
+  object numbers, recurring entry names) that contain them are rejected.
+  `New-LedgerRecurringEntry` also rejects names with path separators.
+- **All journal files are written atomically.** Adding to `accounts.txt`,
+  `customers.txt`, `suppliers.txt`, `employees.txt`, `dimensions.txt` and
+  `objects.txt`, and updating customers, suppliers, employees, `journal.txt`,
+  `year.txt` and recurring entries, now goes through a temporary file that
+  replaces the target in one step, so an interrupted write cannot leave a
+  half-written file. The replace itself no longer deletes the target first.
+
 ## [0.13.0] - 2026-10-02
 
 ### Added

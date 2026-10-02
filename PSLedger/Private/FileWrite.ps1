@@ -24,16 +24,21 @@ function Set-LedgerFileContent {
         $Value
     )
 
-    $dir = Split-Path -Parent $Path
-    if (-not $dir) { $dir = '.' }
+    # .NET resolves relative paths against the process directory, not the
+    # PowerShell location, so resolve to a full provider path first.
+    $fullPath = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($Path)
+    $dir = [System.IO.Path]::GetDirectoryName($fullPath)
 
     $tempPath = Join-Path $dir ('.tmp_' + [guid]::NewGuid().ToString('N'))
 
     try {
         # Set-Content writes UTF-8 (no BOM in PowerShell 7) with the same line
         # handling the callers previously relied on.
-        Set-Content -Path $tempPath -Value $Value -Encoding UTF8
-        Move-Item -Path $tempPath -Destination $Path -Force
+        Set-Content -LiteralPath $tempPath -Value $Value -Encoding UTF8
+        # File.Move with overwrite replaces the target in one step (rename(2) on
+        # Unix, MoveFileEx with MOVEFILE_REPLACE_EXISTING on Windows). Move-Item
+        # -Force deletes the target first, leaving a moment without the file.
+        [System.IO.File]::Move($tempPath, $fullPath, $true)
     }
     catch {
         if (Test-Path -LiteralPath $tempPath) {
@@ -41,4 +46,27 @@ function Set-LedgerFileContent {
         }
         throw
     }
+}
+
+function Add-LedgerFileLine {
+    <#
+    .SYNOPSIS
+    Appends lines to a register file by rewriting it atomically.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string[]]$Line
+    )
+
+    $existing = if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        @(Get-Content -LiteralPath $Path -Encoding UTF8)
+    }
+    else {
+        @()
+    }
+    Set-LedgerFileContent -Path $Path -Value (@($existing) + $Line)
 }

@@ -65,10 +65,13 @@ to zero, after rounding to two decimals.
 
 ### Text fields
 
-Free-text values (names, descriptions, comments) MUST be on a single line and
-MUST NOT contain a tab. There is no quoting or escape syntax. Most PSLedger
-writers replace tabs and line breaks with spaces. The exception is `report.txt`,
-which has its own syntax for text that spans several lines.
+Free-text values (names, descriptions, references, comments) MUST be on a single
+line and MUST NOT contain a tab. There is no quoting or escape syntax. PSLedger
+writers replace each run of tabs and line breaks in free text with one space and
+trim the value. Identifiers (customer, supplier, employee, account and object
+numbers, recurring entry names) are never changed: a command given one that
+contains a tab or a line break fails. The exception is `report.txt`, which has its
+own syntax for text that spans several lines.
 
 ### Line styles
 
@@ -109,12 +112,12 @@ are named by a prefix and a number zero-padded to at least four digits.
 
 ### Writing
 
-PSLedger writes most files atomically: it writes a temporary file
-(`.tmp_<guid>`) in the same directory and then renames it over the target, so a
-reader sees either the old or the new file. Files are rewritten in full; the
-exceptions are a few registers that are appended to (`accounts.txt`,
-`customers.txt`, `suppliers.txt`, `employees.txt`, `dimensions.txt`,
-`objects.txt`). A leftover `.tmp_*` file after a crash can be deleted.
+PSLedger writes every journal file atomically: it writes the complete new content
+to a temporary file (`.tmp_<guid>`) in the same directory and then renames it over
+the target, so a reader sees either the old or the new file, never a half-written
+one. Registers such as `customers.txt` are rewritten in full this way when a line
+is added. Attachments and documents are copied or moved into place. A leftover
+`.tmp_*` file after a crash can be deleted.
 
 ### Unknown content
 

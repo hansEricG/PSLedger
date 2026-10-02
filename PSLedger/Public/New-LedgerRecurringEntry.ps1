@@ -95,6 +95,8 @@ function New-LedgerRecurringEntry {
 
     $recurringDir = Join-Path $JournalPath 'recurring'
 
+    $Name = Assert-LedgerSafeLeafName -Name $Name -Kind 'recurring entry'
+    Assert-LedgerKeyField -Name 'Name' -Value $Name
     $filePath = Join-Path $recurringDir "$Name.txt"
     if (Test-Path $filePath) {
         throw "Recurring entry '$Name' already exists."
@@ -108,7 +110,7 @@ function New-LedgerRecurringEntry {
 
     $lines = @(
         "Name:`t$Name"
-        "Description:`t$Description"
+        "Description:`t$(ConvertTo-LedgerTextField $Description)"
         "Schedule:`t$Schedule"
         "DayOfMonth:`t$DayOfMonth"
         "StartDate:`t$($StartDate.ToString('yyyy-MM-dd'))"
@@ -124,7 +126,7 @@ function New-LedgerRecurringEntry {
         if (-not (Test-Path $recurringDir)) {
             New-Item -Path $recurringDir -ItemType Directory | Out-Null
         }
-        $lines | Set-Content -Path $filePath -Encoding UTF8
+        Set-LedgerFileContent -Path $filePath -Value $lines
         if ($PassThru) {
             Get-LedgerRecurringEntry -JournalPath $JournalPath -Name $Name
         }

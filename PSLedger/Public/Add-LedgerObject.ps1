@@ -57,6 +57,8 @@ function Add-LedgerObject {
         throw "Journal not found: $JournalPath"
     }
 
+    Assert-LedgerKeyField -Name 'ObjectNumber' -Value $ObjectNumber
+
     # Validate dimension exists
     $dim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $DimensionNumber
     if (-not $dim) {
@@ -74,7 +76,7 @@ function Add-LedgerObject {
     }
 
     if ($PSCmdlet.ShouldProcess($ObjectNumber, 'Add object')) {
-        "$DimensionNumber`t$ObjectNumber`t$Name" | Add-Content -Path $ObjFile -Encoding UTF8
+        Add-LedgerFileLine -Path $ObjFile -Line "$DimensionNumber`t$ObjectNumber`t$(ConvertTo-LedgerTextField $Name)"
         if ($PassThru) {
             Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $DimensionNumber -ObjectNumber $ObjectNumber
         }

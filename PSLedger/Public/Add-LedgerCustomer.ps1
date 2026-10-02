@@ -90,9 +90,7 @@ function Add-LedgerCustomer {
         throw "Journal not found: $JournalPath"
     }
 
-    if ($CustomerNumber -match "`t") {
-        throw "CustomerNumber must not contain a tab character."
-    }
+    Assert-LedgerKeyField -Name 'CustomerNumber' -Value $CustomerNumber
 
     $CustomerFile = Join-Path $JournalPath 'customers.txt'
 
@@ -106,8 +104,8 @@ function Add-LedgerCustomer {
 
     if ($PSCmdlet.ShouldProcess($CustomerNumber, 'Add customer')) {
         $rateField = if ($PSBoundParameters.ContainsKey('HourlyRate')) { "`t$(Format-LedgerInvoiceAmount -Value $HourlyRate)" } else { '' }
-        "$CustomerNumber`t$Name`t$OrgNumber`t$Email`t$PaymentTermsDays$rateField" |
-            Add-Content -Path $CustomerFile -Encoding UTF8
+        $fields = @($Name, $OrgNumber, $Email) | ForEach-Object { ConvertTo-LedgerTextField $_ }
+        Add-LedgerFileLine -Path $CustomerFile -Line "$CustomerNumber`t$($fields -join "`t")`t$PaymentTermsDays$rateField"
         if ($PassThru) {
             Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $CustomerNumber
         }

@@ -137,10 +137,6 @@ function Format-LedgerMetadataValue {
         [string]$Value
     )
 
-    if ($null -eq $Value) {
-        return ''
-    }
-
-    # Collapse any newlines so each field stays on a single line.
-    return ($Value -replace '\r?\n', ' ')
+    # Collapse tabs and line breaks so each field stays on a single line.
+    return (ConvertTo-LedgerTextField $Value)
 }

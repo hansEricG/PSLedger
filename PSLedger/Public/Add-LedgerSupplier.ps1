@@ -77,9 +77,7 @@ function Add-LedgerSupplier {
         throw "Journal not found: $JournalPath"
     }
 
-    if ($SupplierNumber -match "`t") {
-        throw "SupplierNumber must not contain a tab character."
-    }
+    Assert-LedgerKeyField -Name 'SupplierNumber' -Value $SupplierNumber
 
     $SupplierFile = Join-Path $JournalPath 'suppliers.txt'
 
@@ -92,8 +90,8 @@ function Add-LedgerSupplier {
     }
 
     if ($PSCmdlet.ShouldProcess($SupplierNumber, 'Add supplier')) {
-        "$SupplierNumber`t$Name`t$OrgNumber`t$Email`t$PaymentTermsDays" |
-            Add-Content -Path $SupplierFile -Encoding UTF8
+        $fields = @($Name, $OrgNumber, $Email) | ForEach-Object { ConvertTo-LedgerTextField $_ }
+        Add-LedgerFileLine -Path $SupplierFile -Line "$SupplierNumber`t$($fields -join "`t")`t$PaymentTermsDays"
         if ($PassThru) {
             Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber
         }

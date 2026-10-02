@@ -81,11 +81,11 @@ function New-LedgerJournal {
         "; Created: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
         ""
         "SchemaVersion: $script:CurrentSchemaVersion"
-        "Name: $Name"
+        "Name: $(Format-LedgerMetadataValue -Value $Name)"
     )
 
     if ($OrgNumber) {
-        $Lines += "OrgNumber: $OrgNumber"
+        $Lines += "OrgNumber: $(Format-LedgerMetadataValue -Value $OrgNumber)"
     }
 
     if ($CompanyType) {
@@ -103,7 +103,7 @@ function New-LedgerJournal {
     }
 
     $JournalFile = Join-Path $Path 'journal.txt'
-    $Lines | Set-Content -Path $JournalFile -Encoding UTF8
+    Set-LedgerFileContent -Path $JournalFile -Value $Lines
     if ($PassThru) {
         Get-LedgerJournal -Path $Path
     }

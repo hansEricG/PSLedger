@@ -100,9 +100,9 @@ function Set-LedgerEmployee {
                 $curAccount = if ($parts.Count -ge 4) { $parts[3] } else { '7210' }
                 $curTax = if ($parts.Count -ge 5) { $parts[4] } else { '0' }
 
-                if ($updateName) { $curName = $Name }
-                if ($updatePnr) { $curPnr = $PersonalNumber }
-                if ($updateAccount) { $curAccount = $SalaryAccount }
+                if ($updateName) { $curName = ConvertTo-LedgerTextField $Name }
+                if ($updatePnr) { $curPnr = ConvertTo-LedgerTextField $PersonalNumber }
+                if ($updateAccount) { Assert-LedgerKeyField -Name 'SalaryAccount' -Value $SalaryAccount; $curAccount = $SalaryAccount }
                 if ($updateTax) { $curTax = Format-LedgerInvoiceAmount -Value $TaxRate }
 
                 "$EmployeeNumber`t$curName`t$curPnr`t$curAccount`t$curTax"
@@ -117,7 +117,7 @@ function Set-LedgerEmployee {
         }
 
         if ($PSCmdlet.ShouldProcess($EmployeeNumber, "Update employee")) {
-            $newLines | Set-Content -Path $EmployeeFile -Encoding UTF8
+            Set-LedgerFileContent -Path $EmployeeFile -Value $newLines
             if ($PassThru) {
                 Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber $EmployeeNumber
             }

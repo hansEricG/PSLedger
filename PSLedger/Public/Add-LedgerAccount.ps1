@@ -51,6 +51,8 @@ function Add-LedgerAccount {
         throw "Journal not found: $JournalPath"
     }
 
+    Assert-LedgerKeyField -Name 'AccountNumber' -Value $AccountNumber
+
     $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
 
     if (Test-Path $KontoplanFile) {
@@ -63,8 +65,7 @@ function Add-LedgerAccount {
     }
 
     if ($PSCmdlet.ShouldProcess($AccountNumber, 'Add account')) {
-        $Entry = "$AccountNumber`t$AccountName"
-        $Entry | Add-Content -Path $KontoplanFile -Encoding UTF8
+        Add-LedgerFileLine -Path $KontoplanFile -Line "$AccountNumber`t$(ConvertTo-LedgerTextField $AccountName)"
         if ($PassThru) {
             Get-LedgerAccount -JournalPath $JournalPath -AccountNumber $AccountNumber
         }

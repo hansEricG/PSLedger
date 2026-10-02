@@ -78,9 +78,8 @@ function Add-LedgerEmployee {
         throw "Journal not found: $JournalPath"
     }
 
-    if ($EmployeeNumber -match "`t") {
-        throw "EmployeeNumber must not contain a tab character."
-    }
+    Assert-LedgerKeyField -Name 'EmployeeNumber' -Value $EmployeeNumber
+    Assert-LedgerKeyField -Name 'SalaryAccount' -Value $SalaryAccount
 
     $EmployeeFile = Join-Path $JournalPath 'employees.txt'
 
@@ -94,8 +93,8 @@ function Add-LedgerEmployee {
 
     $rate = Format-LedgerInvoiceAmount -Value $TaxRate
     if ($PSCmdlet.ShouldProcess($EmployeeNumber, 'Add employee')) {
-        "$EmployeeNumber`t$Name`t$PersonalNumber`t$SalaryAccount`t$rate" |
-            Add-Content -Path $EmployeeFile -Encoding UTF8
+        $fields = @($Name, $PersonalNumber) | ForEach-Object { ConvertTo-LedgerTextField $_ }
+        Add-LedgerFileLine -Path $EmployeeFile -Line "$EmployeeNumber`t$($fields -join "`t")`t$SalaryAccount`t$rate"
         if ($PassThru) {
             Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber $EmployeeNumber
         }

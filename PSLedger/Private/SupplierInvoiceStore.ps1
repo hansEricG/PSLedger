@@ -165,13 +165,13 @@ function Save-LedgerSupplierInvoiceFile {
         '; PSLedger Supplier Invoice'
         "InvoiceNumber:`t$($Invoice.InvoiceNumber)"
         "SupplierNumber:`t$($Invoice.SupplierNumber)"
-        "SupplierInvoiceNo:`t$($Invoice.SupplierReference)"
+        "SupplierInvoiceNo:`t$(ConvertTo-LedgerTextField $Invoice.SupplierReference)"
         "InvoiceDate:`t$($Invoice.InvoiceDate.ToString('yyyy-MM-dd'))"
         "DueDate:`t$($Invoice.DueDate.ToString('yyyy-MM-dd'))"
-        "Description:`t$($Invoice.Description)"
+        "Description:`t$(ConvertTo-LedgerTextField $Invoice.Description)"
         "Status:`t$($Invoice.Status)"
         "PayableAccount:`t$($Invoice.PayableAccount)"
-        "Reference:`t$($Invoice.Reference)"
+        "Reference:`t$(ConvertTo-LedgerTextField $Invoice.Reference)"
         "BookedVerification:`t$(if ($null -ne $Invoice.BookedVerification) { $Invoice.BookedVerification } else { '' })"
         "BookedFiscalYear:`t$($Invoice.BookedFiscalYear)"
         'Rows:'

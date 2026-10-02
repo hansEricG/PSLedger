@@ -229,7 +229,7 @@ function Save-LedgerInvoiceFile {
         "CustomerNumber:`t$($Invoice.CustomerNumber)"
         "InvoiceDate:`t$($Invoice.InvoiceDate.ToString('yyyy-MM-dd'))"
         "DueDate:`t$($Invoice.DueDate.ToString('yyyy-MM-dd'))"
-        "Description:`t$($Invoice.Description)"
+        "Description:`t$(ConvertTo-LedgerTextField $Invoice.Description)"
         "Status:`t$($Invoice.Status)"
         "ReceivableAccount:`t$($Invoice.ReceivableAccount)"
         "BookedVerification:`t$(if ($null -ne $Invoice.BookedVerification) { $Invoice.BookedVerification } else { '' })"

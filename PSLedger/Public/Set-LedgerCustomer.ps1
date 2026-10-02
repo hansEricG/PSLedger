@@ -109,9 +109,9 @@ function Set-LedgerCustomer {
                 $curTerms = if ($parts.Count -ge 5) { $parts[4] } else { '30' }
                 $curRate = if ($parts.Count -ge 6) { $parts[5] } else { '' }
 
-                if ($updateName) { $curName = $Name }
-                if ($updateOrg) { $curOrg = $OrgNumber }
-                if ($updateEmail) { $curEmail = $Email }
+                if ($updateName) { $curName = ConvertTo-LedgerTextField $Name }
+                if ($updateOrg) { $curOrg = ConvertTo-LedgerTextField $OrgNumber }
+                if ($updateEmail) { $curEmail = ConvertTo-LedgerTextField $Email }
                 if ($updateTerms) { $curTerms = $PaymentTermsDays }
                 if ($updateRate) { $curRate = if ($HourlyRate -gt 0) { Format-LedgerInvoiceAmount -Value $HourlyRate } else { '' } }
 
@@ -128,7 +128,7 @@ function Set-LedgerCustomer {
         }
 
         if ($PSCmdlet.ShouldProcess($CustomerNumber, "Update customer")) {
-            $newLines | Set-Content -Path $CustomerFile -Encoding UTF8
+            Set-LedgerFileContent -Path $CustomerFile -Value $newLines
             if ($PassThru) {
                 Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $CustomerNumber
             }

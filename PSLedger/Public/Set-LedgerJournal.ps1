@@ -99,10 +99,10 @@ function Set-LedgerJournal {
         $Updates = [ordered]@{}
 
         if ($UpdateName) {
-            $Updates['Name'] = $Name
+            $Updates['Name'] = Format-LedgerMetadataValue -Value $Name
         }
         if ($UpdateOrg) {
-            $Updates['OrgNumber'] = $OrgNumber
+            $Updates['OrgNumber'] = Format-LedgerMetadataValue -Value $OrgNumber
         }
         if ($UpdateCompanyType) {
             if (-not [string]::IsNullOrEmpty($CompanyType)) {
@@ -154,7 +154,7 @@ function Set-LedgerJournal {
         }
 
         if ($PSCmdlet.ShouldProcess($JournalPath, "Update journal metadata")) {
-            $NewLines | Set-Content -Path $JournalFile -Encoding UTF8
+            Set-LedgerFileContent -Path $JournalFile -Value $NewLines
             if ($PassThru) {
                 Get-LedgerJournal -Path $JournalPath
             }
