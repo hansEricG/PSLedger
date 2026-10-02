@@ -1,5 +1,8 @@
 # Roadmap to PSLedger 1.0
 
+> **Done:** every item below was completed and PSLedger 1.0.0 was released on
+> 2026-10-02. See [Later (1.x)](#later-1x) for what comes next.
+
 PSLedger already covers the bookkeeping features a small Swedish company needs:
 ledger, VAT, annual report, SIE, invoicing, supplier invoices, payroll, bank
 reconciliation and time reporting. Version 1.0 is about **stability and

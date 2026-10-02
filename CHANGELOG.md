@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-02
+
+First stable release. The file format is specified in
+[docs/File-format.md](docs/File-format.md) and changes to it follow the schema
+version policy described there; command names and parameters are stable within
+1.x.
+
 ### Added
 - **File format specification.** [docs/File-format.md](docs/File-format.md)
   documents every file in a journal (journal, accounts, verifications, ib,
