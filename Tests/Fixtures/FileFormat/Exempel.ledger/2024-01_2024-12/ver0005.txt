@@ -1,0 +1,5 @@
+Date: 2024-03-25
+Description: Betalning leverantörsfaktura 1
+
+2440	500.00
+1930	-500.00

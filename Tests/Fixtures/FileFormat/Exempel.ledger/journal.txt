@@ -1,0 +1,7 @@
+; PSLedger Journal
+; Created: 2024-01-01 09:00:00
+
+SchemaVersion: 2
+Name: Exempel AB
+OrgNumber: 556677-8899
+CompanyType: AB

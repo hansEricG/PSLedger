@@ -1,0 +1,5 @@
+Date: 2023-01-02
+Description: Insättning aktiekapital
+
+1930	25000
+2081	-25000

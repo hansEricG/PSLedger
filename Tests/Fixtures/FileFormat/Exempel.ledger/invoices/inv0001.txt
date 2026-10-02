@@ -1,0 +1,17 @@
+; PSLedger Invoice
+InvoiceNumber:	1
+CustomerNumber:	10
+InvoiceDate:	2024-03-01
+DueDate:	2024-03-31
+Description:	Konsultuppdrag
+Status:	Paid
+ReceivableAccount:	1510
+BookedVerification:	2
+BookedFiscalYear:	2024-01_2024-12
+ReminderCount:	0
+LastReminderDate:	
+Rows:
+3010	10000	0.25	2610	Konsulttimmar	10	h	1000
+Payments:
+2024-03-25	12500	3	2024-01_2024-12
+Charges:

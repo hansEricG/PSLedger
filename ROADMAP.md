@@ -31,11 +31,14 @@ There is no GitHub Actions workflow; tests only run when someone runs them.
 ### 3. Documented and frozen file format
 The text files are the product, so their format is the most important contract.
 
-- [ ] Write a file format specification covering every file (journal, accounts,
+- [x] Write a file format specification covering every file (journal, accounts,
       verifications, ib, holdings, report, dimensions/objects, customers,
       invoices, suppliers, employees, payslips, bank, time).
-- [ ] Document when `SchemaVersion` is bumped: from 1.0 every breaking change
+- [x] Document when `SchemaVersion` is bumped: from 1.0 every breaking change
       needs an `Invoke-Ledger*Migration` step and `Update-LedgerJournal` support.
+
+Done: [docs/File-format.md](docs/File-format.md), guarded by the contract test
+`Tests/FileFormat.Tests.ps1`.
 
 ### 4. Command review before freezing the API
 There are 129 public commands; renaming after 1.0 is expensive.

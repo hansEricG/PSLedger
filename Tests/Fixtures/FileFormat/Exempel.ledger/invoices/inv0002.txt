@@ -1,0 +1,16 @@
+; PSLedger Invoice
+InvoiceNumber:	2
+CustomerNumber:	10
+InvoiceDate:	2024-04-30
+DueDate:	2024-05-30
+Description:	Konsulttjänster april 2024
+Status:	Draft
+ReceivableAccount:	1510
+BookedVerification:	
+BookedFiscalYear:	
+ReminderCount:	0
+LastReminderDate:	
+Rows:
+3010	9000	0.25	2610	Volvo integration – Anna Andersson, april 2024	7.5	h	1200
+Payments:
+Charges:

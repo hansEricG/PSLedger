@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+- **File format specification.** [docs/File-format.md](docs/File-format.md)
+  documents every file in a journal (journal, accounts, verifications, ib,
+  holdings, report input, dimensions/objects, customers, invoices, suppliers,
+  supplier invoices, employees, payslips, bank, time, recurring entries) and
+  the schema version policy: breaking changes bump `SchemaVersion` and ship a
+  migration, additive changes do not.
+- **File format contract test.** `Tests/FileFormat.Tests.ps1` reads a reference
+  journal (`Tests/Fixtures/FileFormat/Exempel.ledger`) covering every file and
+  checks the values the commands return.
+
 ## [0.13.0] - 2026-10-02
 
 ### Added

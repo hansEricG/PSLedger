@@ -1,0 +1,6 @@
+Date: 2024-02-01
+Description: Kontorsmaterial
+
+6110	800	{1:10}	Pennor
+2640	200
+1930	-1000

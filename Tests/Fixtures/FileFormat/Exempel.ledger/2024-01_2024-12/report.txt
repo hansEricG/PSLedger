@@ -1,0 +1,5 @@
+# PSLedger annual report input
+AverageEmployees: 1
+SigningPlace: Stockholm
+SigningDate: 2025-03-15
+SignificantEvents: Bolaget har startat.

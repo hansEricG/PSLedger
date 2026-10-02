@@ -1,0 +1,109 @@
+1010	Kassa
+1200	Maskiner och inventarier
+1209	Ack avskr maskiner och inventarier
+1210	Inventarier
+1219	Ack avskr inventarier
+1220	Datorer
+1229	Ack avskr datorer
+1310	Andelar i koncernföretag
+1380	Andra långfristiga fordringar
+1510	Kundfordringar
+1610	Kortfristiga fordringar
+1710	Förutbetalda hyreskostnader
+1730	Förutbetalda försäkringspremier
+1790	Övriga förutbetalda kostnader
+1910	Kassa och bank
+1920	PlusGiro
+1930	Företagskonto
+1940	Övriga bankkonton
+2010	Eget kapital
+2013	Överkursfond
+2081	Aktiekapital
+2085	Uppskrivningsfond
+2086	Reservfond
+2091	Balanserad vinst eller förlust
+2098	Vinst eller förlust föregående år
+2099	Årets resultat
+2310	Banklån långfristiga
+2330	Checkräkningskredit
+2440	Leverantörsskulder
+2510	Skatteskulder
+2610	Utgående moms 25%
+2620	Utgående moms 12%
+2630	Utgående moms 6%
+2640	Ingående moms
+2650	Momsredovisningskonto
+2710	Personalskatt
+2730	Arbetsgivaravgift skuld
+2790	Övriga lönerelaterade skulder
+2820	Kortfristig del av långfristiga skulder
+2890	Övriga kortfristiga skulder
+2910	Upplupna löner
+2920	Upplupna semesterlöner
+2940	Upplupna arbetsgivaravgifter
+2960	Upplupna räntekostnader
+2990	Övriga upplupna kostnader
+3010	Försäljning varor 25%
+3020	Försäljning varor 12%
+3030	Försäljning varor 6%
+3040	Försäljning tjänster 25%
+3050	Försäljning tjänster momsfri
+3200	Försäljning utrikes
+3500	Fakturerade kostnader
+3590	Övriga sidointäkter
+3740	Öres- och kronutjämning
+3900	Övriga rörelseintäkter
+4010	Inköp varor och material
+4020	Inköp varor och material EU
+4030	Inköp varor och material utland
+4400	Underentreprenörer
+4500	Övriga externa tjänster
+5010	Lokalhyra
+5020	El och vatten
+5060	Städning och renhållning
+5090	Övriga lokalkostnader
+5200	Hyra inventarier och maskiner
+5220	Hyra datorer
+5310	Frakter och transporter
+5400	Förbrukningsinventarier och förbrukningsmaterial
+5410	Förbrukningsinventarier
+5420	Programvaror
+5460	Förbrukningsmaterial
+5500	Reparation och underhåll
+5600	Kostnader för transportmedel
+5610	Drivmedel
+5690	Övriga kostnader transportmedel
+5800	Resekostnader
+5810	Biljetter
+5830	Kost och logi
+5890	Övriga resekostnader
+6070	Representation
+6110	Kontorsmateriel
+6150	Tryckkostnader
+6210	Telefon och internet
+6230	Datakommunikation
+6310	Företagsförsäkringar
+6530	Redovisningstjänster
+6540	IT-tjänster
+6550	Konsultarvoden
+6570	Bankkostnader
+6590	Övriga externa tjänster
+7010	Löner till tjänstemän
+7080	Lönekostnadsjusteringar
+7210	Löner till kollektivanställda
+7290	Förändring semesterlöneskuld
+7380	Kostnadsersättningar
+7410	Pensionsförsäkringspremier
+7510	Arbetsgivaravgifter
+7530	Särskild löneskatt
+7570	Premier för arbetsmarknadsförsäkringar
+7690	Övriga personalkostnader
+7820	Avskrivningar inventarier
+7830	Avskrivningar datorer
+8310	Ränteintäkter
+8314	Skattefria ränteintäkter
+8410	Räntekostnader
+8420	Räntekostnader banklån
+8490	Övriga finansiella kostnader
+8910	Skatt på årets resultat
+8999	Årets resultat

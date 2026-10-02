@@ -1,0 +1,17 @@
+; PSLedger Bank Statement
+StatementNumber:	1
+BankAccount:	1930
+Source:	Csv
+FileName:	bank.csv
+StatementId:	
+AccountId:	
+Currency:	
+FromDate:	2024-03-25
+ToDate:	2024-03-31
+OpeningBalance:	24500.00
+ClosingBalance:	36455.00
+ImportedDate:	2024-04-01
+Transactions:
+1	2024-03-25	12500.00		133		Volvo AB	Matched	Entry	2024-01_2024-12/3	2024-01_2024-12	3
+2	2024-03-25	-500.00				Telia AB	Matched	Entry	2024-01_2024-12/5	2024-01_2024-12	5
+3	2024-03-31	-45.00				Bankavgift	Matched	Rule	Bankavgift	2024-01_2024-12	7

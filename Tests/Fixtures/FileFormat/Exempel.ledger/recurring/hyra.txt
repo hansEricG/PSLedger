@@ -1,0 +1,10 @@
+Name:	hyra
+Description:	Lokalhyra
+Schedule:	Monthly
+DayOfMonth:	1
+StartDate:	2024-01-01
+EndDate:	2024-12-31
+LastGenerated:	
+Rows:
+5010	5000
+1930	-5000

@@ -768,6 +768,8 @@ MinFirma.ledger/
 ```
 
 All files are UTF-8 encoded plain text. Tab (`\t`) is the field delimiter.
+The complete specification of every file, and the policy for when the
+`SchemaVersion` changes, is in [docs/File-format.md](docs/File-format.md).
 
 ## Installation
 

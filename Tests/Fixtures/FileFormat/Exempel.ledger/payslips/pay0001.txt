@@ -1,0 +1,18 @@
+; PSLedger Payslip
+PayslipNumber:	1
+EmployeeNumber:	1
+PayDate:	2024-03-25
+PeriodStart:	2024-03-01
+PeriodEnd:	2024-03-31
+Description:	Lön
+Status:	Booked
+GrossSalary:	30000
+TaxAmount:	9000.0
+EmployerContributionRate:	0.3142
+SalaryAccount:	7210
+TaxLiabilityAccount:	2710
+NetPayAccount:	1930
+EmployerContributionAccount:	7510
+EmployerContributionLiabilityAccount:	2730
+BookedVerification:	6
+BookedFiscalYear:	2024-01_2024-12

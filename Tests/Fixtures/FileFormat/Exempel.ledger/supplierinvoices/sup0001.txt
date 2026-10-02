@@ -1,0 +1,16 @@
+; PSLedger Supplier Invoice
+InvoiceNumber:	1
+SupplierNumber:	100
+SupplierInvoiceNo:	T-4711
+InvoiceDate:	2024-03-05
+DueDate:	2024-03-25
+Description:	Telefoni mars
+Status:	Paid
+PayableAccount:	2440
+Reference:	
+BookedVerification:	4
+BookedFiscalYear:	2024-01_2024-12
+Rows:
+6210	400	0.25	2640
+Payments:
+2024-03-25	500.00	5	2024-01_2024-12

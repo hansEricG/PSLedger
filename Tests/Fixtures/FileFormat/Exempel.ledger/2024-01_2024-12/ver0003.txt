@@ -1,0 +1,5 @@
+Date: 2024-03-25
+Description: Betalning kundfaktura 1
+
+1930	12500
+1510	-12500

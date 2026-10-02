@@ -1,0 +1,2 @@
+; PSLedger bank rules: Pattern, Account, Description, VatRate, VatAccount
+Bankavgift	6570	Bankavgift	0	

@@ -1,0 +1,6 @@
+Date: 2024-03-05
+Description: Leverantörsfaktura 1 - Telefoni mars
+
+6210	400
+2640	100.00
+2440	-500.00

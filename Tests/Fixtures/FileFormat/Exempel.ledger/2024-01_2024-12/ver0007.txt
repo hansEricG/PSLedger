@@ -1,0 +1,5 @@
+Date: 2024-03-31
+Description: Bankavgift
+
+1930	-45.00
+6570	45.00

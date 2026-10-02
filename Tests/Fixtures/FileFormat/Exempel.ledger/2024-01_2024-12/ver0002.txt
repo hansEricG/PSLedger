@@ -1,0 +1,6 @@
+Date: 2024-03-01
+Description: Kundfaktura 1 - Konsultuppdrag
+
+1510	12500.00
+3010	-10000
+2610	-2500.00

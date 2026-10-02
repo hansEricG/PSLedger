@@ -1,0 +1,2 @@
+Account	Name	Isin	Quantity	Price	Currency	FxRate	PriceDate	Source	BookValue	Cost
+1310	Investor B	SE0015811963	100	250.5	SEK	1	2024-12-30		20000	20000
