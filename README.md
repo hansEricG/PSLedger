@@ -652,9 +652,11 @@ loaded from configurable directories:
 | User | `$HOME\.psledger\Extensions\` (or `$env:PSLEDGER_USER_EXTENSIONS`) | Module import |
 | Journal | `<journal>\Extensions\` | `Set-LedgerCurrentJournal` is called |
 
-**Env/User extensions** are dot-sourced into the module scope and can use internal
-helpers. **Journal extensions** are loaded at runtime into global scope and can
-call all public PSLedger commands.
+**Env/User extensions** are loaded at module import and can use internal helpers.
+**Journal extensions** are loaded when the journal is selected and can also use
+internal helpers. All extension functions are created as global functions (they
+are not part of the module's exported commands) and are removed again when the
+module is removed or the journal is cleared.
 
 ### Example: Custom quick-entry function
 
@@ -798,6 +800,17 @@ Invoke-ScriptAnalyzer -Path ./PSLedger -Recurse -Settings ./PSScriptAnalyzerSett
 
 The same checks run in GitHub Actions on Windows and Linux for every push and
 pull request (`.github/workflows/ci.yml`).
+
+### Releasing
+1. Set `ModuleVersion` in `PSLedger/PSLedger.psd1` and move the `[Unreleased]`
+   entries in `CHANGELOG.md` to a `## [x.y.z] - yyyy-MM-dd` section.
+2. Commit, then tag and push: `git tag vx.y.z; git push origin vx.y.z`.
+3. CI runs the checks, verifies that the tag matches `ModuleVersion`, publishes
+   the module to the PowerShell Gallery and creates a GitHub release with the
+   CHANGELOG section as release notes.
+
+Publishing needs a PowerShell Gallery API key in the `PSGALLERY_API_KEY` secret
+of the `psgallery` environment (Settings → Environments).
 
 ## License
 MIT

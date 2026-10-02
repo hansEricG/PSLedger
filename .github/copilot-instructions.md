@@ -57,6 +57,7 @@ All entries enforce **double-entry balance** — the sum of all row amounts must
 ## Module conventions
 
 - Standard PowerShell module layout: `PSLedger.psm1` dot-sources files from `Public/`; the `Private/` folder is reserved for internal helpers.
+- A new public function must be added in three places: the dot-source list and `$script:BuiltInFunctions` in `PSLedger.psm1`, and `FunctionsToExport` in `PSLedger.psd1` (`Tests/Manifest.Tests.ps1` checks the manifest).
 - All public functions use `[CmdletBinding()]` and mandatory parameters.
 - Functions follow the verb-noun pattern with the `Ledger` noun prefix (e.g., `New-LedgerJournal`, `Add-LedgerEntry`).
 - File encoding is always **UTF-8** (supporting Swedish characters like å, ä, ö).

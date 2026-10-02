@@ -47,10 +47,10 @@ There are 129 public commands; renaming after 1.0 is expensive.
       examples (add a test that enforces it).
 
 ### 5. Publishing
-- [ ] Explicit `FunctionsToExport` list instead of `'*'` (extensions are still
+- [x] Explicit `FunctionsToExport` list instead of `'*'` (extensions are still
       exported at import time).
-- [ ] Remove `testResults.xml` from the repository and ignore it.
-- [ ] Publish to the PowerShell Gallery from a tagged release in CI.
+- [x] Remove `testResults.xml` from the repository and ignore it.
+- [x] Publish to the PowerShell Gallery from a tagged release in CI.
 
 ## Important for bookkeeping law (BFL)
 

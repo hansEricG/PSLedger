@@ -224,54 +224,39 @@ $script:BuiltInFunctions = @(
     'Import-LedgerTimeEntry', 'Get-LedgerTimeReport', 'New-LedgerTimeInvoice'
 )
 
-# Load extensions at module scope (env variable — semicolon-separated paths)
-$script:ExtensionFunctions = @()
-
+# Load extensions from the environment (semicolon-separated paths) and the
+# user-level directory. Extension functions are created as global functions
+# bound to the module scope (so they can call private helpers), because the
+# manifest only exports the built-in commands.
+$extensionDirs = @()
 if ($env:PSLEDGER_EXTENSIONS) {
     foreach ($extPath in $env:PSLEDGER_EXTENSIONS -split ';') {
         $extPath = $extPath.Trim()
-        if ($extPath -and (Test-Path $extPath -PathType Container)) {
-            $files = Get-ChildItem -Path $extPath -Filter '*.ps1' -File | Sort-Object Name
-            foreach ($file in $files) {
-                $funcsBefore = (Get-ChildItem function:).Name
-                try {
-                    . $file.FullName
-                }
-                catch {
-                    Write-Warning "PSLedger extension failed to load: $($file.FullName) — $($_.Exception.Message)"
-                    continue
-                }
-                $funcsAfter = (Get-ChildItem function:).Name
-                $newFuncs = @($funcsAfter | Where-Object { $_ -notin $funcsBefore })
-                $script:ExtensionFunctions += $newFuncs
-                Register-LedgerExtension -Name $file.BaseName -Path $file.FullName -Source 'Env' -Functions $newFuncs
-            }
-        }
+        if ($extPath) { $extensionDirs += [PSCustomObject]@{ Path = $extPath; Source = 'Env' } }
     }
 }
-
-# Load extensions from user-level directory
 $userExtPath = if ($env:PSLEDGER_USER_EXTENSIONS) {
     $env:PSLEDGER_USER_EXTENSIONS
 } else {
     Join-Path $HOME '.psledger' 'Extensions'
 }
-if (Test-Path $userExtPath -PathType Container) {
-    $files = Get-ChildItem -Path $userExtPath -Filter '*.ps1' -File | Sort-Object Name
-    foreach ($file in $files) {
-        $funcsBefore = (Get-ChildItem function:).Name
-        try {
-            . $file.FullName
+$extensionDirs += [PSCustomObject]@{ Path = $userExtPath; Source = 'User' }
+
+foreach ($dir in $extensionDirs) {
+    if (Test-Path $dir.Path -PathType Container) {
+        foreach ($file in (Get-ChildItem -Path $dir.Path -Filter '*.ps1' -File | Sort-Object Name)) {
+            Import-LedgerExtensionRuntime -Path $file.FullName -Source $dir.Source
         }
-        catch {
-            Write-Warning "PSLedger extension failed to load: $($file.FullName) — $($_.Exception.Message)"
-            continue
-        }
-        $funcsAfter = (Get-ChildItem function:).Name
-        $newFuncs = @($funcsAfter | Where-Object { $_ -notin $funcsBefore })
-        $script:ExtensionFunctions += $newFuncs
-        Register-LedgerExtension -Name $file.BaseName -Path $file.FullName -Source 'User' -Functions $newFuncs
     }
 }
 
-Export-ModuleMember -Function ($script:BuiltInFunctions + $script:ExtensionFunctions)
+# Remove the global extension functions when the module is removed or re-imported.
+$ExecutionContext.SessionState.Module.OnRemove = {
+    foreach ($ext in $script:LoadedExtensions) {
+        foreach ($funcName in $ext.Functions) {
+            Remove-Item "function:global:$funcName" -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Export-ModuleMember -Function $script:BuiltInFunctions

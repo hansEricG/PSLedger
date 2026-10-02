@@ -109,6 +109,18 @@ function Get-TestVersion {
             $userExts = Get-LedgerExtension -Source 'User'
             $userExts.Count | Should -Be 0
         }
+
+        It 'Should not export extension functions from the module manifest' {
+            (Get-Module PSLedger).ExportedFunctions.Keys | Should -Not -Contain 'Get-TestGreeting'
+        }
+
+        It 'Should remove extension functions when the module is removed' {
+            Remove-Module PSLedger
+            Test-Path function:global:Get-TestGreeting | Should -BeFalse
+
+            Import-Module $ModulePath -Force
+            Get-TestGreeting | Should -Be 'Hello from extension'
+        }
     }
 
     Context 'Extensions have access to module scope (Private helpers)' {
@@ -176,7 +188,7 @@ function Get-ValidAfterBroken {
         }
 
         It 'Should still load valid extensions after a broken one' {
-            $cmd = Get-Command -Name 'Get-ValidAfterBroken' -Module PSLedger -ErrorAction SilentlyContinue
+            $cmd = Get-Command -Name 'Get-ValidAfterBroken' -ErrorAction SilentlyContinue
             $cmd | Should -Not -BeNullOrEmpty
         }
 

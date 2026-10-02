@@ -49,6 +49,9 @@
 - **Continuous integration.** A GitHub Actions workflow runs PSScriptAnalyzer
   (with `PSScriptAnalyzerSettings.psd1`) and the Pester suite on Windows and Linux.
   The test suite now runs on Pester 6.
+- **Publishing from tagged releases.** Pushing a `v*` tag runs the checks,
+  verifies the tag against `ModuleVersion`, publishes the module to the
+  PowerShell Gallery and creates a GitHub release from the CHANGELOG section.
 
 ### Changed
 - **PowerShell 7.4 or later is required** (`CompatiblePSEditions = 'Core'`). The
@@ -87,6 +90,11 @@
   - All `Export-*` commands support `-WhatIf` and `-Confirm`.
   - `Get-*`, `New-*` and `Test-*` commands declare `[OutputType()]`. A test now
     checks that every public command has complete help.
+- The manifest lists the exported commands explicitly instead of `'*'`, so
+  commands are discovered without importing the module. Env and User extensions
+  are therefore created as global functions (like journal extensions), still with
+  access to the module's internal helpers, and they are removed when the module is
+  removed.
 
 ### Fixed
 - `Export-LedgerInvoice` rendered a single-row invoice as one table row per cell.

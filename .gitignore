@@ -1,6 +1,7 @@
 # Build/output
 output/
 testResults.xml
+pester-results.xml
 
 # IDE
 .vscode/
