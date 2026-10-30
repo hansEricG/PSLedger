@@ -8,6 +8,8 @@ directory. The directory is created on demand as a subdirectory of the fiscal
 year directory, named after the verification (e.g. ver0001/). One result object
 is returned per attached file when -PassThru is specified.
 
+Attachments cannot be added in a closed fiscal year.
+
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal.
 
@@ -73,6 +75,7 @@ function Add-LedgerAttachment {
         if (-not (Test-Path $YearDir -PathType Container)) {
             throw "Fiscal year not found: $FiscalYear"
         }
+        Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'add attachments'
 
         # Verify the verification exists
         $verFileName = 'ver' + $VerificationNumber.ToString('0000') + '.txt'

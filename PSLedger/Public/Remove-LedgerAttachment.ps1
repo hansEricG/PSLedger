@@ -6,6 +6,8 @@ Removes an attachment from a verification.
 Deletes the specified file from a verification's attachment directory.
 If the directory becomes empty after removal, it is also deleted.
 
+Attachments cannot be removed from a closed fiscal year.
+
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal.
 
@@ -54,6 +56,7 @@ function Remove-LedgerAttachment {
         if (-not (Test-Path $YearDir -PathType Container)) {
             throw "Fiscal year not found: $FiscalYear"
         }
+        Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'remove attachments'
 
         $FileName = Assert-LedgerSafeLeafName -Name $FileName -Kind 'attachment'
 

@@ -42,6 +42,11 @@
 - **Unbalanced entries could be stored.** `Add-LedgerEntry` rounded only the
   sum, so rows such as `10.004` and `-10.001` were accepted. Row amounts with
   more than two decimals are now rejected and the balance check is exact.
+- **Closed fiscal years could still be changed.** `Add-LedgerAttachment`,
+  `Remove-LedgerAttachment`, `Remove-LedgerDocument` and
+  `Copy-LedgerOpeningBalance` (target year) now refuse a closed year.
+  `Set-LedgerReportInput` and `Add-LedgerDocument` remain allowed, since the
+  annual report and its signed copy are produced after closing.
 
 ## [1.0.0] - 2026-10-02
 

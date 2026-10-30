@@ -112,8 +112,10 @@ are accepted and stored although the entry is 0.003 off.
 `Remove-LedgerDocument`, `Copy-LedgerOpeningBalance` and
 `Set-LedgerReportInput` do not.
 
-- [ ] One shared guard for year-scoped writes, with a test that runs every
-      writing command against a closed year.
+- [x] One shared guard for year-scoped writes, with a test that runs every
+      writing command against a closed year. `Set-LedgerReportInput` and
+      `Add-LedgerDocument` stay allowed by design: the annual report and its
+      signed copy are produced after the year is closed.
 
 #### 11. Integrity chain robustness and coverage
 - [ ] `Write-LedgerIntegrityRecord` appends with `File.AppendAllText` outside

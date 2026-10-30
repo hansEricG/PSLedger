@@ -33,3 +33,28 @@ function Resolve-LedgerFiscalYear {
     # Return the last one (sorted lexicographically = chronologically for yyyy-MM format)
     return $yearDirs[-1].Name
 }
+
+function Assert-LedgerFiscalYearOpen {
+    <#
+    .SYNOPSIS
+    Throws when the fiscal year's year.txt marks it as Closed.
+
+    .DESCRIPTION
+    The shared guard for commands that change a fiscal year's verifications,
+    attachments, documents, opening balance or holdings.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string]$YearDir,
+        [Parameter(Mandatory)] [string]$FiscalYear,
+        [Parameter(Mandatory)] [string]$Action
+    )
+    $yearFile = Join-Path $YearDir 'year.txt'
+    if (Test-Path $yearFile -PathType Leaf) {
+        foreach ($line in (Get-Content $yearFile)) {
+            if ($line -match '^Status:\s*Closed') {
+                throw "Fiscal year $FiscalYear is Closed. Cannot $Action."
+            }
+        }
+    }
+}

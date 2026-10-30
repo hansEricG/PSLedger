@@ -197,24 +197,6 @@ function Test-LedgerIsin {
     ($sum % 10) -eq 0
 }
 
-function Assert-LedgerFiscalYearOpen {
-    # Throws when the fiscal year's year.txt marks it as Closed.
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory)] [string]$YearDir,
-        [Parameter(Mandatory)] [string]$FiscalYear,
-        [Parameter(Mandatory)] [string]$Action
-    )
-    $yearFile = Join-Path $YearDir 'year.txt'
-    if (Test-Path $yearFile -PathType Leaf) {
-        foreach ($line in (Get-Content $yearFile)) {
-            if ($line -match '^Status:\s*Closed') {
-                throw "Fiscal year $FiscalYear is Closed. Cannot $Action."
-            }
-        }
-    }
-}
-
 function Get-LedgerHoldingValuationRule {
     # K2: financial fixed assets (13xx) are written down on a lasting decline in
     # value; current investments (18xx) follow the lower of cost and market value.

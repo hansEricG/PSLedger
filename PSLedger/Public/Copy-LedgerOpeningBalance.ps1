@@ -7,7 +7,7 @@ Reads the trial balance from a source fiscal year, takes all balance-sheet
 accounts (1xxx assets and 2xxx equity/liabilities), and writes them as the
 opening balance metadata (ib.txt) of the target fiscal year. The opening balance
 is stored as metadata, not as a verification, so verification numbering starts at
-ver0001 for the first real entry.
+ver0001 for the first real entry. The target fiscal year must not be closed.
 
 .PARAMETER JournalPath
 The path to an existing journal directory.
@@ -59,6 +59,7 @@ function Copy-LedgerOpeningBalance {
         if (-not (Test-Path $ToDir -PathType Container)) {
             throw "Target fiscal year not found: $ToFiscalYear"
         }
+        Assert-LedgerFiscalYearOpen -YearDir $ToDir -FiscalYear $ToFiscalYear -Action 'change its opening balance'
 
         # Check target has no opening balance yet
         $ExistingIb = Get-LedgerOpeningBalancePath -YearDir $ToDir

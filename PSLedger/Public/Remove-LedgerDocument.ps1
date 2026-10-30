@@ -6,6 +6,9 @@ Removes a general supporting document from a fiscal year.
 Deletes the specified file from a fiscal year's shared document directory.
 If the directory becomes empty after removal, it is also deleted.
 
+Documents cannot be removed from a closed fiscal year. Adding documents,
+such as the signed annual report, is still allowed.
+
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal.
 
@@ -48,6 +51,7 @@ function Remove-LedgerDocument {
         if (-not (Test-Path $YearDir -PathType Container)) {
             throw "Fiscal year not found: $FiscalYear"
         }
+        Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'remove documents'
 
         $FileName = Assert-LedgerSafeLeafName -Name $FileName -Kind 'document'
 
