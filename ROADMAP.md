@@ -188,9 +188,9 @@ Implement the locking part together with step 12, not as a separate append lock.
       A changed opening balance changes every balance in the year.
 
 #### 12. Concurrent writers
-Verification numbers come from scanning `ver*.txt`, and register files
-(`Add-LedgerFileLine`) are read-modify-write, so two processes writing at the
-same time can pick the same number or lose a line.
+Verification numbers come from scanning `ver*.txt` and saved invoice-posting
+reservations. Register files (`Add-LedgerFileLine`) are read-modify-write;
+writers outside the shared lock can still collide or lose a line.
 
 - [x] Introduce a journal-level lock around verification validation, number
       allocation, content writes and integrity records, including nested calls.
@@ -201,6 +201,8 @@ same time can pick the same number or lose a line.
 - [x] Add real-process tests for concurrent posting/sealing, lock contention,
       closing while a writer waits and process termination after a file save.
       Document local-filesystem assumptions and retained `.write.lock` files.
+- [x] Hold the lock across customer-invoice posting and recovery, from invoice
+      validation and reservation through verification sealing and booked status.
 - [ ] Extend operation-wide locking and conflict detection to remaining
       registers, invoices, payments, payroll, imports and metadata writers.
       Pair this with recovery in step 30; the first increment is not general
@@ -357,16 +359,26 @@ values (SRU mapping, tax rates) live in code.
 
 #### 30. Interrupted operations and safe retries
 Atomic replacement of one file is not a transaction across several files.
-For example, invoice posting writes a verification before saving the invoice's
-booked status; a failure between those writes can cause duplicate posting on retry.
+Customer-invoice posting now retains a durable plan across the verification and
+invoice-status writes. Other multi-file workflows still need equivalent protection.
 
-- [ ] Define recoverable operation boundaries for invoice/payment/payroll
+- [x] Resume customer-invoice posting by repeating `Invoke-LedgerInvoicePosting`.
+      Validate before saving an immutable plan with an operation identity,
+      reserved verification number and invoice/verification hashes.
+- [x] Reuse the matching verification and finish its seal and invoice status;
+      stop explicitly on changed inputs, conflicts or integrity damage.
+      A saved verification may complete status after year closure, but recovery
+      must never create a new verification in a closed year.
+- [x] Exercise process termination after plan, verification, seal and status
+      writes, plus concurrent retries and interleaved number allocation.
+      Preserve recovery records in archive packages and document backup retention.
+- [ ] Define recoverable operation boundaries for remaining invoice/payment/payroll
       posting, SIE import, chart conversion and fiscal-year closing.
-- [ ] Record enough operation identity and progress to diagnose and resume an
-      interrupted operation without losing or duplicating bookkeeping.
-- [ ] Validate complete plans before the first write; report partial failures
+- [ ] Extend durable operation identity and progress to those workflows without
+      losing or duplicating bookkeeping.
+- [ ] Validate their complete plans before the first write; report partial failures
       with actionable recovery instructions instead of a success-shaped result.
-- [ ] Integrate recovery with the locks and integrity chain in steps 11–12.
+- [ ] Integrate their recovery with the locks and integrity chain in steps 11–12.
 
 #### 31. Reproducible declarations and final reports
 The journal-wide `vat.txt` can change how old periods are reported. Closing

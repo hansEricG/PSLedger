@@ -558,6 +558,25 @@ the receivable account with `-ReceivableAccount` and the cash/bank account with
 `-Account` on the payment. Each invoice records the verifications it created
 (`BookedVerification`, and one per payment) so it can be traced back to the ledger.
 
+If `Invoke-LedgerInvoicePosting` is interrupted, run the same command again:
+
+```powershell
+Invoke-LedgerInvoicePosting -JournalPath .\HEG.ledger -InvoiceNumber 1
+```
+
+The command resumes its saved posting plan in `invoices/posting/inv0001.txt`.
+It reuses the reserved verification number, checks the invoice and verification
+hashes and operation identity, finishes sealing if needed, and saves the invoice's
+booked status. A matching saved verification can be linked even after year
+closure, but a missing verification cannot be created in a closed year. If the
+invoice was already fully posted, the command still reports "already posted".
+
+Keep these immutable plans after success and in backups; never delete them to
+clear an error or free a reserved number. Changed invoice data, conflicting
+verification content or a damaged integrity chain stop recovery and require
+diagnosis rather than automatic repair. This recovery applies to customer-invoice
+posting, not payments, credit notes or other multi-file workflows.
+
 `Export-LedgerInvoice` produces the PDF with a built-in, dependency-free writer.
 Add payment details (bankgiro, plusgiro, IBAN/BIC) to the document by storing them
 as journal metadata, e.g. `Set-LedgerJournal -Metadata @{ Bankgiro = '123-4567' }`.
@@ -736,8 +755,9 @@ the files and the chain is only caught by `-ExpectedHash`. Opening balances,
 
 ### Concurrent writes and interrupted operations
 
-Verification posting (including reversals), attachment changes, sealing,
-fiscal-year closing and credit-note rollback share a journal-level write lock.
+Verification posting (including reversals), customer-invoice posting, attachment
+changes, sealing, fiscal-year closing and credit-note rollback share a
+journal-level write lock.
 The verification writer holds it across validation, number allocation, file
 creation and integrity registration. Nested calls reuse the same lock. A
 competing process waits for up to 30 seconds, then reports that the journal is
@@ -754,8 +774,9 @@ This is not a transaction across files: an interrupted process can still leave
 a saved verification without its integrity record or all attachments. If a
 posting reports such a partial failure, inspect the saved verification and run
 `Test-LedgerIntegrity` before taking recovery action; do not simply post it
-again. There is no automatic resume or duplicate-posting prevention for a
-whole invoice/payment/import workflow yet.
+again. The exception is `Invoke-LedgerInvoicePosting`: its saved plan allows
+safe same-command resumption as described under customer invoices above.
+Payments, imports and other multi-file workflows do not yet have this protection.
 
 Other register and metadata writers, older PSLedger versions and external
 editors do not all participate in the lock. Readers and backups do not acquire

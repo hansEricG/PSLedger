@@ -111,7 +111,9 @@ are named by a prefix and a number zero-padded to at least four digits.
 
 - Number 10000 is written `ver10000.txt`; nothing is truncated.
 - A new document gets the highest existing number plus one, or 1 if there is
-  none. Gaps are allowed.
+  none. For verifications, the maximum also includes numbers reserved by
+  `invoices/posting/invNNNN.txt`. Recovery uses its already reserved number,
+  even if later numbers have since been written. Gaps are allowed.
 - Verifications are numbered per fiscal year. Every other kind of document is
   numbered across the whole journal.
 
@@ -135,7 +137,8 @@ coordination file, not bookkeeping data or a new schema version. Participating
 writers hold an exclusive open handle while validating and writing a
 verification and its integrity records. New verification files are published
 without replacing an existing filename. The same journal lock covers attachment
-changes, sealing, year closing and credit-note rollback.
+changes, customer-invoice posting and recovery, sealing, year closing and
+credit-note rollback.
 
 The file remains after the handle is released, including after a crashed
 process. Its existence does not indicate ownership. It MUST NOT be deleted or
@@ -148,7 +151,8 @@ enabled and cooperating writers. Other register/metadata writers and readers
 are not yet covered by a journal-wide transaction or snapshot. This is not a
 distributed lock for synchronised or network directories. An interrupted
 operation can still leave a saved but unsealed verification; the integrity
-check diagnoses that state, but automatic multi-file recovery is separate work.
+check diagnoses that state. Customer-invoice posting can resume from its saved
+plan below; other multi-file recovery remains separate work.
 
 ### Unknown content
 
@@ -335,6 +339,7 @@ Description: Kontorsmaterial
 |-----|----------|-------|
 | `Date` | yes | Transaction date. MUST fall within the fiscal year. |
 | `Description` | yes | Text of the verification. |
+| `OperationId` | no | Non-empty GUID in `D` form identifying the customer-invoice posting plan. Included in the verification content hash; ordinary entries omit it. |
 
 A blank line follows the header.
 
@@ -572,6 +577,44 @@ amounts MUST sum to zero.
 | 4 | Email | no | |
 | 5 | Payment terms | no | Days, 0–3650. Empty means 30. |
 | 6 | Hourly rate | no | Default hourly rate for time reporting, excluding VAT. |
+
+### `invoices/posting/invNNNN.txt` — customer-invoice posting plans
+
+`Invoke-LedgerInvoicePosting` saves this immutable record before writing its
+verification. The number in the filename identifies the customer invoice, not
+the reserved verification. It uses `Key:<TAB>value` lines; `;` comments and blank
+lines are ignored. All fields below are required, with no duplicates.
+
+| Key | Value |
+|-----|-------|
+| `FormatVersion` | `1`. Other versions are rejected. |
+| `OperationId` | Non-empty GUID in `D` form, matching the verification's optional header. |
+| `InvoiceNumber` | Positive integer matching `invNNNN.txt`. |
+| `FiscalYear` | Fiscal-year directory containing the reserved verification. |
+| `VerificationNumber` | Positive integer reserved in that fiscal year. |
+| `InvoiceHash` | Lowercase SHA-256 of the original draft invoice's text. |
+| `VerificationHash` | Lowercase SHA-256 of the planned verification's text, including its operation identity. |
+
+Hashes use UTF-8 text with CRLF normalised to LF, as for integrity content
+hashes. The planned verification includes a final newline. The plan and the
+optional verification header are additive schema changes, not a schema bump.
+Existing invoices without plans remain readable and may be posted normally.
+
+There is no mutable progress field: the plan, verification, integrity seal and
+invoice posting references together determine progress. Repeating the posting
+command for a draft invoice resumes its saved plan without replacing the
+verification or appending a duplicate seal. The original invoice hash and any
+saved verification's content and operation identity MUST match. Other integrity
+issues, including an incomplete append, stop recovery rather than being repaired
+automatically. A matching saved verification may complete the invoice status
+after year closure; a missing verification MUST NOT be created in a closed year.
+An already booked invoice retains the normal "already posted" error.
+
+Plans MUST be retained unchanged after completion, together with backups.
+Their reserved numbers are never automatically freed. Malformed records block
+new-number allocation rather than allowing unsafe reuse. Archive packages copy
+each included invoice's plan and cover it with archive checksums. A SIE export
+does not contain these plans and is not a full recovery-state backup.
 
 ### `invoices/invNNNN.txt` — customer invoices
 

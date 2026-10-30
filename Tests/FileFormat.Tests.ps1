@@ -312,6 +312,38 @@ Describe 'File format contract' {
     }
 
     Context 'Writing' {
+        It 'Should link a posting plan to an existing draft and a readable verification' {
+            $journal = Join-Path $TestDrive 'Posting.ledger'
+            Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse
+            $hashText = {
+                param([string]$Text)
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text.Replace("`r`n", "`n"))
+                [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+            }
+            $draftHash = & $hashText (Get-Content -LiteralPath (Join-Path $journal 'invoices' 'inv0002.txt') -Raw -Encoding UTF8)
+
+            $invoice = Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 2 -PassThru
+
+            $fields = @{}
+            foreach ($line in Get-Content -LiteralPath (Join-Path $journal 'invoices' 'posting' 'inv0002.txt') -Encoding UTF8) {
+                if ($line -match '^([A-Za-z]+):\t(.+)$') { $fields[$Matches[1]] = $Matches[2] }
+            }
+            $fields.FormatVersion | Should -Be '1'
+            $fields.InvoiceNumber | Should -Be '2'
+            $fields.FiscalYear | Should -Be $invoice.BookedFiscalYear
+            $fields.VerificationNumber | Should -Be "$($invoice.BookedVerification)"
+            $fields.InvoiceHash | Should -Be $draftHash
+            [guid]::ParseExact($fields.OperationId, 'D') | Should -Not -Be ([guid]::Empty)
+
+            $path = Join-Path $journal $Y ('ver{0:D4}.txt' -f $invoice.BookedVerification)
+            $text = Get-Content -LiteralPath $path -Raw -Encoding UTF8
+            $fields.VerificationHash | Should -Be (& $hashText $text)
+            $text | Should -Match "(?m)^OperationId: $([regex]::Escape($fields.OperationId))\r?$"
+            $entry = Get-LedgerEntry -JournalPath $journal -FiscalYear $Y -VerificationNumber $invoice.BookedVerification
+            ($entry.Rows | Measure-Object -Property Amount -Sum).Sum | Should -Be 0
+            (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
+        }
+
         It 'Should write a verification in the documented format' {
             $rows = @(
                 New-LedgerEntryRow -Debit 6110 -Amount 120.5 -Objects @{ 1 = 10 } -Comment 'Papper'

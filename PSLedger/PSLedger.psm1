@@ -25,6 +25,7 @@
 . $PSScriptRoot\Private\AnnualReportRender.ps1
 . $PSScriptRoot\Private\AnnualReportModel.ps1
 . $PSScriptRoot\Private\InvoiceStore.ps1
+. $PSScriptRoot\Private\InvoicePosting.ps1
 . $PSScriptRoot\Private\SupplierInvoiceStore.ps1
 . $PSScriptRoot\Private\OcrReference.ps1
 . $PSScriptRoot\Private\InvoiceCharge.ps1

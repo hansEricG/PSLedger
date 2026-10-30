@@ -232,6 +232,59 @@ Describe 'Invoke-LedgerInvoicePosting' {
             { Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 99 } |
                 Should -Throw '*does not exist*'
         }
+
+        It 'Should create no posting plan for WhatIf or failed preflight' {
+            $invoicePath = Join-Path $JournalPath 'invoices' 'inv0001.txt'
+            $before = (Get-FileHash -LiteralPath $invoicePath).Hash
+            Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 -WhatIf
+            $accountsPath = Join-Path $JournalPath 'accounts.txt'
+            $accounts = @(Get-Content -LiteralPath $accountsPath | Where-Object { $_ -notmatch '^1510\t' })
+            Set-Content -LiteralPath $accountsPath -Value $accounts -Encoding utf8
+            { Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 } | Should -Throw '*1510*does not exist*'
+            Test-Path -LiteralPath (Join-Path $JournalPath 'invoices' 'posting') | Should -BeFalse
+            (Get-FileHash -LiteralPath $invoicePath).Hash | Should -Be $before
+        }
+
+        It 'Should stop recovery without writing when <Change> differs from the plan' -ForEach @(
+            @{ Change = 'invoice'; ExpectedError = '*has changed since its posting plan*' }
+            @{ Change = 'verification'; ExpectedError = '*differs from the invoice posting plan*' }
+            @{ Change = 'chain'; ExpectedError = '*integrity issues*' }
+            @{ Change = 'operation'; ExpectedError = '*Invalid invoice posting record*' }
+            @{ Change = 'incomplete operation'; ExpectedError = '*Invalid invoice posting record*' }
+            @{ Change = 'operation identity'; ExpectedError = '*differs from the invoice posting plan*' }
+            @{ Change = 'year'; ExpectedError = '*posting plan for*not*' }
+        ) {
+            Mock -ModuleName PSLedger Save-LedgerInvoiceFile { throw 'simulated invoice save failure' }
+            { Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 } | Should -Throw '*recover safely*'
+            $year = '2024-01_2024-12'
+            switch ($Change) {
+                'invoice' { Add-Content -LiteralPath (Join-Path $JournalPath 'invoices' 'inv0001.txt') -Value '; changed' }
+                'verification' { Add-Content -LiteralPath (Join-Path $JournalPath $year 'ver0001.txt') -Value '; changed' }
+                'chain' { Add-Content -LiteralPath (Join-Path $JournalPath $year 'integrity.txt') -Value 'partial append' }
+                'operation' { Set-Content -LiteralPath (Join-Path $JournalPath 'invoices' 'posting' 'inv0001.txt') -Value "FormatVersion:`t999" }
+                'incomplete operation' { Set-Content -LiteralPath (Join-Path $JournalPath 'invoices' 'posting' 'inv0001.txt') -Value "FormatVersion:`t1" }
+                'operation identity' {
+                    $path = Join-Path $JournalPath 'invoices' 'posting' 'inv0001.txt'
+                    $changed = (Get-Content -LiteralPath $path -Raw) -replace '(?m)^OperationId:\t[^\r\n]+', "OperationId:`t$([guid]::NewGuid())"
+                    Set-Content -LiteralPath $path -Value $changed -NoNewline
+                }
+            }
+            $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File -Force | Sort-Object FullName |
+                    ForEach-Object { "$($_.FullName):$((Get-FileHash -LiteralPath $_.FullName).Hash)" })
+            $parameters = @{ JournalPath = $JournalPath; InvoiceNumber = 1 }
+            if ($Change -eq 'year') { $parameters.FiscalYear = '2025-01_2025-12' }
+            { Invoke-LedgerInvoicePosting @parameters } | Should -Throw $ExpectedError
+            $after = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File -Force | Sort-Object FullName |
+                    ForEach-Object { "$($_.FullName):$((Get-FileHash -LiteralPath $_.FullName).Hash)" })
+            $after | Should -Be $before
+        }
+
+        It 'Should resolve each piped invoice year independently' {
+            New-LedgerFiscalYear -JournalPath $JournalPath -StartDate '2025-01-01' -EndDate '2025-12-31'
+            New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2025-03-15' -Description 'Nytt ar' -Rows $rows
+            $posted = @(Get-LedgerInvoice -JournalPath $JournalPath | Invoke-LedgerInvoicePosting -JournalPath $JournalPath -PassThru)
+            $posted.BookedFiscalYear | Should -Be @('2024-01_2024-12', '2025-01_2025-12')
+        }
     }
 }
 

@@ -77,6 +77,91 @@ function Assert-LedgerEntryDate {
     }
 }
 
+function Get-LedgerVerificationLines {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string]$JournalPath,
+        [Parameter(Mandatory)] [string]$FiscalYear,
+        [Parameter(Mandatory)] [datetime]$Date,
+        [Parameter(Mandatory)] [AllowEmptyString()] [string]$Description,
+        [Parameter(Mandatory)] [hashtable[]]$Rows,
+        [string[]]$Attachment,
+        [switch]$LegacyReversal,
+        [guid]$OperationId = [guid]::Empty
+    )
+
+    $YearDir = Join-Path $JournalPath $FiscalYear
+    Assert-LedgerEntryDate -YearDir $YearDir -FiscalYear $FiscalYear -Date $Date
+    Assert-LedgerEntryAmounts -Rows $Rows -LegacyReversal:$LegacyReversal
+
+    $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
+    if (Test-Path $KontoplanFile) {
+        $ValidAccounts = @{}
+        foreach ($Line in (Get-Content $KontoplanFile)) {
+            if ($Line -match '^(\d+)\t') {
+                $ValidAccounts[$Matches[1]] = $true
+            }
+        }
+        foreach ($Row in $Rows) {
+            if (-not $ValidAccounts.ContainsKey($Row.Account)) {
+                throw "Account $($Row.Account) does not exist in chart of accounts."
+            }
+        }
+    }
+
+    if ($Attachment) {
+        foreach ($attachmentPath in $Attachment) {
+            if (-not (Test-Path $attachmentPath -PathType Leaf)) {
+                throw "Attachment file not found: $attachmentPath"
+            }
+        }
+    }
+
+    $Lines = @(
+        "Date: $($Date.ToString('yyyy-MM-dd'))"
+        "Description: $(ConvertTo-LedgerTextField $Description)"
+    )
+    if ($OperationId -ne [guid]::Empty) { $Lines += "OperationId: $OperationId" }
+    $Lines += ''
+    foreach ($Row in $Rows) {
+        $line = "$($Row.Account)`t$($Row.Amount)"
+        if ($Row.ContainsKey('Objects') -and $Row.Objects -and $Row.Objects.Count -gt 0) {
+            foreach ($dimNum in $Row.Objects.Keys) {
+                $dim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum
+                if (-not $dim) {
+                    throw "Dimension $dimNum does not exist."
+                }
+                $obj = Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $dimNum -ObjectNumber $Row.Objects[$dimNum]
+                if (-not $obj) {
+                    throw "Object '$($Row.Objects[$dimNum])' does not exist in dimension $dimNum."
+                }
+            }
+            $line += "`t$(Format-ObjectTag -Objects $Row.Objects)"
+        }
+        if ($Row.ContainsKey('Comment') -and $null -ne $Row.Comment) {
+            $commentText = ([string]$Row.Comment) -replace "[`t`r`n]+", ' '
+            $commentText = $commentText.Trim()
+            if ($commentText) {
+                $line += "`t$commentText"
+            }
+        }
+        $Lines += $line
+    }
+    $Lines
+}
+
+function Get-LedgerNextVerificationNumber {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string]$JournalPath,
+        [Parameter(Mandatory)] [string]$FiscalYear
+    )
+    $numbers = @(Get-ChildItem -LiteralPath (Join-Path $JournalPath $FiscalYear) -Filter 'ver*.txt' -File -ErrorAction Stop |
+            ForEach-Object { if ($_.BaseName -match '^ver(\d+)$') { [int]$Matches[1] } })
+    $numbers += @(Get-LedgerInvoicePostingReservation -JournalPath $JournalPath -FiscalYear $FiscalYear)
+    if ($numbers.Count) { [int]($numbers | Measure-Object -Maximum).Maximum + 1 } else { 1 }
+}
+
 function Write-LedgerVerification {
     [CmdletBinding(SupportsShouldProcess)]
     param (
@@ -87,9 +172,10 @@ function Write-LedgerVerification {
         [Parameter(Mandatory)] [hashtable[]]$Rows,
         [string[]]$Attachment,
         [switch]$PassThru,
-
         # Only Add-LedgerReversal uses the old precision rule, on mirrored rows.
-        [switch]$LegacyReversal
+        [switch]$LegacyReversal,
+        [guid]$OperationId = [guid]::Empty,
+        [ValidateRange(0, [int]::MaxValue)] [int]$ReservedNumber = 0
     )
 
     $Description = ConvertTo-LedgerTextField $Description
@@ -100,76 +186,18 @@ function Write-LedgerVerification {
         Assert-LedgerJournalSchema -Path $JournalPath -Write
         $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
         $YearDir = Join-Path $JournalPath $FiscalYear
-        Assert-LedgerEntryDate -YearDir $YearDir -FiscalYear $FiscalYear -Date $Date
-        Assert-LedgerEntryAmounts -Rows $Rows -LegacyReversal:$LegacyReversal
+        $Lines = @(Get-LedgerVerificationLines -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date $Date -Description $Description -Rows $Rows -Attachment $Attachment `
+                -LegacyReversal:$LegacyReversal -OperationId $OperationId)
 
-        $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
-        if (Test-Path $KontoplanFile) {
-            $ValidAccounts = @{}
-            foreach ($Line in (Get-Content $KontoplanFile)) {
-                if ($Line -match '^(\d+)\t') {
-                    $ValidAccounts[$Matches[1]] = $true
-                }
-            }
-            foreach ($Row in $Rows) {
-                if (-not $ValidAccounts.ContainsKey($Row.Account)) {
-                    throw "Account $($Row.Account) does not exist in chart of accounts."
-                }
-            }
+        if ($ReservedNumber -and $OperationId -eq [guid]::Empty) {
+            throw 'A reserved verification number requires an operation identity.'
         }
-
-        if ($Attachment) {
-            foreach ($attachmentPath in $Attachment) {
-                if (-not (Test-Path $attachmentPath -PathType Leaf)) {
-                    throw "Attachment file not found: $attachmentPath"
-                }
-            }
+        $NextNum = if ($ReservedNumber) { $ReservedNumber } else {
+            Get-LedgerNextVerificationNumber -JournalPath $JournalPath -FiscalYear $FiscalYear
         }
-
-        $ExistingFiles = Get-ChildItem -LiteralPath $YearDir -Filter 'ver*.txt' -File -ErrorAction Stop
-        if ($ExistingFiles) {
-            $MaxNum = $ExistingFiles |
-                ForEach-Object { if ($_.BaseName -match '^ver(\d+)$') { [int]$Matches[1] } } |
-                Measure-Object -Maximum |
-                Select-Object -ExpandProperty Maximum
-            $NextNum = $MaxNum + 1
-        }
-        else {
-            $NextNum = 1
-        }
-
         $FileName = 'ver' + $NextNum.ToString('0000') + '.txt'
         $FilePath = Join-Path $YearDir $FileName
-        $Lines = @(
-            "Date: $($Date.ToString('yyyy-MM-dd'))"
-            "Description: $Description"
-            ""
-        )
-        foreach ($Row in $Rows) {
-            $line = "$($Row.Account)`t$($Row.Amount)"
-            if ($Row.ContainsKey('Objects') -and $Row.Objects -and $Row.Objects.Count -gt 0) {
-                foreach ($dimNum in $Row.Objects.Keys) {
-                    $dim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum
-                    if (-not $dim) {
-                        throw "Dimension $dimNum does not exist."
-                    }
-                    $obj = Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $dimNum -ObjectNumber $Row.Objects[$dimNum]
-                    if (-not $obj) {
-                        throw "Object '$($Row.Objects[$dimNum])' does not exist in dimension $dimNum."
-                    }
-                }
-                $line += "`t$(Format-ObjectTag -Objects $Row.Objects)"
-            }
-            if ($Row.ContainsKey('Comment') -and $null -ne $Row.Comment) {
-                $commentText = ([string]$Row.Comment) -replace "[`t`r`n]+", ' '
-                $commentText = $commentText.Trim()
-                if ($commentText) {
-                    $line += "`t$commentText"
-                }
-            }
-            $Lines += $line
-        }
-
         if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Add verification $FileName")) {
             return
         }

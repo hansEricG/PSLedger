@@ -9,6 +9,12 @@
   then fails explicitly. The operating system releases the lock on process exit.
 - **Concurrent-writer and interruption cases** exercise real PowerShell
   processes, including a writer killed after saving an unsealed verification.
+- **Resumable customer-invoice posting.** Repeat `Invoke-LedgerInvoicePosting`
+  after an interruption to finish the same posting, not create another one.
+  An immutable plan reserves the verification number and records the operation
+  identity and input/content hashes before posting. A matching saved verification
+  can complete the invoice status even after year closure; recovery never creates
+  a new verification in a closed year. Archive packages retain the posting plans.
 
 ### Fixed
 - **Verification filename conflicts no longer overwrite existing entries.**
@@ -16,10 +22,13 @@
 - **Partial verification writes report their state.** If the verification was
   saved but sealing or attachment registration fails, the error identifies the
   saved file and warns against repeating the posting.
+- **Pipelined invoice posting resolves each invoice's fiscal year independently**
+  when no explicit year is supplied.
 
-This is the first storage-hardening increment, not general multi-user support
-or automatic recovery of interrupted multi-file operations. Other register,
-invoice and import workflows still need operation-wide locking and recovery.
+Recovery currently covers customer-invoice posting only. Changed inputs,
+conflicting verifications and damaged integrity chains stop recovery explicitly.
+Other register, payment, payroll and import workflows still need operation-wide
+locking and recovery; this is not general multi-user support.
 
 ## [1.1.0] - 2026-10-30
 

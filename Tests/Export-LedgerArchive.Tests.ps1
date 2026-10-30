@@ -106,6 +106,21 @@ Describe 'Export-LedgerArchive' {
             $files | Should -Be @($expected | Sort-Object)
         }
 
+        It 'Preserves invoice posting records with the archived invoices' {
+            $journal = New-TestLedger -Root $TestDrive -Customers @(@{ Number = '10'; Name = 'Volvo AB' })
+            Set-LedgerJournal -JournalPath $journal -OrgNumber '556677-8899'
+            New-LedgerInvoice -JournalPath $journal -CustomerNumber '10' -Date '2024-01-15' -Description 'Konsult' `
+                -Rows @(@{ Account = '3010'; Amount = 1000; VatRate = 0.25; VatAccount = '2610' })
+            Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 1
+            Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $OpenYear -SkipResultEntry | Out-Null
+            $package = Export-LedgerArchive -JournalPath $journal -FiscalYear $OpenYear -AsDirectory
+            $original = Join-Path $journal 'invoices' 'posting' 'inv0001.txt'
+            $archived = Join-Path $package.FullName 'journal' 'invoices' 'posting' 'inv0001.txt'
+            (Get-FileHash -LiteralPath $archived).Hash | Should -Be (Get-FileHash -LiteralPath $original).Hash
+            Get-Content -LiteralPath (Join-Path $package.FullName 'checksums.txt') -Raw |
+                Should -BeLike '*journal/invoices/posting/inv0001.txt*'
+        }
+
         It 'Leaves out invoices, payslips and bank statements of other years' {
             $dir = Export-LedgerArchive -JournalPath $J -FiscalYear $ClosedYear -AsDirectory
 

@@ -10,6 +10,38 @@ BeforeAll {
         $env:PSLEDGER_EXTENSIONS = ''
         $env:PSLEDGER_USER_EXTENSIONS = Join-Path (Split-Path $Ready -Parent) 'extensions'
         Import-Module $ModulePath -Force
+        if ($Mode -like 'InvoiceAfter*') {
+            & (Get-Module PSLedger) {
+                param ($Ready, $Mode)
+                $script:PostingReady = $Ready
+                $script:PostingPause = {
+                    Set-Content -LiteralPath $script:PostingReady -Value 'checkpoint'
+                    Start-Sleep -Seconds 60
+                    throw 'The invoice posting test did not terminate its worker.'
+                }
+                switch ($Mode) {
+                    'InvoiceAfterPlan' {
+                        function script:Write-LedgerVerification { & $script:PostingPause }
+                    }
+                    'InvoiceAfterSave' {
+                        function script:Register-LedgerIntegrityItem { & $script:PostingPause }
+                    }
+                    'InvoiceAfterSeal' {
+                        function script:Save-LedgerInvoiceFile { & $script:PostingPause }
+                    }
+                    'InvoiceAfterStatus' {
+                        $script:OriginalInvoiceSave = (Get-Command Save-LedgerInvoiceFile).ScriptBlock
+                        function script:Save-LedgerInvoiceFile {
+                            param ($Invoice)
+                            & $script:OriginalInvoiceSave -Invoice $Invoice
+                            & $script:PostingPause
+                        }
+                    }
+                }
+            } $Ready $Mode
+            Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
+            exit 0
+        }
         if ($Mode -eq 'TryLock') {
             & (Get-Module PSLedger) {
                 param ($JournalPath)
@@ -38,7 +70,10 @@ BeforeAll {
                 Start-Sleep -Milliseconds 20
             }
         }
-        if ($Mode -eq 'Seal') {
+        if ($Mode -eq 'Invoice') {
+            Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
+        }
+        elseif ($Mode -eq 'Seal') {
             Protect-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' | Out-Null
         }
         else {
@@ -90,6 +125,15 @@ BeforeAll {
         param ($Worker)
         $Worker.Process.WaitForExit(60000) | Should -BeTrue
         $Worker.Process.ExitCode | Should -Be 0 -Because $Worker.Error.Result
+    }
+
+    function New-LockTestInvoice {
+        foreach ($number in '1510', '2610') {
+            Add-LedgerAccount -JournalPath $journal -AccountNumber $number -AccountName "Konto $number"
+        }
+        Add-LedgerCustomer -JournalPath $journal -CustomerNumber '10' -Name 'Volvo AB'
+        New-LedgerInvoice -JournalPath $journal -CustomerNumber '10' -Date '2024-01-15' -Description 'Konsultuppdrag' `
+            -Rows @(@{ Account = '3010'; Amount = 1000; VatRate = 0.25; VatAccount = '2610' })
     }
 }
 
@@ -217,5 +261,84 @@ Describe 'Journal write locking' {
         Add-LedgerEntry @entry -WhatIf
         Test-Path -LiteralPath (Join-Path $journal '.write.lock') | Should -BeFalse
         @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 0
+    }
+
+    It 'Recovers invoice posting after process termination at <Checkpoint>' -ForEach @(
+        @{ Checkpoint = 'InvoiceAfterPlan' }
+        @{ Checkpoint = 'InvoiceAfterSave' }
+        @{ Checkpoint = 'InvoiceAfterSeal' }
+        @{ Checkpoint = 'InvoiceAfterStatus' }
+    ) {
+        New-LockTestInvoice
+        Add-LedgerEntry @entry
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        $operationPath = Join-Path $journal 'invoices' 'posting' 'inv0001.txt'
+        $planHash = (Get-FileHash -LiteralPath $operationPath).Hash
+        $savedPath = Join-Path $journal $year 'ver0002.txt'
+        $savedHash = if (Test-Path -LiteralPath $savedPath) { (Get-FileHash -LiteralPath $savedPath).Hash }
+
+        # Another posting must not consume a reservation even when no verification was saved yet.
+        (Add-LedgerEntry @entry -PassThru).VerificationNumber | Should -Be 3
+        Set-Content -LiteralPath $gate -Value 'go'
+        $retry = Start-LockTestWorker Invoice
+        if ($Checkpoint -eq 'InvoiceAfterStatus') {
+            $retry.Process.WaitForExit(30000) | Should -BeTrue
+            $retry.Process.ExitCode | Should -Not -Be 0
+            $retry.Error.Result | Should -BeLike '*already posted*'
+        }
+        else { Complete-LockTestWorker $retry }
+
+        $invoice = Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 1
+        $invoice.Status | Should -Be 'Booked'
+        $invoice.BookedVerification | Should -Be 2
+        @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year).VerificationNumber | Should -Be @(1, 2, 3)
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
+        (Get-FileHash -LiteralPath $operationPath).Hash | Should -Be $planHash
+        if ($savedHash) { (Get-FileHash -LiteralPath $savedPath).Hash | Should -Be $savedHash }
+    }
+
+    It 'Handles recovery in a closed year with saved verification=<Saved>' -ForEach @(
+        @{ Saved = $true; Checkpoint = 'InvoiceAfterSave' }
+        @{ Saved = $false; Checkpoint = 'InvoiceAfterPlan' }
+    ) {
+        New-LockTestInvoice
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $year -SkipResultEntry | Out-Null
+        $yearHash = (Get-FileHash -LiteralPath (Join-Path $journal $year 'year.txt')).Hash
+        Set-Content -LiteralPath $gate -Value 'go'
+        $retry = Start-LockTestWorker Invoice
+        if ($Saved) {
+            Complete-LockTestWorker $retry
+            (Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 1).Status | Should -Be 'Booked'
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 1
+        }
+        else {
+            $retry.Process.WaitForExit(30000) | Should -BeTrue
+            $retry.Process.ExitCode | Should -Not -Be 0
+            $retry.Error.Result | Should -BeLike '*closed*'
+            (Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 1).Status | Should -Be 'Draft'
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 0
+        }
+        (Get-FileHash -LiteralPath (Join-Path $journal $year 'year.txt')).Hash | Should -Be $yearHash
+    }
+
+    It 'Posts the same invoice only once when two processes race' {
+        New-LockTestInvoice
+        $first = Start-LockTestWorker Invoice
+        $second = Start-LockTestWorker Invoice
+        Wait-LockTestReady $first
+        Wait-LockTestReady $second
+        Set-Content -LiteralPath $gate -Value 'go'
+        foreach ($worker in @($first, $second)) { $worker.Process.WaitForExit(30000) | Should -BeTrue }
+        @($first.Process.ExitCode, $second.Process.ExitCode | Sort-Object) | Should -Be @(0, 1)
+        ($first.Error.Result + $second.Error.Result) | Should -BeLike '*already posted*'
+        @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 1
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
     }
 }

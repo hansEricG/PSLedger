@@ -116,6 +116,15 @@ Describe 'Add-LedgerEntry' {
             $Content | Should -Match 'Försäljning kontant'
         }
 
+        It 'Should preserve posting of a description that becomes empty after sanitization' {
+            $entry = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date '2024-01-15' -Description " `t " -Rows $Rows -PassThru
+
+            $entry.Description | Should -Be ''
+            Get-Content -LiteralPath $entry.Path | Should -Contain 'Description: '
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear).Status | Should -Be 'Valid'
+        }
+
         It 'Should write account rows to the verification file' {
             Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-15' -Description 'Test' -Rows $Rows
 
