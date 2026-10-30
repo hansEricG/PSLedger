@@ -315,6 +315,7 @@ Describe 'File format contract' {
         It 'Should link a <Kind> plan to its invoice and a readable verification' -ForEach @(
             @{ Kind = 'posting' }
             @{ Kind = 'payment' }
+            @{ Kind = 'bank-payment' }
         ) {
             $journal = Join-Path $TestDrive "$Kind.ledger"
             Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse
@@ -328,10 +329,22 @@ Describe 'File format contract' {
             $invoice = Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 2 -PassThru
             $operationPath = Join-Path $journal 'invoices' 'posting' 'inv0002.txt'
             $verificationNumber = $invoice.BookedVerification
-            if ($Kind -eq 'payment') {
+            if ($Kind -in 'payment', 'bank-payment') {
                 $draftHash = & $hashText (Get-Content -LiteralPath (Join-Path $journal 'invoices' 'inv0002.txt') -Raw -Encoding UTF8)
-                $id = New-Guid
-                $invoice = Add-LedgerInvoicePayment -JournalPath $journal -InvoiceNumber 2 -Date '2024-05-01' -Amount 112.50 -PaymentId $id -PassThru
+                if ($Kind -eq 'bank-payment') {
+                    $csv = Join-Path $TestDrive 'contract-payment.csv'
+                    Set-Content -LiteralPath $csv -Value @('Date;Amount;Text', '2024-05-01;112.50;Volvo AB')
+                    $statement = Import-LedgerBankStatement -JournalPath $journal -Path $csv -Format Csv `
+                        -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text
+                    $transaction = Get-LedgerBankTransaction -JournalPath $journal | Where-Object StatementNumber -eq $statement.StatementNumber
+                    Set-LedgerBankTransaction -JournalPath $journal -TransactionId $transaction.TransactionId -InvoiceNumber 2
+                    $invoice = Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 2
+                    $id = (Get-ChildItem -LiteralPath (Join-Path $journal 'invoices' 'payments') -File).BaseName
+                }
+                else {
+                    $id = New-Guid
+                    $invoice = Add-LedgerInvoicePayment -JournalPath $journal -InvoiceNumber 2 -Date '2024-05-01' -Amount 112.50 -PaymentId $id -PassThru
+                }
                 $verificationNumber = $invoice.Payments[0].VerificationNumber
                 $operationPath = Join-Path $journal 'invoices' 'payments' "$id.txt"
             }
@@ -352,10 +365,15 @@ Describe 'File format contract' {
             $fields.VerificationHash | Should -Be (& $hashText $text)
             $text | Should -Match "(?m)^OperationId: $([regex]::Escape($fields.OperationId))\r?$"
             $entry = Get-LedgerEntry -JournalPath $journal -FiscalYear $Y -VerificationNumber $verificationNumber
-            if ($Kind -eq 'payment') {
+            if ($Kind -in 'payment', 'bank-payment') {
                 $fields.PaymentDate | Should -Be $entry.Date
                 $fields.PaymentAccount | Should -Be $entry.Rows[0].Account
                 [decimal]$fields.PaymentAmount | Should -Be $entry.Rows[0].Amount
+            }
+            if ($Kind -eq 'bank-payment') {
+                $fields.BankTransactionId | Should -Be "$($transaction.TransactionId)"
+                $fields.BankStatementNumber | Should -Be "$($statement.StatementNumber)"
+                $fields.BankTransactionHash | Should -Be (& $hashText "$($statement.StatementNumber)`t$($transaction.TransactionId)`t1930`t2024-05-01`t112.5`t`t`t`tVolvo AB`n")
             }
             ($entry.Rows | Measure-Object -Property Amount -Sum).Sum | Should -Be 0
             (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'

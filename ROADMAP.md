@@ -205,7 +205,9 @@ writers outside the shared lock can still collide or lose a line.
       validation and reservation through verification sealing and booked status.
 - [x] Extend that boundary to customer payments and dependent invoice updates
       (charges, reminders, credit notes), including interest calculation.
-      Bank-matching writers use the lock and reject unfinished customer payments.
+      Bank-matching writers use the lock and respect unfinished customer payments.
+- [x] Serialize bank-import identity allocation and create-if-absent statement
+      writes; reject duplicate bank transaction identities when matching.
 - [ ] Extend operation-wide locking and conflict detection to remaining
       registers, invoices, payments, payroll, imports and metadata writers.
       Pair this with recovery in step 30; the first increment is not general
@@ -377,12 +379,16 @@ invoice-status writes. Other multi-file workflows still need equivalent protecti
       Preserve recovery records in archive packages and document backup retention.
 - [x] Resume customer payments with an optional stable `PaymentId`, including
       replay after completion. Separate IDs allow identical real partial payments;
-      unfinished payments block conflicting invoice changes and bank matching.
+      unfinished payments block conflicting invoice changes and unrelated bank matching.
       Cover process termination, concurrent same/different IDs, remaining-balance
       validation, closed years, conflicting inputs and archive retention.
-- [ ] Extend recovery to the complete bank-transaction matching workflow;
-      customer-payment recovery currently requires linking the saved verification
-      separately when the bank transaction update was interrupted.
+- [x] Complete customer-invoice bank matches across payment and bank-state writes.
+      Retain bank identity/input hashes in payment plans, resume before heuristics,
+      reserve verifications for their originating transaction, and preserve
+      ownership through Reset. Cover interruption, later invoice/statement changes,
+      identical real payments, conflicts, concurrency and archive retention.
+- [ ] Extend bank-matching recovery to supplier payments and rule/account postings,
+      including both sides of own-account transfers.
 - [ ] Define recoverable operation boundaries for remaining invoice/payment/payroll
       posting, SIE import, chart conversion and fiscal-year closing.
 - [ ] Extend durable operation identity and progress to those workflows without

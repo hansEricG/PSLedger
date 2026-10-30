@@ -169,141 +169,147 @@ function Import-LedgerBankStatement {
         @(ConvertFrom-LedgerBankCsv @csvParams)
     }
 
-    $existing = @(Get-LedgerBankStatementData -JournalPath $JournalPath)
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
+        $existing = @(Get-LedgerBankStatementData -JournalPath $JournalPath)
 
-    # One ledger account must map to one bank account: refuse a file holding
-    # several accounts, or an account other than the one already imported.
-    $normalizeId = { param($id) ([string]$id -replace '\s', '').ToUpperInvariant() }
-    if ($AccountId -and $Format -eq 'Camt053') {
-        $parsed = @($parsed | Where-Object { (& $normalizeId $_.AccountId) -eq (& $normalizeId $AccountId) })
-        if (-not $parsed) { throw "The file has no statement for bank account '$AccountId'." }
-    }
-    $fileIds = @($parsed | ForEach-Object { & $normalizeId $_.AccountId } | Where-Object { $_ } | Select-Object -Unique)
-    if ($fileIds.Count -gt 1) {
-        throw "The file holds statements for several bank accounts ($($fileIds -join ', ')). Import them one at a time with -AccountId and -Account."
-    }
-    if ($fileIds.Count -eq 1) {
-        $knownIds = @($existing | Where-Object BankAccount -eq $Account | ForEach-Object { & $normalizeId $_.AccountId } | Where-Object { $_ } | Select-Object -Unique)
-        if ($knownIds -and $fileIds[0] -notin $knownIds) {
-            throw "Ledger account $Account already holds statements for bank account $($knownIds -join ', '), not $($fileIds[0]). Use -Account to import into another ledger account."
+        # One ledger account must map to one bank account: refuse a file holding
+        # several accounts, or an account other than the one already imported.
+        $normalizeId = { param($id) ([string]$id -replace '\s', '').ToUpperInvariant() }
+        if ($AccountId -and $Format -eq 'Camt053') {
+            $parsed = @($parsed | Where-Object { (& $normalizeId $_.AccountId) -eq (& $normalizeId $AccountId) })
+            if (-not $parsed) { throw "The file has no statement for bank account '$AccountId'." }
         }
-    }
-    $nextStatement = 1 + (@($existing | ForEach-Object { $_.StatementNumber }) + 0 | Measure-Object -Maximum).Maximum
-    $nextTransaction = 1 + (@($existing | ForEach-Object { $_.Transactions } | ForEach-Object { $_.TransactionId }) + 0 | Measure-Object -Maximum).Maximum
-
-    # Index what is already stored for this bank account so overlapping files
-    # do not import the same transaction twice.
-    $knownRefs = [System.Collections.Generic.HashSet[string]]::new()
-    $knownPrints = @{}
-    $fingerprint = { param($t) '{0}|{1}|{2}|{3}' -f $t.Date.ToString('yyyy-MM-dd'), (Format-LedgerInvoiceAmount -Value ([decimal]$t.Amount)), (ConvertTo-LedgerBankField $t.Reference), (ConvertTo-LedgerBankField $t.Text) }
-    foreach ($s in ($existing | Where-Object BankAccount -eq $Account)) {
-        foreach ($t in $s.Transactions) {
-            if ($t.BankReference) { [void]$knownRefs.Add($t.BankReference); continue }
-            $key = & $fingerprint $t
-            $knownPrints[$key] = 1 + [int]$knownPrints[$key]
+        $fileIds = @($parsed | ForEach-Object { & $normalizeId $_.AccountId } | Where-Object { $_ } | Select-Object -Unique)
+        if ($fileIds.Count -gt 1) {
+            throw "The file holds statements for several bank accounts ($($fileIds -join ', ')). Import them one at a time with -AccountId and -Account."
         }
-    }
-
-    foreach ($p in $parsed) {
-        if ($null -ne $p.OpeningBalance -and $null -ne $p.ClosingBalance) {
-            $sum = [decimal]0
-            foreach ($t in $p.Transactions) { $sum += $t.Amount }
-            if ($p.OpeningBalance + $sum -ne $p.ClosingBalance) {
-                Write-Warning "Statement '$($p.StatementId)' in '$Path' does not balance: opening $($p.OpeningBalance) + transactions $sum <> closing $($p.ClosingBalance)."
+        if ($fileIds.Count -eq 1) {
+            $knownIds = @($existing | Where-Object BankAccount -eq $Account | ForEach-Object { & $normalizeId $_.AccountId } | Where-Object { $_ } | Select-Object -Unique)
+            if ($knownIds -and $fileIds[0] -notin $knownIds) {
+                throw "Ledger account $Account already holds statements for bank account $($knownIds -join ', '), not $($fileIds[0]). Use -Account to import into another ledger account."
             }
         }
-        if ($p.Currency -and $p.Currency -ne 'SEK') {
-            Write-Warning "Statement '$($p.StatementId)' is in $($p.Currency); amounts are imported as they are, without currency conversion."
-        }
+        $nextStatement = 1 + (@($existing | ForEach-Object { $_.StatementNumber }) + 0 | Measure-Object -Maximum).Maximum
+        $nextTransaction = 1 + (@($existing | ForEach-Object { $_.Transactions } | ForEach-Object { $_.TransactionId }) + 0 | Measure-Object -Maximum).Maximum
 
-        $seenInFile = @{}
-        $new = [System.Collections.Generic.List[object]]::new()
-        $skipped = 0
-        foreach ($t in $p.Transactions) {
-            if ($t.BankReference) {
-                if ($knownRefs.Contains($t.BankReference)) { $skipped++; continue }
-            }
-            else {
+        # Index what is already stored for this bank account so overlapping files
+        # do not import the same transaction twice.
+        $knownRefs = [System.Collections.Generic.HashSet[string]]::new()
+        $knownPrints = @{}
+        $fingerprint = { param($t) '{0}|{1}|{2}|{3}' -f $t.Date.ToString('yyyy-MM-dd'), (Format-LedgerInvoiceAmount -Value ([decimal]$t.Amount)), (ConvertTo-LedgerBankField $t.Reference), (ConvertTo-LedgerBankField $t.Text) }
+        foreach ($s in ($existing | Where-Object BankAccount -eq $Account)) {
+            foreach ($t in $s.Transactions) {
+                if ($t.BankReference) { [void]$knownRefs.Add($t.BankReference); continue }
                 $key = & $fingerprint $t
-                $seenInFile[$key] = 1 + [int]$seenInFile[$key]
-                if ($seenInFile[$key] -le [int]$knownPrints[$key]) { $skipped++; continue }
+                $knownPrints[$key] = 1 + [int]$knownPrints[$key]
             }
-            $new.Add($t)
         }
 
-        $fileName = Split-Path -Leaf $Path
-        if ($new.Count -eq 0) {
-            Write-Warning "No new transactions in '$fileName'$(if ($p.StatementId) { " (statement $($p.StatementId))" }); nothing was imported."
+        foreach ($p in $parsed) {
+            if ($null -ne $p.OpeningBalance -and $null -ne $p.ClosingBalance) {
+                $sum = [decimal]0
+                foreach ($t in $p.Transactions) { $sum += $t.Amount }
+                if ($p.OpeningBalance + $sum -ne $p.ClosingBalance) {
+                    Write-Warning "Statement '$($p.StatementId)' in '$Path' does not balance: opening $($p.OpeningBalance) + transactions $sum <> closing $($p.ClosingBalance)."
+                }
+            }
+            if ($p.Currency -and $p.Currency -ne 'SEK') {
+                Write-Warning "Statement '$($p.StatementId)' is in $($p.Currency); amounts are imported as they are, without currency conversion."
+            }
+
+            $seenInFile = @{}
+            $new = [System.Collections.Generic.List[object]]::new()
+            $skipped = 0
+            foreach ($t in $p.Transactions) {
+                if ($t.BankReference) {
+                    if ($knownRefs.Contains($t.BankReference)) { $skipped++; continue }
+                }
+                else {
+                    $key = & $fingerprint $t
+                    $seenInFile[$key] = 1 + [int]$seenInFile[$key]
+                    if ($seenInFile[$key] -le [int]$knownPrints[$key]) { $skipped++; continue }
+                }
+                $new.Add($t)
+            }
+
+            $fileName = Split-Path -Leaf $Path
+            if ($new.Count -eq 0) {
+                Write-Warning "No new transactions in '$fileName'$(if ($p.StatementId) { " (statement $($p.StatementId))" }); nothing was imported."
+                [PSCustomObject]@{
+                    StatementNumber = $null
+                    BankAccount     = $Account
+                    FromDate        = $p.FromDate
+                    ToDate          = $p.ToDate
+                    OpeningBalance  = $p.OpeningBalance
+                    ClosingBalance  = $p.ClosingBalance
+                    Imported        = 0
+                    Skipped         = $skipped
+                }
+                continue
+            }
+
+            if (-not $PSCmdlet.ShouldProcess($fileName, "Import $($new.Count) bank transactions for account $Account")) {
+                continue
+            }
+
+            $dir = Get-LedgerBankDirectory -JournalPath $JournalPath -Create
+            $transactions = [System.Collections.Generic.List[object]]::new()
+            foreach ($t in $new) {
+                $transactions.Add([PSCustomObject]@{
+                        TransactionId      = $nextTransaction++
+                        StatementNumber    = $nextStatement
+                        BankAccount        = $Account
+                        Date               = $t.Date
+                        Amount             = [decimal]$t.Amount
+                        BankReference      = ConvertTo-LedgerBankField $t.BankReference
+                        Reference          = ConvertTo-LedgerBankField $t.Reference
+                        Counterparty       = ConvertTo-LedgerBankField $t.Counterparty
+                        Text               = ConvertTo-LedgerBankField $t.Text
+                        Status             = 'Unmatched'
+                        MatchType          = ''
+                        MatchRef           = ''
+                        FiscalYear         = ''
+                        VerificationNumber = $null
+                    })
+                if ($t.BankReference) { [void]$knownRefs.Add($t.BankReference) }
+            }
+            foreach ($key in $seenInFile.Keys) {
+                if ($seenInFile[$key] -gt [int]$knownPrints[$key]) { $knownPrints[$key] = $seenInFile[$key] }
+            }
+
+            $statement = [PSCustomObject]@{
+                StatementNumber = $nextStatement
+                BankAccount     = $Account
+                Source          = $Format
+                FileName        = $fileName
+                StatementId     = $p.StatementId
+                AccountId       = $p.AccountId
+                Currency        = $p.Currency
+                FromDate        = $p.FromDate
+                ToDate          = $p.ToDate
+                OpeningBalance  = $p.OpeningBalance
+                ClosingBalance  = $p.ClosingBalance
+                ImportedDate    = (Get-Date).Date
+                Transactions    = $transactions
+                FilePath        = Join-Path $dir (Get-LedgerBankStatementFileName -StatementNumber $nextStatement)
+            }
+            Save-LedgerBankStatementFile -Statement $statement -NoClobber
+
             [PSCustomObject]@{
-                StatementNumber = $null
+                StatementNumber = $nextStatement
                 BankAccount     = $Account
                 FromDate        = $p.FromDate
                 ToDate          = $p.ToDate
                 OpeningBalance  = $p.OpeningBalance
                 ClosingBalance  = $p.ClosingBalance
-                Imported        = 0
+                Imported        = $transactions.Count
                 Skipped         = $skipped
             }
-            continue
+            $nextStatement++
         }
-
-        if (-not $PSCmdlet.ShouldProcess($fileName, "Import $($new.Count) bank transactions for account $Account")) {
-            continue
-        }
-
-        $dir = Get-LedgerBankDirectory -JournalPath $JournalPath -Create
-        $transactions = [System.Collections.Generic.List[object]]::new()
-        foreach ($t in $new) {
-            $transactions.Add([PSCustomObject]@{
-                TransactionId      = $nextTransaction++
-                StatementNumber    = $nextStatement
-                BankAccount        = $Account
-                Date               = $t.Date
-                Amount             = [decimal]$t.Amount
-                BankReference      = ConvertTo-LedgerBankField $t.BankReference
-                Reference          = ConvertTo-LedgerBankField $t.Reference
-                Counterparty       = ConvertTo-LedgerBankField $t.Counterparty
-                Text               = ConvertTo-LedgerBankField $t.Text
-                Status             = 'Unmatched'
-                MatchType          = ''
-                MatchRef           = ''
-                FiscalYear         = ''
-                VerificationNumber = $null
-            })
-            if ($t.BankReference) { [void]$knownRefs.Add($t.BankReference) }
-        }
-        foreach ($key in $seenInFile.Keys) {
-            if ($seenInFile[$key] -gt [int]$knownPrints[$key]) { $knownPrints[$key] = $seenInFile[$key] }
-        }
-
-        $statement = [PSCustomObject]@{
-            StatementNumber = $nextStatement
-            BankAccount     = $Account
-            Source          = $Format
-            FileName        = $fileName
-            StatementId     = $p.StatementId
-            AccountId       = $p.AccountId
-            Currency        = $p.Currency
-            FromDate        = $p.FromDate
-            ToDate          = $p.ToDate
-            OpeningBalance  = $p.OpeningBalance
-            ClosingBalance  = $p.ClosingBalance
-            ImportedDate    = (Get-Date).Date
-            Transactions    = $transactions
-            FilePath        = Join-Path $dir (Get-LedgerBankStatementFileName -StatementNumber $nextStatement)
-        }
-        Save-LedgerBankStatementFile -Statement $statement
-
-        [PSCustomObject]@{
-            StatementNumber = $nextStatement
-            BankAccount     = $Account
-            FromDate        = $p.FromDate
-            ToDate          = $p.ToDate
-            OpeningBalance  = $p.OpeningBalance
-            ClosingBalance  = $p.ClosingBalance
-            Imported        = $transactions.Count
-            Skipped         = $skipped
-        }
-        $nextStatement++
     }
+    finally { Exit-LedgerJournalLock -Lock $journalLock }
 }

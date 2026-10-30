@@ -112,8 +112,12 @@ Describe 'Export-LedgerArchive' {
             New-LedgerInvoice -JournalPath $journal -CustomerNumber '10' -Date '2024-01-15' -Description 'Konsult' `
                 -Rows @(@{ Account = '3010'; Amount = 1000; VatRate = 0.25; VatAccount = '2610' })
             Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 1
-            $paymentId = New-Guid
-            Add-LedgerInvoicePayment -JournalPath $journal -InvoiceNumber 1 -Date '2024-01-20' -PaymentId $paymentId
+            $csv = Join-Path $TestDrive 'archive-payment.csv'
+            Set-Content -LiteralPath $csv -Value @('Date;Amount;Text', '2024-01-20;1250;Volvo AB')
+            Import-LedgerBankStatement -JournalPath $journal -Path $csv -Format Csv `
+                -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text | Out-Null
+            Set-LedgerBankTransaction -JournalPath $journal -TransactionId 1 -InvoiceNumber 1
+            $paymentId = (Get-ChildItem -LiteralPath (Join-Path $journal 'invoices' 'payments') -File).BaseName
             Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $OpenYear -SkipResultEntry | Out-Null
             $package = Export-LedgerArchive -JournalPath $journal -FiscalYear $OpenYear -AsDirectory
             $original = Join-Path $journal 'invoices' 'posting' 'inv0001.txt'
@@ -126,6 +130,9 @@ Describe 'Export-LedgerArchive' {
             (Get-FileHash -LiteralPath $archivedPayment).Hash | Should -Be (Get-FileHash -LiteralPath $originalPayment).Hash
             Get-Content -LiteralPath (Join-Path $package.FullName 'checksums.txt') -Raw |
                 Should -BeLike "*journal/invoices/payments/$paymentId.txt*"
+            $archivedTransaction = Get-LedgerBankTransaction -JournalPath (Join-Path $package.FullName 'journal') -TransactionId 1
+            $archivedTransaction.MatchType | Should -Be 'CustomerInvoice'
+            $archivedTransaction.VerificationNumber | Should -Be 2
         }
 
         It 'Leaves out invoices, payslips and bank statements of other years' {

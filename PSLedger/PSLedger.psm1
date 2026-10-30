@@ -27,6 +27,7 @@
 . $PSScriptRoot\Private\InvoiceStore.ps1
 . $PSScriptRoot\Private\InvoicePosting.ps1
 . $PSScriptRoot\Private\InvoicePayment.ps1
+. $PSScriptRoot\Private\InvoicePaymentCommand.ps1
 . $PSScriptRoot\Private\SupplierInvoiceStore.ps1
 . $PSScriptRoot\Private\OcrReference.ps1
 . $PSScriptRoot\Private\InvoiceCharge.ps1
@@ -35,6 +36,7 @@
 . $PSScriptRoot\Private\BankStore.ps1
 . $PSScriptRoot\Private\BankImport.ps1
 . $PSScriptRoot\Private\BankMatching.ps1
+. $PSScriptRoot\Private\BankPayment.ps1
 . $PSScriptRoot\Private\TimeStore.ps1
 . $PSScriptRoot\Private\Migrations.ps1
 

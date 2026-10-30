@@ -598,11 +598,31 @@ command. A matching saved verification may complete the payment after year
 closure, but a missing verification cannot be created in a closed year.
 
 Keep payment plans after success and in backups, just like posting plans.
-Bank matching stops while a customer payment is unfinished. Resume the payment
-first, then link its existing verification with `Set-LedgerBankTransaction
--VerificationNumber ... -FiscalYear ...`; do not register another invoice
-payment. This is not yet automatic recovery of the whole bank-matching workflow,
-nor recovery for supplier payments, charges or credit notes.
+
+**Bank matching against customer invoices is also recoverable.** If the payment
+was started by bank matching, repeat the same manual match or rerun automatic
+matching:
+
+```powershell
+Set-LedgerBankTransaction -JournalPath .\HEG.ledger -TransactionId 15 -InvoiceNumber 1
+# Alternatively, resume saved matches before applying ordinary matching rules:
+Invoke-LedgerBankMatching -JournalPath .\HEG.ledger
+```
+
+The payment plan retains the bank transaction's identity and input hash.
+Recovery finishes both the payment and the bank link, even if the invoice is
+already paid or has later payments. Changed bank inputs or conflicting links
+stop recovery. The reserved verification cannot be claimed by another bank
+transaction with the same date and amount.
+
+`-Reset` clears the link but retains payment ownership. Only relinking the same
+payment is permitted afterwards; resetting never undoes or frees the payment
+for another invoice. Bookkeeping corrections require separate handling.
+
+An unfinished payment started outside bank matching still needs to be resumed
+with its `PaymentId` first, then linked with `-VerificationNumber` and
+`-FiscalYear`; do not register another payment. Supplier-payment and rule/account
+bank matching, charges and credit notes do not yet have end-to-end recovery.
 
 `Export-LedgerInvoice` produces the PDF with a built-in, dependency-free writer.
 Add payment details (bankgiro, plusgiro, IBAN/BIC) to the document by storing them
@@ -783,7 +803,7 @@ the files and the chain is only caught by `-ExpectedHash`. Opening balances,
 ### Concurrent writes and interrupted operations
 
 Verification posting (including reversals), customer-invoice posting and payments,
-charges, reminders, bank matching, attachment changes, sealing, fiscal-year closing
+charges, reminders, bank imports and matching, attachment changes, sealing, fiscal-year closing
 and credit-note rollback share a journal-level write lock.
 The verification writer holds it across validation, number allocation, file
 creation and integrity registration. Nested calls reuse the same lock. A

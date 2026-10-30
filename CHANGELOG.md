@@ -21,6 +21,12 @@
   real partial payments. Unkeyed payments retain normal registration semantics;
   an unfinished payment blocks another payment and reports the ID to resume.
   Payment plans and number reservations are retained and included in archives.
+- **End-to-end recovery of bank matching against customer invoices.** The
+  payment plan also records the originating bank transaction and its input hash.
+  Repeat manual or automatic matching to finish the payment and bank link without
+  duplication, even after the invoice was paid. Saved plans take priority over
+  matching heuristics and reserve their verifications for the originating
+  transaction. `-Reset` retains ownership and permits only same-payment relinking.
 
 ### Fixed
 - **Verification filename conflicts no longer overwrite existing entries.**
@@ -35,12 +41,15 @@
   update or change an invoice with an unfinished payment. Automatic and manual
   bank matching hold the same lock and refuse to bypass an unfinished payment
   by merely linking its saved verification.
+- **Bank imports allocate identities under the journal lock** and publish new
+  statement files without overwriting existing ones. Matching rejects duplicate
+  transaction identities rather than selecting the first occurrence.
 
 Recovery currently covers customer-invoice posting and payments. Changed inputs,
 conflicting verifications and damaged integrity chains stop recovery explicitly.
-Supplier payments, charges, credit notes, payroll, imports and the complete bank
-matching workflow still need recovery. Locking is not a multi-file transaction
-or general multi-user support.
+Supplier payments, rule/account bank postings, charges, credit notes, payroll
+and multi-statement imports still need recovery. Locking is not a multi-file
+transaction or general multi-user support.
 
 ## [1.1.0] - 2026-10-30
 

@@ -138,7 +138,7 @@ coordination file, not bookkeeping data or a new schema version. Participating
 writers hold an exclusive open handle while validating and writing a
 verification and its integrity records. New verification files are published
 without replacing an existing filename. The same journal lock covers attachment
-changes, customer-invoice posting and payments, charges, reminders, bank matching,
+changes, customer-invoice posting and payments, charges, reminders, bank imports and matching,
 sealing, year closing and credit-note rollback.
 
 The file remains after the handle is released, including after a crashed
@@ -647,11 +647,41 @@ use the saved plan; explicit conflicting inputs are rejected.
 
 Without `PaymentId`, the command generates a new ID for each payment. An
 unfinished payment prevents further payment, charge, reminder or credit writes
-to that invoice and blocks bank matching until it is resumed with its ID.
+to that invoice and blocks unrelated bank matching until it is resumed with its ID.
 Identical dates and amounts alone never deduplicate payments. Plans remain after
 completion and are copied with included invoices into archives, with checksums.
-SIE exports do not retain them. Other multi-file workflows, including the bank
-transaction update after payment, do not yet have end-to-end recovery.
+SIE exports do not retain them.
+
+**Bank-originated customer payments** additionally require all three fields
+below together (all are absent on ordinary payments). These are additive fields
+in payment-plan format version 1:
+
+| Key | Value |
+|-----|-------|
+| `BankTransactionId` | Positive journal-wide bank transaction ID. |
+| `BankStatementNumber` | Positive statement number containing that transaction. |
+| `BankTransactionHash` | Lowercase SHA-256 of the stable bank input fields below. |
+
+The bank hash covers, in order, the statement number, transaction ID, ledger bank
+account, ISO date, amount, bank reference, reference, counterparty and text,
+separated by tabs and followed by one LF, encoded as UTF-8. The amount uses an
+invariant decimal point without insignificant trailing fractional zeros; empty
+fields remain empty. Status and match fields are excluded because they change
+on completion or Reset. Other transactions in the statement are not hashed, so
+their legitimate changes do not prevent recovery or get overwritten by it.
+
+A bank-originated payment reserves its verification for that bank transaction.
+Matching resumes saved plans before using amount/reference heuristics. It first
+finishes or verifies the payment, then saves `CustomerInvoice` match type, invoice
+number, fiscal year and verification number on the bank transaction. A matching
+completed payment is reused even when the invoice has since changed. Bank input
+or link conflicts stop recovery, including retries directly through `PaymentId`.
+Reset clears only the bank link, never the plan: only the same payment may be
+relinked. Duplicate transaction IDs or conflicting plans are rejected.
+
+Existing payment plans without bank fields remain supported and are not
+automatically associated with a bank transaction. Supplier payments, rule/account
+postings and own-account transfer workflows do not yet have end-to-end recovery.
 
 ### `invoices/invNNNN.txt` — customer invoices
 

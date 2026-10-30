@@ -167,7 +167,9 @@ function Save-LedgerBankStatementFile {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)]
-        [psobject]$Statement
+        [psobject]$Statement,
+
+        [switch]$NoClobber
     )
 
     $date = { param($v) if ($v) { ([datetime]$v).ToString('yyyy-MM-dd') } else { '' } }
@@ -207,7 +209,7 @@ function Save-LedgerBankStatementFile {
         $lines.Add(($fields -join "`t"))
     }
 
-    Set-LedgerFileContent -Path $Statement.FilePath -Value $lines.ToArray()
+    Set-LedgerFileContent -Path $Statement.FilePath -Value $lines.ToArray() -NoClobber:$NoClobber
 }
 
 function Get-LedgerBankStatementData {
@@ -240,13 +242,16 @@ function Find-LedgerBankTransaction {
         [Parameter(Mandatory)]
         [int]$TransactionId
     )
+    $found = @()
     foreach ($s in @(Get-LedgerBankStatementData -JournalPath $JournalPath)) {
         foreach ($t in $s.Transactions) {
             if ($t.TransactionId -eq $TransactionId) {
-                return [PSCustomObject]@{ Statement = $s; Transaction = $t }
+                $found += [PSCustomObject]@{ Statement = $s; Transaction = $t }
             }
         }
     }
+    if ($found.Count -gt 1) { throw "Bank transaction $TransactionId has duplicate identities in the journal." }
+    if ($found.Count -eq 1) { return $found[0] }
     throw "Bank transaction $TransactionId does not exist."
 }
 

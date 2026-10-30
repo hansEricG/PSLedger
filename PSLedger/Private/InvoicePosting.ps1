@@ -60,6 +60,18 @@ function Read-LedgerInvoicePosting {
         $operation | Add-Member -NotePropertyMembers @{
             PaymentDate = $date; PaymentAmount = $amount; PaymentAccount = $fields.PaymentAccount
         }
+        if ($fields.ContainsKey('BankTransactionId') -or $fields.ContainsKey('BankStatementNumber') -or $fields.ContainsKey('BankTransactionHash')) {
+            $transactionId = 0
+            $statementNumber = 0
+            if (-not [int]::TryParse([string]$fields.BankTransactionId, [ref]$transactionId) -or $transactionId -le 0 -or
+                -not [int]::TryParse([string]$fields.BankStatementNumber, [ref]$statementNumber) -or $statementNumber -le 0 -or
+                $fields.BankTransactionHash -cnotmatch '^[0-9a-f]{64}$') {
+                throw "Invalid invoice posting record '$Path': invalid bank transaction identity or hash."
+            }
+            $operation | Add-Member -NotePropertyMembers @{
+                BankTransactionId = $transactionId; BankStatementNumber = $statementNumber; BankTransactionHash = $fields.BankTransactionHash
+            }
+        }
     }
     $operation
 }
@@ -106,6 +118,13 @@ function Save-LedgerInvoicePosting {
             "PaymentAmount:`t$(Format-LedgerInvoiceAmount -Value $Operation.PaymentAmount)"
             "PaymentAccount:`t$($Operation.PaymentAccount)"
         )
+        if ($Operation.PSObject.Properties['BankTransactionId']) {
+            $lines += @(
+                "BankTransactionId:`t$($Operation.BankTransactionId)"
+                "BankStatementNumber:`t$($Operation.BankStatementNumber)"
+                "BankTransactionHash:`t$($Operation.BankTransactionHash)"
+            )
+        }
     }
     Set-LedgerFileContent -Path $Path -NoClobber -Value $lines
 }

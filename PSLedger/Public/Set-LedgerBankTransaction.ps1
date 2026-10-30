@@ -19,7 +19,16 @@ Choose one of:
   verification it created is left in place; reverse it with
   Add-LedgerReversal if needed.
 
-Only unmatched transactions can be posted, linked or ignored.
+Only unmatched transactions can be newly posted, linked or ignored. Customer
+invoice matches with saved payment plans can also be retried after completion:
+the same invoice/payment is reused without another payment or verification.
+After interruption, repeat -InvoiceNumber with the same invoice, or rerun
+Invoke-LedgerBankMatching. Input or link conflicts are rejected.
+
+Reset preserves a saved customer-payment plan. Only relinking that same
+payment (with -InvoiceNumber or its -VerificationNumber) is allowed afterwards;
+Reset does not permit paying another invoice, reposting or ignoring the
+transaction. Corrections to the bookkeeping are a separate operation.
 
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal
@@ -60,7 +69,7 @@ The fiscal year of -VerificationNumber, or the fiscal year to post into with
 Marks the transaction as ignored.
 
 .PARAMETER Reset
-Returns the transaction to 'Unmatched'.
+Returns the transaction to 'Unmatched' without clearing saved payment ownership.
 
 .PARAMETER PassThru
 If specified, returns the updated transaction. By default the command produces
@@ -135,18 +144,37 @@ function Set-LedgerBankTransaction {
         try {
             $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
             Assert-LedgerJournalSchema -Path $JournalPath -Write
+            $operations = @(Get-LedgerInvoicePaymentOperation -JournalPath $JournalPath)
+            $owned = @($operations | Where-Object { $_.PSObject.Properties['BankTransactionId'] -and $_.BankTransactionId -eq $TransactionId })
+            $exceptId = if ($owned.Count -eq 1) { $owned[0].OperationId } else { [guid]::Empty }
             if ($PSCmdlet.ParameterSetName -notin 'Ignore', 'Reset') {
-                Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath
+                Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath -ExceptPaymentId $exceptId
             }
             $found = Find-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $TransactionId
             $statement = $found.Statement
             $t = $found.Transaction
+            $operation = Get-LedgerBankInvoicePaymentOperation -Transaction $t -Operations $operations
+            if ($operation) { Assert-LedgerBankPaymentLink -Transaction $t -Operation $operation }
             $target = "Bank transaction $TransactionId ($($t.Date.ToString('yyyy-MM-dd')), $($t.Amount))"
 
             if ($PSCmdlet.ParameterSetName -eq 'Reset') {
                 if ($t.Status -eq 'Unmatched') { return }
                 if (-not $PSCmdlet.ShouldProcess($target, 'Reset to Unmatched')) { return }
                 Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Unmatched
+                if ($PassThru) { ConvertTo-LedgerBankTransactionOutput -Transaction $t }
+                return
+            }
+
+            if ($operation) {
+                $sameInvoice = $PSCmdlet.ParameterSetName -eq 'Invoice' -and $InvoiceNumber -eq $operation.InvoiceNumber
+                $sameVerification = $PSCmdlet.ParameterSetName -eq 'Verification' -and
+                    $VerificationNumber -eq $operation.VerificationNumber -and
+                    (-not $FiscalYear -or $FiscalYear -eq $operation.FiscalYear)
+                if (-not ($sameInvoice -or $sameVerification)) {
+                    throw "Bank transaction $TransactionId belongs to the saved payment of invoice $($operation.InvoiceNumber). Reset does not undo that payment; only relinking the same payment is allowed."
+                }
+                if (-not $PSCmdlet.ShouldProcess($target, 'Resume saved customer payment match')) { return }
+                $null = Invoke-LedgerBankInvoicePayment -JournalPath $JournalPath -Transaction $t -Statement $statement -InvoiceNumber $operation.InvoiceNumber
                 if ($PassThru) { ConvertTo-LedgerBankTransactionOutput -Transaction $t }
                 return
             }
@@ -167,6 +195,13 @@ function Set-LedgerBankTransaction {
                             throw "No fiscal year covers the transaction date $($t.Date.ToString('yyyy-MM-dd')). Specify -FiscalYear."
                         }
                     }
+                    if (@($operations | Where-Object {
+                            $_.PSObject.Properties['BankTransactionId'] -and $_.BankTransactionId -ne $TransactionId -and
+                            $_.PaymentAccount -eq $t.BankAccount -and $_.FiscalYear -eq $FiscalYear -and
+                            $_.VerificationNumber -eq $VerificationNumber
+                        }).Count) {
+                        throw "Verification $VerificationNumber in $FiscalYear is reserved for another bank transaction's payment."
+                    }
                     $movement = Get-LedgerBankAccountMovements -JournalPath $JournalPath -FiscalYear $FiscalYear -BankAccount $t.BankAccount |
                         Where-Object VerificationNumber -eq $VerificationNumber
                     if (-not $movement) {
@@ -185,9 +220,7 @@ function Set-LedgerBankTransaction {
                 }
                 'Invoice' {
                     if (-not $PSCmdlet.ShouldProcess($target, "Register payment of customer invoice $InvoiceNumber")) { return }
-                    $result = Invoke-LedgerBankInvoicePayment -JournalPath $JournalPath -Transaction $t -InvoiceNumber $InvoiceNumber
-                    Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched -MatchType 'CustomerInvoice' `
-                        -MatchRef ([string]$InvoiceNumber) -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
+                    $null = Invoke-LedgerBankInvoicePayment -JournalPath $JournalPath -Transaction $t -Statement $statement -InvoiceNumber $InvoiceNumber
                 }
                 'SupplierInvoice' {
                     if (-not $PSCmdlet.ShouldProcess($target, "Register payment of supplier invoice $SupplierInvoiceNumber")) { return }

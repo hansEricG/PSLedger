@@ -11,7 +11,7 @@ BeforeAll {
         $env:PSLEDGER_USER_EXTENSIONS = Join-Path (Split-Path $Ready -Parent) 'extensions'
         Import-Module $ModulePath -Force
         $paymentId = '11111111-1111-1111-1111-111111111111'
-        if ($Mode -match '^(Invoice|Payment)After') {
+        if ($Mode -match '^(Invoice|Payment|Bank)After') {
             & (Get-Module PSLedger) {
                 param ($Ready, $Mode)
                 $script:PostingReady = $Ready
@@ -38,9 +38,20 @@ BeforeAll {
                             & $script:PostingPause
                         }
                     }
+                    'AfterLink$' {
+                        $script:OriginalBankSave = (Get-Command Save-LedgerBankStatementFile).ScriptBlock
+                        function script:Save-LedgerBankStatementFile {
+                            param ($Statement)
+                            & $script:OriginalBankSave -Statement $Statement
+                            & $script:PostingPause
+                        }
+                    }
                 }
             } $Ready $Mode
-            if ($Mode -like 'Payment*') {
+            if ($Mode -like 'Bank*') {
+                Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -InvoiceNumber 1
+            }
+            elseif ($Mode -like 'Payment*') {
                 Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $paymentId -Amount 500.000 -Date '2024-01-20'
             }
             else { Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 }
@@ -76,6 +87,16 @@ BeforeAll {
         }
         if ($Mode -eq 'Invoice') {
             Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
+        }
+        elseif ($Mode -eq 'BankImport') {
+            Import-LedgerBankStatement -JournalPath $JournalPath -Path (Join-Path (Split-Path $JournalPath -Parent) 'bank.csv') `
+                -Format Csv -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text -ReferenceColumn Reference | Out-Null
+        }
+        elseif ($Mode -eq 'BankManual') {
+            Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -InvoiceNumber 1
+        }
+        elseif ($Mode -eq 'Bank') {
+            Invoke-LedgerBankMatching -JournalPath $JournalPath | Out-Null
         }
         elseif ($Mode -like 'Payment*') {
             if ($Mode -in 'PaymentNew', 'PaymentLarge') { $paymentId = [guid]::NewGuid() }
@@ -143,6 +164,12 @@ BeforeAll {
         Add-LedgerCustomer -JournalPath $journal -CustomerNumber '10' -Name 'Volvo AB'
         New-LedgerInvoice -JournalPath $journal -CustomerNumber '10' -Date '2024-01-15' -Description 'Konsultuppdrag' `
             -Rows @(@{ Account = '3010'; Amount = 1000; VatRate = 0.25; VatAccount = '2610' })
+    }
+
+    function New-LockTestBankSource {
+        $source = Join-Path (Split-Path $journal -Parent) 'bank.csv'
+        Set-Content -LiteralPath $source -Value @('Date;Amount;Text;Reference', '2024-01-20;500;Volvo AB;133')
+        $source
     }
 }
 
@@ -442,5 +469,101 @@ Describe 'Journal write locking' {
         $invoice.Payments | Should -HaveCount 1
         $invoice.RemainingAmount | Should -Be 350
         @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 2
+    }
+
+    It 'Resumes the bank payment and its link after <Checkpoint>' -ForEach @(
+        @{ Checkpoint = 'BankAfterPlan' }
+        @{ Checkpoint = 'BankAfterSave' }
+        @{ Checkpoint = 'BankAfterSeal' }
+        @{ Checkpoint = 'BankAfterStatus' }
+        @{ Checkpoint = 'BankAfterLink' }
+    ) {
+        New-LockTestInvoice
+        Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 1
+        Import-LedgerBankStatement -JournalPath $journal -Path (New-LockTestBankSource) -Format Csv `
+            -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text -ReferenceColumn Reference | Out-Null
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        $plan = Get-ChildItem -LiteralPath (Join-Path $journal 'invoices' 'payments') -File
+        $hash = (Get-FileHash -LiteralPath $plan.FullName).Hash
+        $extra = $Checkpoint -in 'BankAfterStatus', 'BankAfterLink'
+        if ($extra) {
+            Add-LedgerInvoicePayment -JournalPath $journal -InvoiceNumber 1 -Amount 250 -Date '2024-01-21'
+        }
+        (Add-LedgerEntry @entry -PassThru).VerificationNumber | Should -Be $(if ($extra) { 4 } else { 3 })
+        Set-Content -LiteralPath $gate -Value 'go'
+        $retry = Start-LockTestWorker Bank
+        Complete-LockTestWorker $retry
+        $t = Get-LedgerBankTransaction -JournalPath $journal -TransactionId 1
+        $t.Status | Should -Be 'Matched'
+        $t.MatchType | Should -Be 'CustomerInvoice'
+        $t.MatchRef | Should -Be '1'
+        $t.VerificationNumber | Should -Be 2
+        $invoice = Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 1
+        $invoice.Payments | Should -HaveCount $(if ($extra) { 2 } else { 1 })
+        $invoice.PaidAmount | Should -Be $(if ($extra) { 750 } else { 500 })
+        (Get-FileHash -LiteralPath $plan.FullName).Hash | Should -Be $hash
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
+    }
+
+    It 'Serializes manual and automatic matching of one customer payment' {
+        New-LockTestInvoice
+        Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 1
+        Import-LedgerBankStatement -JournalPath $journal -Path (New-LockTestBankSource) -Format Csv `
+            -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text -ReferenceColumn Reference | Out-Null
+        $first = Start-LockTestWorker Bank
+        $second = Start-LockTestWorker BankManual
+        Wait-LockTestReady $first
+        Wait-LockTestReady $second
+        Set-Content -LiteralPath $gate -Value 'go'
+        Complete-LockTestWorker $first
+        Complete-LockTestWorker $second
+        (Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 1).Payments | Should -HaveCount 1
+        (Get-LedgerBankTransaction -JournalPath $journal -TransactionId 1).VerificationNumber | Should -Be 2
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
+    }
+
+    It 'Recovers a bank match in a closed year only if its verification was saved: <Saved>' -ForEach @(
+        @{ Saved = $true; Checkpoint = 'BankAfterSave' }
+        @{ Saved = $false; Checkpoint = 'BankAfterPlan' }
+    ) {
+        New-LockTestInvoice
+        Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 1
+        Import-LedgerBankStatement -JournalPath $journal -Path (New-LockTestBankSource) -Format Csv `
+            -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text -ReferenceColumn Reference | Out-Null
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $year -SkipResultEntry | Out-Null
+        Set-Content -LiteralPath $gate -Value 'go'
+        $retry = Start-LockTestWorker Bank
+        if ($Saved) {
+            Complete-LockTestWorker $retry
+            (Get-LedgerBankTransaction -JournalPath $journal -TransactionId 1).Status | Should -Be 'Matched'
+            (Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 1).Payments | Should -HaveCount 1
+        }
+        else {
+            $retry.Process.WaitForExit(30000) | Should -BeTrue
+            $retry.Process.ExitCode | Should -Not -Be 0
+            $retry.Error.Result | Should -BeLike '*closed*'
+            (Get-LedgerBankTransaction -JournalPath $journal -TransactionId 1).Status | Should -Be 'Unmatched'
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 1
+        }
+    }
+
+    It 'Serializes concurrent bank imports before allocating identities' {
+        $null = New-LockTestBankSource
+        $first = Start-LockTestWorker BankImport
+        $second = Start-LockTestWorker BankImport
+        Wait-LockTestReady $first
+        Wait-LockTestReady $second
+        Set-Content -LiteralPath $gate -Value 'go'
+        Complete-LockTestWorker $first
+        Complete-LockTestWorker $second
+        @(Get-LedgerBankTransaction -JournalPath $journal) | Should -HaveCount 1
+        @(Get-LedgerBankStatement -JournalPath $journal) | Should -HaveCount 1
     }
 }
