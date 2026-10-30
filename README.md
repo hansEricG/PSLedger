@@ -85,6 +85,7 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Get-LedgerJournal` | Read journal metadata |
 | `Set-LedgerJournal` | Update company name / org number / metadata |
 | `Import-LedgerChart` | Import chart of accounts from template or file |
+| `Convert-LedgerChart` | Convert accounts from earlier PSLedger templates to standard BAS |
 | `Add-LedgerAccount` | Add a single account to the chart |
 | `Get-LedgerAccount` | List or look up accounts |
 | `New-LedgerFiscalYear` | Create a fiscal year |
@@ -284,6 +285,26 @@ Get-LedgerGeneralLedger -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024
 # Generate a VAT report for a quarter
 Get-LedgerVatReport -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' `
     -FromDate '2024-01-01' -ToDate '2024-03-31'
+```
+
+The VAT report maps BAS accounts to the boxes of the VAT return, for example
+3308 to box 39 (services to another EU country), 4535 to box 21 and 2614 to box 30
+(reverse charge). If your chart deviates from BAS, map accounts to boxes in a
+`vat.txt` file in the journal directory (account or range, a tab, the box; `-`
+for no box):
+
+```
+; PSLedger VAT mapping: Account or range, Box
+3060	39
+3800-3899	-
+```
+
+Journals created from the BAS-Komplett or BAS-Smaforetag templates of PSLedger
+1.0.0 and earlier used some non-BAS accounts (e.g. 3300 for EU services).
+`Convert-LedgerChart` adds the BAS accounts and the `vat.txt` rules for them:
+
+```powershell
+Convert-LedgerChart -JournalPath .\MinFirma.ledger -Date '2025-07-01'
 ```
 
 ## Dimensions & Objects

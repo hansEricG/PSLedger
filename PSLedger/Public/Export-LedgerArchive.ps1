@@ -141,7 +141,7 @@ function Export-LedgerArchive {
 
             # --- journal/: a journal holding only this fiscal year ------------
             $archJournal = Join-Path $root 'journal'
-            foreach ($file in 'journal.txt', 'accounts.txt', 'dimensions.txt', 'objects.txt', 'customers.txt', 'suppliers.txt', 'employees.txt') {
+            foreach ($file in 'journal.txt', 'accounts.txt', 'dimensions.txt', 'objects.txt', 'vat.txt', 'customers.txt', 'suppliers.txt', 'employees.txt') {
                 $src = Join-Path $journalDir $file
                 if (Test-Path -LiteralPath $src -PathType Leaf) {
                     Copy-Item -LiteralPath $src -Destination (Join-Path $archJournal $file)

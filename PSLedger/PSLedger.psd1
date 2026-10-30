@@ -164,6 +164,7 @@ FunctionsToExport = @(
     'Get-LedgerVatReport',
     'Import-LedgerBankStatement',
     'Import-LedgerChart',
+    'Convert-LedgerChart',
     'Import-LedgerSie',
     'Import-LedgerTimeEntry',
     'Invoke-LedgerBankMatching',

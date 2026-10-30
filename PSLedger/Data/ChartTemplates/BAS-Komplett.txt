@@ -114,12 +114,13 @@
 2490	Övriga kortfristiga skulder
 2510	Skatteskulder
 2610	Utgående moms 25%
+2614	Utgående moms omvänd skattskyldighet 25%
+2615	Utgående moms import av varor 25%
 2620	Utgående moms 12%
 2630	Utgående moms 6%
 2640	Ingående moms
-2645	Beräknad ingående moms
+2645	Beräknad ingående moms på förvärv från utlandet
 2650	Momsredovisningskonto
-2660	Moms omvänd skattskyldighet
 2710	Personalskatt
 2730	Arbetsgivaravgift skuld
 2740	Avdragen preliminär skatt
@@ -140,6 +141,7 @@
 2970	Förutbetalda hyresintäkter
 2980	Övriga förutbetalda intäkter
 2990	Övriga upplupna kostnader
+3004	Försäljning inom Sverige, momsfri
 3010	Försäljning varor 25%
 3011	Försäljning varor gross 25%
 3012	Försäljning varor netto 25%
@@ -147,12 +149,14 @@
 3030	Försäljning varor 6%
 3040	Försäljning tjänster 25%
 3041	Försäljning tjänster gross 25%
-3050	Försäljning tjänster momsfri
-3060	Försäljning tjänster utrikes
-3100	Försäljning varor inom EU
-3200	Försäljning varor utanför EU
-3300	Försäljning tjänster inom EU
-3400	Försäljning tjänster utanför EU
+3105	Försäljning varor till land utanför EU
+3106	Försäljning varor till annat EU-land, momspliktig
+3108	Försäljning varor till annat EU-land, momsfri
+3231	Försäljning inom byggsektorn, omvänd skattskyldighet
+3305	Försäljning tjänster till land utanför EU
+3308	Försäljning tjänster till annat EU-land
+3401	Egna uttag momspliktiga 25%
+3404	Egna uttag, momsfria
 3500	Fakturerade kostnader
 3510	Fakturerade frakter
 3520	Fakturerade tull- och speditionskostnader
@@ -175,16 +179,17 @@
 3980	Erhållna bidrag
 3990	Övriga ersättningar och intäkter
 4010	Inköp varor och material
-4020	Inköp varor och material EU
-4030	Inköp varor och material utland
 4040	Inköp av varor i kommission
 4100	Förändring av varulager
 4200	Övriga inköp
 4400	Underentreprenörer
+4425	Inköpta tjänster i Sverige, omvänd skattskyldighet, 25%
 4500	Övriga externa tjänster
-4530	Importkostnader
-4531	Tull
-4532	Spedition
+4515	Inköp av varor från annat EU-land, 25%
+4531	Import tjänster land utanför EU, 25%
+4535	Inköp av tjänster från annat EU-land, 25%
+4545	Import av varor, 25%
+4598	Justering, omvänd moms
 4600	Legoarbeten
 4700	Direkta kostnader
 4900	Övriga kostnader för varor
@@ -235,6 +240,7 @@
 5630	Reparation och underhåll personbilar
 5690	Övriga kostnader transportmedel
 5700	Frakter och transporter
+5720	Tull- och speditionskostnader m.m.
 5800	Resekostnader
 5810	Biljetter
 5820	Hyrbil

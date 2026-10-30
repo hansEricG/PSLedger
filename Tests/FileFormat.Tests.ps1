@@ -58,6 +58,13 @@ Describe 'File format contract' {
             $object = Get-LedgerObject -JournalPath $J -DimensionNumber 1 -ObjectNumber 10
             $object.Name | Should -Be 'Administration'
         }
+
+        It 'Should read vat.txt as VAT box overrides' {
+            $report = Get-LedgerVatReport -JournalPath $J -FiscalYear $Y -FromDate '2024-01-01' -ToDate '2024-12-31'
+            ($report | Where-Object Box -EQ 6).Amount | Should -Be 10000
+            ($report | Where-Object Box -EQ 5).Amount | Should -Be 0
+            ($report | Where-Object Box -EQ 48).Amount | Should -Be 300
+        }
     }
 
     Context 'Fiscal years and verifications' {

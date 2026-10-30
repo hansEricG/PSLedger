@@ -90,7 +90,7 @@ Describe 'Export-LedgerArchive' {
             $expected = @(
                 'README.txt', 'checksums.txt', 'manifest.txt'
                 "sie/Exempel_$OpenYear.se"
-                'journal/journal.txt', 'journal/accounts.txt', 'journal/dimensions.txt', 'journal/objects.txt'
+                'journal/journal.txt', 'journal/accounts.txt', 'journal/dimensions.txt', 'journal/objects.txt', 'journal/vat.txt'
                 'journal/customers.txt', 'journal/suppliers.txt', 'journal/employees.txt'
                 "journal/$OpenYear/year.txt", "journal/$OpenYear/ib.txt", "journal/$OpenYear/holdings.txt"
                 "journal/$OpenYear/report.txt", "journal/$OpenYear/integrity.txt"

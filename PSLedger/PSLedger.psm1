@@ -55,6 +55,7 @@ $script:CurrentFiscalYear = $null
 . $PSScriptRoot\Public\Test-LedgerIntegrity.ps1
 . $PSScriptRoot\Public\Protect-LedgerFiscalYear.ps1
 . $PSScriptRoot\Public\Import-LedgerChart.ps1
+. $PSScriptRoot\Public\Convert-LedgerChart.ps1
 . $PSScriptRoot\Public\Get-LedgerIncomeStatement.ps1
 . $PSScriptRoot\Public\Get-LedgerBalanceSheet.ps1
 . $PSScriptRoot\Public\Copy-LedgerOpeningBalance.ps1
@@ -177,7 +178,7 @@ $script:CurrentFiscalYear = $null
 $script:BuiltInFunctions = @(
     'New-LedgerJournal', 'Get-LedgerJournal', 'Set-LedgerJournal', 'Add-LedgerAccount', 'Get-LedgerAccount',
     'New-LedgerFiscalYear', 'Add-LedgerEntry', 'New-LedgerEntryRow', 'Get-LedgerEntry', 'Get-LedgerBalance',
-    'Get-LedgerFiscalYear', 'Close-LedgerFiscalYear', 'Test-LedgerFiscalYear', 'Test-LedgerIntegrity', 'Protect-LedgerFiscalYear', 'Import-LedgerChart',
+    'Get-LedgerFiscalYear', 'Close-LedgerFiscalYear', 'Test-LedgerFiscalYear', 'Test-LedgerIntegrity', 'Protect-LedgerFiscalYear', 'Import-LedgerChart', 'Convert-LedgerChart',
     'Get-LedgerIncomeStatement', 'Get-LedgerBalanceSheet', 'Copy-LedgerOpeningBalance',
     'Update-LedgerJournal',
     'Add-LedgerReversal', 'Test-LedgerSie', 'Export-LedgerSie', 'Import-LedgerSie', 'Export-LedgerArchive', 'Test-LedgerArchive',

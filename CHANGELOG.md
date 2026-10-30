@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+### Added
+- **All boxes of the VAT return.** `Get-LedgerVatReport` and
+  `Export-LedgerVatDeclaration` now map BAS accounts to every box of the eSKD 6.0
+  format: taxable withdrawals, margin scheme and rental income (06–08), purchases
+  from abroad and domestic reverse charge (20–24), output VAT on those purchases
+  (30–32), sales of goods and services abroad (35–42), import (50, 60–62).
+  Box 49 includes the output VAT of boxes 30–32 and 60–62. Boxes other than 05,
+  10–12, 48 and 49 are only reported when they have an amount.
+- **`vat.txt`** in the journal directory overrides the VAT box mapping per
+  account or account range, for charts of accounts that deviate from BAS. It is
+  an additive file-format change (no schema bump) and is included in archive
+  packages.
+- **`Get-LedgerVatReport` warns** when an account in 3100–3399 (BAS sales
+  abroad, margin scheme, reverse charge) falls into box 05 because it is not
+  explicitly mapped.
+- **`Convert-LedgerChart`** converts journals created from the earlier
+  BAS-Komplett and BAS-Smaforetag templates: it adds the standard BAS accounts,
+  writes `vat.txt` rules so amounts already booked are reported in the right box,
+  and with `-Date` books a transfer verification to the new accounts.
+
+### Changed
+- **The BAS-Komplett and BAS-Smaforetag templates use standard BAS accounts**
+  for VAT-relevant sales and purchases: 3004, 3105, 3108, 3305 and 3308 (and in
+  BAS-Komplett 3106, 3231, 3401 and 3404) instead of 3050, 3060, 3100, 3200,
+  3300 and 3400; 4515, 4531, 4535, 4545 and 4598 instead of 4020 and 4030;
+  2614 and 2615 instead of 2660; 5720 instead of 4530–4532 for customs and
+  forwarding.
+- **Sales and VAT boxes keep their sign** instead of being made positive, so a
+  period dominated by credit notes reports a negative amount.
+
+### Fixed
+- **Box 48 was missing from exported VAT declarations.** It was written with the
+  tag `MomsIngaende`; the eSKD 6.0 tag is `MomsIngAvdr`.
+- **Sales abroad and reverse-charge VAT were reported in the wrong boxes.**
+  Every account 3000–3799 went to box 05, and output VAT on reverse-charge
+  purchases (2614, 2624, 2634) was not reported at all, so a purchase whose
+  calculated input VAT (2645) was deducted in box 48 overstated the refund.
+
 ## [1.0.0] - 2026-10-02
 
 First stable release. The file format is specified in

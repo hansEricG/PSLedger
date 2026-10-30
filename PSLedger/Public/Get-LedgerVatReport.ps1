@@ -4,19 +4,44 @@ Generates a VAT report (momsrapport) for a period.
 
 .DESCRIPTION
 Reads all verifications in the specified date range and maps account totals to
-Swedish VAT declaration boxes (Skatteverkets momsdeklaration). Returns objects
-for each box with amount, and a summary showing VAT to pay or reclaim.
+the boxes (rutor) of Skatteverket's VAT return (momsdeklaration). Returns one
+object per box with its number, name and amount, followed by box 49.
 
-The mapping follows BAS standard accounts:
-  Box 05 — Taxable domestic sales (accounts 3000–3799)
-  Box 10 — Output VAT 25 % (2610–2611)
-  Box 11 — Output VAT 12 % (2620–2621)
-  Box 12 — Output VAT 6 % (2630–2631)
-  Box 48 — Input VAT (2640–2649)
-  Box 49 — VAT to pay/reclaim (sum of output minus input)
+The default mapping follows the BAS chart of accounts, for example:
+  Box 05 — Taxable sales not in another box (the rest of 3000–3799)
+  Box 06 — Taxable withdrawals (3401–3403)
+  Box 07 — Margin scheme sales (3211–3212)
+  Box 08 — Rental income, voluntary tax liability (3913–3914)
+  Box 10/11/12 — Output VAT 25/12/6 % (2610–2613, 2616 and 262x/263x)
+  Box 20/21 — Goods/services bought from another EU country (4515–4517, 4535–4537)
+  Box 22 — Services bought from outside the EU (4531–4533)
+  Box 23/24 — Domestic reverse-charge purchases (4415–4417, 4425–4427)
+  Box 30/31/32 — Output VAT on purchases (2614, 2617 and 262x/263x)
+  Box 35/36 — Goods sold to another EU country / outside the EU (3108, 3105)
+  Box 37/38 — Triangular trade purchases/sales (4512, 3107)
+  Box 39/40 — Services sold to another EU country / outside the EU (3308, 3305)
+  Box 41 — Sales where the buyer is liable for VAT (3231–3233)
+  Box 42 — Other sales, e.g. VAT-exempt (3004, 3404)
+  Box 48 — Input VAT to deduct (2640–2647, 2649)
+  Box 50 — Taxable value of imports (4545–4547)
+  Box 60/61/62 — Output VAT on imports (2615, 2625, 2635)
+  Box 49 — VAT to pay (positive) or reclaim (negative):
+           10+11+12+30+31+32+60+61+62 − 48
 
-Sales amounts are reported as positive absolute values (credit accounts
-negated). VAT amounts are reported as absolute values.
+A journal can override the mapping with a vat.txt file in the journal directory,
+for example when its chart of accounts deviates from BAS. Each line holds an
+account or an account range and a box number, separated by a tab; '-' as the
+box means the accounts are not reported. Rules in vat.txt take precedence over
+the defaults. See docs/File-format.md.
+
+Sales and output VAT amounts are reported as credit amounts made positive;
+purchase bases and input VAT as debit amounts. Boxes 05, 10, 11, 12 and 48 are
+always returned; other boxes only when an account with activity in the period
+maps to them.
+
+A warning is written for accounts in 3100–3399 (BAS sales outside Sweden, margin
+scheme and reverse charge) with activity that are not explicitly mapped and
+therefore end up in box 05. Map them in vat.txt to silence the warning.
 
 .PARAMETER JournalPath
 The path to an existing journal directory.
@@ -36,10 +61,11 @@ Get-LedgerVatReport -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
 Returns VAT boxes for Q1 2024.
 
 .EXAMPLE
-Get-LedgerVatReport -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -FromDate '2024-01-01' -ToDate '2024-01-31' |
+Get-LedgerVatReport -JournalPath .\Konsultbyrån.ledger -FiscalYear '2024-01_2024-12' -FromDate '2024-01-01' -ToDate '2024-01-31' |
     Format-Table Box, Name, Amount
 
-Displays January's VAT report as a formatted table.
+Displays January's VAT report as a formatted table. Consulting sold to an EU
+customer on account 3308 appears in box 39.
 #>
 function Get-LedgerVatReport {
     [OutputType([pscustomobject])]
@@ -65,14 +91,13 @@ function Get-LedgerVatReport {
         $entries = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
             -FromDate $FromDate -ToDate $ToDate
 
-        $mapping = Get-VatBoxMapping
+        $rules = @(Get-VatBoxMapping -JournalPath $JournalPath)
 
-        # Accumulate amounts per account
         $accountTotals = @{}
         if ($entries) {
             foreach ($entry in $entries) {
                 foreach ($row in $entry.Rows) {
-                    $acct = $row.Account
+                    $acct = [string]$row.Account
                     if (-not $accountTotals.ContainsKey($acct)) {
                         $accountTotals[$acct] = [decimal]0
                     }
@@ -81,58 +106,46 @@ function Get-LedgerVatReport {
             }
         }
 
-        # Map accounts to boxes
+        $definitions = @(Get-VatBoxDefinition)
         $boxTotals = @{}
-        foreach ($map in $mapping) {
-            $box = $map.Box
-            if (-not $boxTotals.ContainsKey($box)) {
-                $boxTotals[$box] = @{ Amount = [decimal]0; Name = $map.Name }
+        foreach ($box in 5, 10, 11, 12, 48) { $boxTotals[$box] = [decimal]0 }
+
+        foreach ($acct in ($accountTotals.Keys | Sort-Object)) {
+            $rule = Resolve-VatBoxRule -Account $acct -Rules $rules
+            if ($null -eq $rule -or $null -eq $rule.Box) { continue }
+            if ($rule.Implicit -and [long]$acct -ge 3100 -and [long]$acct -le 3399) {
+                Write-Warning ("Account $acct is reported in box 05 (taxable sales), but BAS uses 3100–3399 for " +
+                    "sales outside Sweden, margin scheme and reverse charge. Map it to the right box in vat.txt.")
             }
-            foreach ($acct in $accountTotals.Keys) {
-                if ($acct -match $map.AccountPattern) {
-                    $boxTotals[$box].Amount += $accountTotals[$acct]
-                }
-            }
+            if (-not $boxTotals.ContainsKey($rule.Box)) { $boxTotals[$rule.Box] = [decimal]0 }
+            $boxTotals[$rule.Box] += $accountTotals[$acct]
         }
 
-        # Sales boxes (3xxx) are credit accounts — negate to show positive sales
-        if ($boxTotals.ContainsKey(5)) {
-            $boxTotals[5].Amount = [Math]::Abs($boxTotals[5].Amount)
+        $amounts = @{}
+        foreach ($def in $definitions) {
+            if (-not $boxTotals.ContainsKey($def.Box)) { continue }
+            $amounts[$def.Box] = if ($def.Kind -in 'Sales', 'OutputVat') { -$boxTotals[$def.Box] } else { $boxTotals[$def.Box] }
         }
 
-        # VAT accounts (26xx) — output VAT is credit (negate), input VAT is debit (negate for "to deduct")
-        foreach ($box in @(10, 11, 12)) {
-            if ($boxTotals.ContainsKey($box)) {
-                $boxTotals[$box].Amount = [Math]::Abs($boxTotals[$box].Amount)
-            }
+        $vatToPay = [decimal]0
+        foreach ($def in $definitions | Where-Object Kind -eq 'OutputVat') {
+            if ($amounts.ContainsKey($def.Box)) { $vatToPay += $amounts[$def.Box] }
         }
-        if ($boxTotals.ContainsKey(48)) {
-            $boxTotals[48].Amount = [Math]::Abs($boxTotals[48].Amount)
-        }
+        $vatToPay -= $amounts[48]
 
-        # Box 49 — output VAT minus input VAT
-        $outputVat = [decimal]0
-        foreach ($box in @(10, 11, 12)) {
-            if ($boxTotals.ContainsKey($box)) { $outputVat += $boxTotals[$box].Amount }
-        }
-        $inputVat = if ($boxTotals.ContainsKey(48)) { $boxTotals[48].Amount } else { [decimal]0 }
-        $vatToPay = $outputVat - $inputVat
-
-        $results = foreach ($box in ($boxTotals.Keys | Sort-Object)) {
+        foreach ($def in ($definitions | Where-Object Kind -ne 'Result' | Sort-Object Box)) {
+            if (-not $amounts.ContainsKey($def.Box)) { continue }
             [PSCustomObject]@{
-                Box    = $box
-                Name   = $boxTotals[$box].Name
-                Amount = $boxTotals[$box].Amount
+                Box    = $def.Box
+                Name   = $def.Name
+                Amount = $amounts[$def.Box]
             }
         }
 
-        $results += [PSCustomObject]@{
+        [PSCustomObject]@{
             Box    = 49
             Name   = 'Moms att betala eller få tillbaka'
             Amount = $vatToPay
         }
-
-        $results
     }
 }
-

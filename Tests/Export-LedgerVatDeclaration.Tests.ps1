@@ -103,7 +103,7 @@ Describe 'Export-LedgerVatDeclaration' {
             $moms = $xml.eSKDUpload.Moms
             [int]$moms.ForsMomsEjAnnan | Should -Be 10000
             [int]$moms.MomsUtgHog | Should -Be 2500
-            [int]$moms.MomsIngaende | Should -Be 2000
+            [int]$moms.MomsIngAvdr | Should -Be 2000
             [int]$moms.MomsBetala | Should -Be 500
         }
 
@@ -111,6 +111,33 @@ Describe 'Export-LedgerVatDeclaration' {
             $result = Export-LedgerVatDeclaration -JournalPath $JournalPath -FiscalYear $FiscalYear `
                 -FromDate '2024-01-01' -ToDate '2024-03-31' -Path $OutPath
             $result.Boxes.'49' | Should -Be 500
+        }
+
+        It 'Should write the extra boxes with activity and include them in MomsBetala' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '4535' -AccountName 'Inköp av tjänster från annat EU-land, 25 %'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '4598' -AccountName 'Justering, omvänd moms'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2614' -AccountName 'Utgående moms omvänd skattskyldighet, 25 %'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2645' -AccountName 'Beräknad ingående moms på förvärv från utlandet'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date '2024-03-05' -Description 'Programvarulicens från Irland' -Rows @(
+                    @{ Account = '4535'; Amount = 4000 }
+                    @{ Account = '4598'; Amount = -4000 }
+                    @{ Account = '2645'; Amount = 1000 }
+                    @{ Account = '2614'; Amount = -1000 }
+                )
+
+            $result = Export-LedgerVatDeclaration -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2024-01-01' -ToDate '2024-03-31' -Path $OutPath
+            [xml]$xml = Get-Content -LiteralPath $OutPath -Raw
+            $moms = $xml.eSKDUpload.Moms
+            [int]$moms.InkopTjanstAnnatEg | Should -Be 4000
+            [int]$moms.MomsInkopUtgHog | Should -Be 1000
+            [int]$moms.MomsIngAvdr | Should -Be 3000
+            [int]$moms.MomsBetala | Should -Be 500
+            $result.Boxes.'21' | Should -Be 4000
+            $result.Boxes.'30' | Should -Be 1000
+            @($moms.ChildNodes.Name) | Should -Be @('Period', 'ForsMomsEjAnnan', 'InkopTjanstAnnatEg',
+                'MomsUtgHog', 'MomsUtgMedel', 'MomsUtgLag', 'MomsInkopUtgHog', 'MomsIngAvdr', 'MomsBetala')
         }
 
         It 'Should return a summary object with Path, OrgNumber and Period' {
@@ -133,7 +160,7 @@ Describe 'Export-LedgerVatDeclaration' {
             Export-LedgerVatDeclaration -JournalPath $JournalPath -FiscalYear $FiscalYear `
                 -FromDate '2024-01-01' -ToDate '2024-01-31' -Path $OutPath | Out-Null
             [xml]$xml = Get-Content -LiteralPath $OutPath -Raw
-            [int]$xml.eSKDUpload.Moms.MomsIngaende | Should -Be 0
+            [int]$xml.eSKDUpload.Moms.MomsIngAvdr | Should -Be 0
             [int]$xml.eSKDUpload.Moms.MomsUtgHog | Should -Be 2500
         }
 

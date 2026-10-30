@@ -120,5 +120,91 @@ Describe 'Get-LedgerVatReport' {
             $box49 = $result | Where-Object Box -eq 49
             $box49.Amount | Should -BeLessThan 0
         }
+
+        It 'Should report reverse-charge purchases in boxes 21, 30 and 48 and keep box 49 net' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '4535' -AccountName 'Inköp av tjänster från annat EU-land, 25 %'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '4598' -AccountName 'Justering, omvänd moms'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2614' -AccountName 'Utgående moms omvänd skattskyldighet, 25 %'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2645' -AccountName 'Beräknad ingående moms på förvärv från utlandet'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date '2024-03-05' -Description 'Programvarulicens från Irland' -Rows @(
+                    @{ Account = '4535'; Amount = 4000 }
+                    @{ Account = '4598'; Amount = -4000 }
+                    @{ Account = '2645'; Amount = 1000 }
+                    @{ Account = '2614'; Amount = -1000 }
+                )
+
+            $result = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2024-01-01' -ToDate '2024-03-31'
+            ($result | Where-Object Box -eq 21).Amount | Should -Be 4000
+            ($result | Where-Object Box -eq 30).Amount | Should -Be 1000
+            ($result | Where-Object Box -eq 48).Amount | Should -Be 3000
+            ($result | Where-Object Box -eq 49).Amount | Should -Be 500
+        }
+
+        It 'Should report sales outside Sweden in their own boxes instead of box 05' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '3308' -AccountName 'Försäljning tjänster till annat EU-land'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '3105' -AccountName 'Försäljning varor till land utanför EU'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date '2024-03-10' -Description 'Konsultuppdrag Tyskland och export Norge' -Rows @(
+                    @{ Account = '1910'; Amount = 9000 }
+                    @{ Account = '3308'; Amount = -6000 }
+                    @{ Account = '3105'; Amount = -3000 }
+                )
+
+            $result = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2024-01-01' -ToDate '2024-03-31'
+            ($result | Where-Object Box -eq 39).Amount | Should -Be 6000
+            ($result | Where-Object Box -eq 36).Amount | Should -Be 3000
+            ($result | Where-Object Box -eq 5).Amount | Should -Be 10000
+        }
+
+        It 'Should only return boxes 05, 10, 11, 12, 48 and 49 when no other box has activity' {
+            $result = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2024-01-01' -ToDate '2024-03-31'
+            $result.Box | Should -Be @(5, 10, 11, 12, 48, 49)
+        }
+
+        It 'Should apply vat.txt overrides before the default mapping' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '3300' -AccountName 'Försäljning tjänster EU'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date '2024-03-12' -Description 'Konsultuppdrag Danmark' -Rows @(
+                    @{ Account = '1910'; Amount = 7000 }
+                    @{ Account = '3300'; Amount = -7000 }
+                )
+            Set-Content -LiteralPath (Join-Path $JournalPath 'vat.txt') -Encoding UTF8 -Value @(
+                '; PSLedger VAT mapping: Account or range, Box'
+                "3300`t39"
+                "2640-2649`t-"
+            )
+
+            $result = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2024-01-01' -ToDate '2024-03-31' -WarningVariable warnings -WarningAction SilentlyContinue
+            ($result | Where-Object Box -eq 39).Amount | Should -Be 7000
+            ($result | Where-Object Box -eq 5).Amount | Should -Be 10000
+            ($result | Where-Object Box -eq 48).Amount | Should -Be 0
+            $warnings | Should -BeNullOrEmpty
+        }
+
+        It 'Should throw on a vat.txt line with an unknown box' {
+            Set-Content -LiteralPath (Join-Path $JournalPath 'vat.txt') -Encoding UTF8 -Value "3300`t99"
+            { Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2024-01-01' -ToDate '2024-03-31' } | Should -Throw '*line 1*not a VAT declaration box*'
+        }
+
+        It 'Should warn about an unmapped account in 3100-3399 that falls into box 05' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '3300' -AccountName 'Försäljning tjänster EU'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date '2024-03-12' -Description 'Konsultuppdrag Danmark' -Rows @(
+                    @{ Account = '1910'; Amount = 7000 }
+                    @{ Account = '3300'; Amount = -7000 }
+                )
+
+            $result = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2024-01-01' -ToDate '2024-03-31' -WarningVariable warnings -WarningAction SilentlyContinue
+            ($result | Where-Object Box -eq 5).Amount | Should -Be 17000
+            $warnings | Should -HaveCount 1
+            "$warnings" | Should -BeLike '*3300*vat.txt*'
+        }
     }
 }

@@ -18,7 +18,7 @@ when it reads a file; they are not an invitation to write files that way.
 - [General conventions](#general-conventions)
 - [Directory layout](#directory-layout)
 - [Journal-level files](#journal-level-files): `journal.txt`, `accounts.txt`,
-  `dimensions.txt`, `objects.txt`
+  `dimensions.txt`, `objects.txt`, `vat.txt`
 - [Fiscal years](#fiscal-years): `year.txt`, `verNNNN.txt`, `verNNNN/`, `ib.txt`,
   `holdings.txt`, `report.txt`, `documents/`, `integrity.txt`
 - [Recurring entries](#recurring-entries): `recurring/`
@@ -93,7 +93,7 @@ combination described in its own section:
 ### Comments and blank lines
 
 - Lines starting with `;` are comments in files that begin with a `; PSLedger …`
-  line, and in all files under `time/` and `bank/`.
+  line, in `vat.txt`, and in all files under `time/` and `bank/`.
 - `report.txt` uses `#` for comments.
 - The register files (`accounts.txt`, `customers.txt`, `suppliers.txt`,
   `employees.txt`, `dimensions.txt`, `objects.txt`) have no comment syntax.
@@ -140,6 +140,7 @@ to store their own data SHOULD use their own files.
 ├── accounts.txt                chart of accounts
 ├── dimensions.txt              dimensions (SIE #DIM)
 ├── objects.txt                 objects within dimensions (SIE #OBJEKT)
+├── vat.txt                     VAT box mapping overrides
 ├── customers.txt               customer register
 ├── suppliers.txt               supplier register
 ├── employees.txt               employee register
@@ -238,6 +239,32 @@ every account used in a verification MUST be listed in it.
 | 1 | Dimension number | MUST exist in `dimensions.txt`. |
 | 2 | Object number | Unique within the dimension. |
 | 3 | Name | Object name. |
+
+### `vat.txt`
+
+Overrides how accounts are mapped to the boxes (rutor) of the VAT return by
+`Get-LedgerVatReport` and `Export-LedgerVatDeclaration`. Without the file the
+default BAS mapping is used.
+
+```
+; PSLedger VAT mapping: Account or range, Box
+3300<TAB>39
+3800-3899<TAB>-
+```
+
+Lines starting with `;` are comments. Each record has two tab-separated fields:
+
+| # | Field | Value |
+|---|-------|-------|
+| 1 | Account or range | An account number, or two account numbers joined by `-` (inclusive). |
+| 2 | Box | A box number of the VAT return, with or without a leading zero (`05` or `5`), or `-` for no box. Box 49 is always computed and cannot be mapped. |
+
+- Records are matched in file order and take precedence over the default
+  mapping; the first record that covers an account decides its box.
+- A record that cannot be read, or names an unknown box, is an error: the VAT
+  report fails rather than put amounts in the wrong box.
+- `Convert-LedgerChart` rewrites the file in full (keeping its records) when it
+  adds records, so comments other than the first line are lost.
 
 ## Fiscal years
 

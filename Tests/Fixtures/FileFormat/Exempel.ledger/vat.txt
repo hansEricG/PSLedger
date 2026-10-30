@@ -1,0 +1,3 @@
+; PSLedger VAT mapping: Account or range, Box
+3010	6
+2640-2649	48

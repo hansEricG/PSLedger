@@ -9,19 +9,17 @@ e-service for VAT (Lämna momsdeklaration via fil).
 
 The file is XML with an <eSKDUpload Version="6.0"> root, the company organisation
 number and a <Moms> section holding the declaration period and one element per
-declaration box (ruta). Amounts are reported in whole kronor (rounded). The
-following boxes are written:
-
-  Ruta 05 (ForsMomsEjAnnan) — Momspliktig försäljning
-  Ruta 10 (MomsUtgHog)      — Utgående moms 25 %
-  Ruta 11 (MomsUtgMedel)    — Utgående moms 12 %
-  Ruta 12 (MomsUtgLag)      — Utgående moms 6 %
-  Ruta 48 (MomsIngaende)    — Ingående moms
-  Ruta 49 (MomsBetala)      — Moms att betala eller få tillbaka
+declaration box (ruta). Amounts are reported in whole kronor (rounded). Boxes
+05 (ForsMomsEjAnnan), 10 (MomsUtgHog), 11 (MomsUtgMedel), 12 (MomsUtgLag),
+48 (MomsIngAvdr) and 49 (MomsBetala) are always written; the other boxes of the
+eSKD 6.0 format (06–08, 20–24, 30–32, 35–42, 50 and 60–62) are written when the
+report has an amount for them. See Get-LedgerVatReport for the account mapping
+and the optional vat.txt override.
 
 Box 49 (MomsBetala) is computed from the rounded box values as
-(10 + 11 + 12) - 48, matching how Skatteverket sums the declaration. A positive
-value is VAT to pay; a negative value is VAT to reclaim.
+(10 + 11 + 12 + 30 + 31 + 32 + 60 + 61 + 62) - 48, matching how Skatteverket
+sums the declaration. A positive value is VAT to pay; a negative value is VAT to
+reclaim.
 
 The file is written with ISO-8859-1 encoding, as required by the eSKD format.
 
@@ -117,14 +115,13 @@ function Export-LedgerVatDeclaration {
 
         # Box 49 is derived from the rounded output/input boxes so it always
         # reconciles with the individual rows the way Skatteverket sums them.
+        $definitions = @(Get-VatBoxDefinition)
         $outputVat = 0L
-        foreach ($b in 10, 11, 12) {
-            if ($boxAmount.ContainsKey($b)) { $outputVat += $boxAmount[$b] }
+        foreach ($def in $definitions | Where-Object Kind -eq 'OutputVat') {
+            if ($boxAmount.ContainsKey($def.Box)) { $outputVat += $boxAmount[$def.Box] }
         }
         $inputVat = if ($boxAmount.ContainsKey(48)) { $boxAmount[48] } else { 0L }
         $boxAmount[49] = $outputVat - $inputVat
-
-        $tagMap = Get-VatEskdTagMap
 
         $sb = New-Object System.Text.StringBuilder
         $nl = "`r`n"
@@ -139,10 +136,11 @@ function Export-LedgerVatDeclaration {
         & $append "  <OrgNr>$orgNr</OrgNr>"
         & $append '  <Moms>'
         & $append "    <Period>$Period</Period>"
-        foreach ($map in $tagMap) {
-            $box = [int]$map.Box
-            $value = if ($boxAmount.ContainsKey($box)) { $boxAmount[$box] } else { 0L }
-            & $append "    <$($map.Tag)>$value</$($map.Tag)>"
+        $boxes = [ordered]@{}
+        foreach ($def in $definitions) {
+            if (-not $boxAmount.ContainsKey($def.Box)) { continue }
+            & $append "    <$($def.Tag)>$($boxAmount[$def.Box])</$($def.Tag)>"
+            $boxes['{0:D2}' -f $def.Box] = $boxAmount[$def.Box]
         }
         & $append '  </Moms>'
         & $append '</eSKDUpload>'
@@ -158,14 +156,7 @@ function Export-LedgerVatDeclaration {
             Path      = $DestPath
             OrgNumber = $orgNr
             Period    = $Period
-            Boxes     = [PSCustomObject]@{
-                '05' = $boxAmount[5]
-                '10' = $boxAmount[10]
-                '11' = $boxAmount[11]
-                '12' = $boxAmount[12]
-                '48' = $boxAmount[48]
-                '49' = $boxAmount[49]
-            }
+            Boxes     = [PSCustomObject]$boxes
         }
     }
 }

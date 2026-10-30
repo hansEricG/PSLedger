@@ -84,16 +84,20 @@ October 2026.
 ### Correctness
 
 #### 8. VAT declaration mapping
-`Private/VatBasMapping.ps1` maps every account 3000–3799 to box 05 and only
-knows boxes 05, 10–12 and 48.
+`Private/VatBasMapping.ps1` mapped every account 3000–3799 to box 05 and only
+knew boxes 05, 10–12 and 48.
 
-- [ ] Map exports and EU sales to their own boxes instead of box 05 (for
+- [x] Map exports and EU sales to their own boxes instead of box 05 (for
       example 3105 → 36, 3108 → 35, 3305/3308 → 39–40).
-- [ ] Map reverse-charge output VAT (2614, 2624, 2634) to boxes 30–32 and the
+- [x] Map reverse-charge output VAT (2614, 2624, 2634) to boxes 30–32 and the
       purchase bases to boxes 20–24. Today a purchase booked with 2645 is
       deducted in box 48 while the matching output VAT is missing, so the
       declaration overstates the refund.
-- [ ] Import VAT (box 50 and 60–62) and the remaining boxes (06–08, 41–42).
+- [x] Import VAT (box 50 and 60–62) and the remaining boxes (06–08, 41–42).
+- [x] Write box 48 with the eSKD tag `MomsIngAvdr` (it was `MomsIngaende`).
+- [x] Use standard BAS accounts in the BAS-Komplett and BAS-Smaforetag
+      templates, a journal-level `vat.txt` to override the mapping, and
+      `Convert-LedgerChart` for journals created from the earlier templates.
 
 #### 9. Balance check on rounded amounts
 `Add-LedgerEntry` rounds only the sum, so rows such as `10.004` and `-10.001`
