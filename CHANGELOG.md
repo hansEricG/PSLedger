@@ -39,6 +39,9 @@
   Every account 3000–3799 went to box 05, and output VAT on reverse-charge
   purchases (2614, 2624, 2634) was not reported at all, so a purchase whose
   calculated input VAT (2645) was deducted in box 48 overstated the refund.
+- **Unbalanced entries could be stored.** `Add-LedgerEntry` rounded only the
+  sum, so rows such as `10.004` and `-10.001` were accepted. Row amounts with
+  more than two decimals are now rejected and the balance check is exact.
 
 ## [1.0.0] - 2026-10-02
 

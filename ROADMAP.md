@@ -103,7 +103,7 @@ knew boxes 05, 10–12 and 48.
 `Add-LedgerEntry` rounds only the sum, so rows such as `10.004` and `-10.001`
 are accepted and stored although the entry is 0.003 off.
 
-- [ ] Reject (or round) row amounts with more than two decimals, so every
+- [x] Reject (or round) row amounts with more than two decimals, so every
       stored verification balances exactly.
 
 #### 10. Closed-year guards

@@ -22,7 +22,8 @@ A description of the transaction.
 
 .PARAMETER Rows
 An array of hashtables, each with 'Account' (account number) and 'Amount'
-(positive for debit, negative for credit). The sum of all amounts must be zero.
+(positive for debit, negative for credit). The sum of all amounts must be zero,
+and each amount may have at most two decimals (whole öre).
 Each row may optionally include a 'Comment' key with free-text describing that
 specific row. Rows can be supplied as an array or piped in (for example from
 New-LedgerEntryRow); piped rows are collected into a single verification.
@@ -149,9 +150,17 @@ function Add-LedgerEntry {
                 throw "Date $($Date.ToString('yyyy-MM-dd')) is outside fiscal year $FiscalYear ($($YearStartDate.ToString('yyyy-MM-dd')) to $($YearEndDate.ToString('yyyy-MM-dd')))."
             }
 
-            # Validate balance (round to avoid floating-point accumulation errors)
-            $Sum = ($EntryRows | ForEach-Object { $_.Amount }) | Measure-Object -Sum | Select-Object -ExpandProperty Sum
-            if ([Math]::Round($Sum, 2) -ne 0) {
+            # Validate balance exactly: every row in whole öre, summed as decimal.
+            $Sum = [decimal]0
+            foreach ($Row in $EntryRows) {
+                try { $amount = [decimal]$Row.Amount }
+                catch { throw "Row amount '$($Row.Amount)' for account $($Row.Account) is not a number." }
+                if ($amount -ne [Math]::Round($amount, 2)) {
+                    throw "Row amount $amount for account $($Row.Account) has more than two decimals. Round it to whole öre."
+                }
+                $Sum += $amount
+            }
+            if ($Sum -ne 0) {
                 throw "Entry does not balance. Sum of rows: $Sum (must be 0)."
             }
 

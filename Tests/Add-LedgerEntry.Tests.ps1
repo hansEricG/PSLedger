@@ -135,6 +135,28 @@ Describe 'Add-LedgerEntry' {
             { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-15' -Description 'Obalanserad' -Rows $BadRows } | Should -Throw
         }
 
+        It 'Should reject row amounts with more than two decimals even if the rounded sum is zero' {
+            $BadRows = @(
+                @{ Account = '1910'; Amount = 10.004 }
+                @{ Account = '3010'; Amount = -10.001 }
+            )
+
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-15' -Description 'Öresfel' -Rows $BadRows } |
+                Should -Throw '*more than two decimals*'
+            Join-Path $JournalPath $FiscalYear 'ver0001.txt' | Should -Not -Exist
+        }
+
+        It 'Should accept amounts in öre that do not sum exactly as binary floating point' {
+            $OreRows = @(
+                @{ Account = '1910'; Amount = 0.1 }
+                @{ Account = '1910'; Amount = 0.2 }
+                @{ Account = '3010'; Amount = -0.3 }
+            )
+
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-01-15' -Description 'Småbelopp' -Rows $OreRows } |
+                Should -Not -Throw
+        }
+
         It 'Should throw if fiscal year directory does not exist' {
             { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear '2099-01_2099-12' -Date '2024-01-15' -Description 'Test' -Rows $Rows } | Should -Throw
         }
