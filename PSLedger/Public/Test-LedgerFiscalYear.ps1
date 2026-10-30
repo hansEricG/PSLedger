@@ -7,7 +7,10 @@ Validates that a fiscal year is ready to be closed and returns one result object
 per check with Check, Status ('Pass', 'Fail', 'Warning' or 'Info') and Detail
 properties. Nothing is modified. The checks are:
 
-- VerificationsBalance  - every verification's rows sum to zero (Fail).
+- VerificationsBalance  - every verification's rows sum to zero (Fail when
+  outside the legacy rounding tolerance, Warning for a nonzero legacy sum).
+- VerificationPrecision  - amounts with more than two decimals are flagged as
+  legacy precision (Warning); Add-LedgerReversal can preserve them exactly.
 - VerificationNumbering  - verification numbers are contiguous from 1, no gaps (Fail).
 - NoEmptyVerifications  - every verification has at least two rows (Fail).
 - LedgerBalances  - all closing balances across every account sum to zero (Fail).
@@ -81,18 +84,35 @@ function Test-LedgerFiscalYear {
         $Entries = @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear)
 
         # --- VerificationsBalance ---
+        $LegacyPrecision = [System.Collections.Generic.List[string]]::new()
+        $LegacyBalance = [System.Collections.Generic.List[string]]::new()
         $Unbalanced = foreach ($Entry in $Entries) {
-            $Sum = ($Entry.Rows | Measure-Object -Property Amount -Sum).Sum
-            if ([Math]::Round([decimal]$Sum, 2) -ne 0) {
-                'ver{0:0000} (sum {1})' -f $Entry.VerificationNumber, ([Math]::Round([decimal]$Sum, 2))
+            $state = Get-LedgerEntryAmountState -Rows @($Entry.Rows)
+            $label = 'ver{0:0000} (sum {1})' -f $Entry.VerificationNumber, $state.Sum
+            if ($state.HasExtraDecimals) { $LegacyPrecision.Add($label) }
+            if ([Math]::Round($state.Sum, 2) -ne 0) {
+                $label
+            }
+            elseif ($state.Sum -ne 0) {
+                $LegacyBalance.Add($label)
             }
         }
         $Unbalanced = @($Unbalanced)
         if ($Unbalanced.Count -gt 0) {
             New-CheckResult 'VerificationsBalance' 'Fail' ("Unbalanced verifications: " + ($Unbalanced -join ', '))
         }
+        elseif ($LegacyBalance.Count -gt 0) {
+            New-CheckResult 'VerificationsBalance' 'Warning' ("Verifications balance only under the legacy rounding rule: " + ($LegacyBalance -join ', ') + '. Use Add-LedgerReversal for an exact correction; do not edit the originals.')
+        }
         else {
             New-CheckResult 'VerificationsBalance' 'Pass' "All $($Entries.Count) verification(s) balance."
+        }
+
+        if ($LegacyPrecision.Count -gt 0) {
+            New-CheckResult 'VerificationPrecision' 'Warning' ("Verifications with legacy precision: " + ($LegacyPrecision -join ', ') + '. New entries require whole ore; Add-LedgerReversal preserves historical amounts exactly.')
+        }
+        else {
+            New-CheckResult 'VerificationPrecision' 'Pass' 'All verification amounts have at most two decimals.'
         }
 
         # --- VerificationNumbering ---

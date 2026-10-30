@@ -62,7 +62,11 @@ when it reads a file; they are not an invitation to write files that way.
 
 In verifications, opening balances and recurring entries a **positive amount is
 a debit and a negative amount is a credit**. The rows of a verification MUST sum
-to zero, after rounding to two decimals.
+to zero after rounding to two decimals under the schema 2 compatibility rule.
+Current `Add-LedgerEntry` imposes a stricter writing rule: every amount is in
+whole öre (at most two decimals) and the decimal sum is exactly zero. Historical
+verifications remain readable; exact reversals of them retain their precision
+and any difference allowed by the legacy rule (see `verNNNN.txt`).
 
 ### Text fields
 
@@ -327,7 +331,17 @@ A blank line follows the header.
 - **Object tag.** Pairs of `dimension:object`, separated by commas and enclosed in
   braces, written in ascending dimension order, for example `{1:10,6:P1}`. Every
   dimension and object MUST exist in `dimensions.txt` and `objects.txt`.
-- **Balance.** The amounts MUST sum to zero, after rounding to two decimals.
+- **Balance.** The schema 2 compatibility rule requires amounts to sum to zero
+  after rounding to two decimals. Current `Add-LedgerEntry` accepts only amounts
+  in whole öre with an exact zero sum. `Add-LedgerReversal` may instead mirror a
+  historical verification exactly under the compatibility rule, warning about
+  extra decimals rather than silently rounding. This preserves the meaning of
+  existing files and requires no schema migration.
+- **Validation.** `Test-LedgerFiscalYear` sums verification rows as decimals.
+  `VerificationPrecision` warns about amounts with more than two decimals;
+  `VerificationsBalance` warns about a nonzero sum allowed by the compatibility
+  rule and fails when the sum is outside that rule. A legacy warning also
+  applies to an exact reversal containing the same historical precision.
 - **Immutability.** A verification is never changed after it has been written.
   Corrections are made with a new verification (`Add-LedgerReversal`).
 - **Opening balance.** The opening balance is not a verification (see `ib.txt`),

@@ -141,6 +141,21 @@ Describe 'Test-LedgerFiscalYear' {
             (Get-CheckStatus $Results 'NoEmptyVerifications') | Should -Be 'Fail'
         }
 
+        It 'Should report legacy precision and <BalanceStatus> for balance with credit <Credit>' -ForEach @(
+            @{ Credit = '-10.005'; BalanceStatus = 'Pass' }
+            @{ Credit = '-10.001'; BalanceStatus = 'Warning' }
+            @{ Credit = '-10.025'; BalanceStatus = 'Fail' }
+        ) {
+            Set-Content -LiteralPath (Join-Path $JournalPath $FiscalYear 'ver0001.txt') -Value @(
+                'Date: 2024-03-01', 'Description: Historisk precision', '', "1910`t10.005", "3010`t$Credit"
+            )
+            $results = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+
+            (Get-CheckStatus $results 'VerificationPrecision') | Should -Be 'Warning'
+            (Get-CheckStatus $results 'VerificationsBalance') | Should -Be $BalanceStatus
+            ($results | Where-Object Check -eq 'VerificationPrecision').Detail | Should -BeLike '*Add-LedgerReversal*'
+        }
+
         It 'Should report Info for opening balance checks when there is none' {
             $Results = Test-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
 

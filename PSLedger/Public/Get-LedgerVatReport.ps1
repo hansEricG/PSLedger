@@ -10,8 +10,8 @@ object per box with its number, name and amount, followed by box 49.
 The default mapping follows the BAS chart of accounts, for example:
   Box 05 — Taxable sales not in another box (the rest of 3000–3799)
   Box 06 — Taxable withdrawals (3401–3403)
-  Box 07 — Margin scheme sales (3211–3212)
-  Box 08 — Rental income, voluntary tax liability (3913–3914)
+  Box 07 — Separately booked taxable VMB margin, excluding VAT (3211)
+  Box 08 — Rental income, voluntary tax liability (3913)
   Box 10/11/12 — Output VAT 25/12/6 % (2610–2613, 2616 and 262x/263x)
   Box 20/21 — Goods/services bought from another EU country (4515–4517, 4535–4537)
   Box 22 — Services bought from outside the EU (4531–4533)
@@ -38,6 +38,12 @@ Sales and output VAT amounts are reported as credit amounts made positive;
 purchase bases and input VAT as debit amounts. Boxes 05, 10, 11, 12 and 48 are
 always returned; other boxes only when an account with activity in the period
 maps to them.
+
+Negative VMB sales (3212) do not contribute to any box. Positive VMB requires
+the taxable margin excluding VAT to be booked separately on 3211; this report
+does not calculate margins from purchase and sales prices or implement simplified
+VMB. Use vat.txt if the taxable base is recorded on another account. Other taxable
+rental income (3914), unlike voluntarily taxed rent, belongs in box 05.
 
 A warning is written for accounts in 3100–3399 (BAS sales outside Sweden, margin
 scheme and reverse charge) with activity that are not explicitly mapped and

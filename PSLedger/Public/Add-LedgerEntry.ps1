@@ -70,6 +70,7 @@ Builds rows with New-LedgerEntryRow and pipes them straight into Add-LedgerEntry
 avoiding the signed-amount hashtable syntax.
 #>
 function Add-LedgerEntry {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '', Justification = 'Write-LedgerVerification performs validation and ShouldProcess; WhatIf and Confirm are forwarded.')]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
@@ -101,168 +102,16 @@ function Add-LedgerEntry {
         # into one verification) from the parameter/fiscal-year-pipeline usage.
         $RowsFromPipeline = -not $PSBoundParameters.ContainsKey('Rows')
         $RowBuffer = [System.Collections.Generic.List[hashtable]]::new()
+        $WriterOptions = @{}
+        foreach ($option in 'WhatIf', 'Confirm') {
+            if ($PSBoundParameters.ContainsKey($option)) { $WriterOptions[$option] = $PSBoundParameters[$option] }
+        }
 
         $WriteEntry = {
             param([hashtable[]]$EntryRows)
 
-            $Description = ConvertTo-LedgerTextField $Description
-            $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
-
-            $YearDir = Join-Path $JournalPath $FiscalYear
-            if (-not (Test-Path $YearDir -PathType Container)) {
-                throw "Fiscal year not found: $FiscalYear"
-            }
-
-            # Check if fiscal year is closed and capture its date range. year.txt
-            # must exist and carry a parseable StartDate/EndDate — otherwise we
-            # fail closed rather than silently skipping the date-range check.
-            $YearFile = Join-Path $YearDir 'year.txt'
-            if (-not (Test-Path $YearFile -PathType Leaf)) {
-                throw "Invalid fiscal year - year.txt not found in: $FiscalYear"
-            }
-            $YearStartDate = $null
-            $YearEndDate = $null
-            foreach ($Line in (Get-Content $YearFile)) {
-                if ($Line -match '^Status:\s*Closed') {
-                    throw "Fiscal year $FiscalYear is Closed. Cannot add entries."
-                }
-                elseif ($Line -match '^StartDate:\s*(.+)$') {
-                    $parsed = [datetime]::MinValue
-                    if ([datetime]::TryParse($Matches[1].Trim(), [ref]$parsed)) {
-                        $YearStartDate = $parsed
-                    }
-                }
-                elseif ($Line -match '^EndDate:\s*(.+)$') {
-                    $parsed = [datetime]::MinValue
-                    if ([datetime]::TryParse($Matches[1].Trim(), [ref]$parsed)) {
-                        $YearEndDate = $parsed
-                    }
-                }
-            }
-
-            if (-not $YearStartDate -or -not $YearEndDate) {
-                throw "Invalid fiscal year - StartDate/EndDate missing or unparseable in year.txt for $FiscalYear."
-            }
-
-            # Validate date within fiscal year range
-            if ($Date -lt $YearStartDate -or $Date -gt $YearEndDate) {
-                throw "Date $($Date.ToString('yyyy-MM-dd')) is outside fiscal year $FiscalYear ($($YearStartDate.ToString('yyyy-MM-dd')) to $($YearEndDate.ToString('yyyy-MM-dd')))."
-            }
-
-            # Validate balance exactly: every row in whole öre, summed as decimal.
-            $Sum = [decimal]0
-            foreach ($Row in $EntryRows) {
-                try { $amount = [decimal]$Row.Amount }
-                catch { throw "Row amount '$($Row.Amount)' for account $($Row.Account) is not a number." }
-                if ($amount -ne [Math]::Round($amount, 2)) {
-                    throw "Row amount $amount for account $($Row.Account) has more than two decimals. Round it to whole öre."
-                }
-                $Sum += $amount
-            }
-            if ($Sum -ne 0) {
-                throw "Entry does not balance. Sum of rows: $Sum (must be 0)."
-            }
-
-            # Validate accounts against chart of accounts (if it exists)
-            $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
-            if (Test-Path $KontoplanFile) {
-                $ValidAccounts = @{}
-                foreach ($Line in (Get-Content $KontoplanFile)) {
-                    if ($Line -match '^(\d+)\t') {
-                        $ValidAccounts[$Matches[1]] = $true
-                    }
-                }
-
-                foreach ($Row in $EntryRows) {
-                    if (-not $ValidAccounts.ContainsKey($Row.Account)) {
-                        throw "Account $($Row.Account) does not exist in chart of accounts."
-                    }
-                }
-            }
-
-            # Validate attachment files exist before writing the verification
-            if ($Attachment) {
-                foreach ($attachmentPath in $Attachment) {
-                    if (-not (Test-Path $attachmentPath -PathType Leaf)) {
-                        throw "Attachment file not found: $attachmentPath"
-                    }
-                }
-            }
-
-            # Determine next verification number by scanning existing files
-            $ExistingFiles = Get-ChildItem -Path $YearDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
-            if ($ExistingFiles) {
-                $MaxNum = $ExistingFiles |
-                    ForEach-Object { if ($_.BaseName -match '^ver(\d+)$') { [int]$Matches[1] } } |
-                    Measure-Object -Maximum |
-                    Select-Object -ExpandProperty Maximum
-                $NextNum = $MaxNum + 1
-            }
-            else {
-                $NextNum = 1
-            }
-
-            $FileName = 'ver' + $NextNum.ToString('0000') + '.txt'
-            $FilePath = Join-Path $YearDir $FileName
-
-            # Build file content
-            $Lines = @(
-                "Date: $($Date.ToString('yyyy-MM-dd'))"
-                "Description: $Description"
-                ""
-            )
-
-            foreach ($Row in $EntryRows) {
-                $line = "$($Row.Account)`t$($Row.Amount)"
-                if ($Row.ContainsKey('Objects') -and $Row.Objects -and $Row.Objects.Count -gt 0) {
-                    # Validate dimension and object references
-                    foreach ($dimNum in $Row.Objects.Keys) {
-                        $dim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum
-                        if (-not $dim) {
-                            throw "Dimension $dimNum does not exist."
-                        }
-                        $obj = Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $dimNum -ObjectNumber $Row.Objects[$dimNum]
-                        if (-not $obj) {
-                            throw "Object '$($Row.Objects[$dimNum])' does not exist in dimension $dimNum."
-                        }
-                    }
-                    $line += "`t$(Format-ObjectTag -Objects $Row.Objects)"
-                }
-                if ($Row.ContainsKey('Comment') -and $null -ne $Row.Comment) {
-                    $commentText = ([string]$Row.Comment) -replace "[`t`r`n]+", ' '
-                    $commentText = $commentText.Trim()
-                    if ($commentText) {
-                        $line += "`t$commentText"
-                    }
-                }
-                $Lines += $line
-            }
-
-            if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Add verification $FileName")) {
-                return
-            }
-
-            Set-LedgerFileContent -Path $FilePath -Value $Lines
-            Register-LedgerIntegrityItem -YearDir $YearDir -Kind Verification -Key "$NextNum" -Path $FilePath
-
-            # Attach any supplied files to the new verification
-            $attached = @()
-            if ($Attachment) {
-                $attached = Add-LedgerAttachment -JournalPath $JournalPath -FiscalYear $FiscalYear `
-                    -VerificationNumber $NextNum -Path $Attachment -PassThru
-            }
-
-            if ($PassThru) {
-                [PSCustomObject]@{
-                    VerificationNumber = $NextNum
-                    FiscalYear         = $FiscalYear
-                    Date               = $Date
-                    Description        = $Description
-                    Path               = $FilePath
-                    Attachments        = @($attached | ForEach-Object { $_.FileName })
-                }
-            }
+            Write-LedgerVerification -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date $Date -Description $Description -Rows $EntryRows -Attachment $Attachment -PassThru:$PassThru @WriterOptions
         }
     }
     process {
@@ -281,4 +130,3 @@ function Add-LedgerEntry {
         }
     }
 }
-

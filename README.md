@@ -307,6 +307,19 @@ Journals created from the BAS-Komplett or BAS-Smaforetag templates of PSLedger
 Convert-LedgerChart -JournalPath .\MinFirma.ledger -Date '2025-07-01'
 ```
 
+With `-Date`, conversion validates the open year, date, amounts and effective
+source/target VAT boxes before changing files. Conflicting `vat.txt` rules are
+reported as errors, not overwritten; omit `-Date` to add accounts and mappings
+without a transfer.
+
+The default VMB mapping assumes the taxable positive margin excluding VAT has
+already been calculated and booked separately on 3211. Negative VMB sales on
+3212 do not affect the VAT boxes; this is not an automatic margin calculation or
+support for simplified VMB. Voluntarily taxed rent (3913) goes to box 08, while
+other taxable rent (3914) goes to box 05. See the
+[BAS chart](https://www.bas.se/kontoplaner/) and
+[Skatteverket's box instructions](https://www.skatteverket.se/foretag/moms/deklareramoms/fyllaimomsdeklarationen.4.3a2a542410ab40a421c80004214.html).
+
 ## Dimensions & Objects
 
 ```powershell

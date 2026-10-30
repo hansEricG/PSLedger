@@ -109,5 +109,55 @@ Describe 'Add-LedgerReversal' {
             { Add-LedgerReversal -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber 99 -Date '2024-03-16' } |
                 Should -Throw '*not found*'
         }
+
+        It 'Should reverse legacy amounts exactly with credit <Credit>' -ForEach @(
+            @{ Debit = [decimal]10.005; Credit = [decimal]-10.005 }
+            @{ Debit = [decimal]10.004; Credit = [decimal]-10.001 }
+        ) {
+            $originalPath = Join-Path $JournalPath $FiscalYear 'ver0002.txt'
+            Set-Content -LiteralPath $originalPath -Value @(
+                'Date: 2024-03-15', 'Description: Historisk precision', '', "1910`t$Debit", "3010`t$Credit"
+            )
+            Protect-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear | Out-Null
+            $originalHash = (Get-FileHash -LiteralPath $originalPath).Hash
+
+            $result = Add-LedgerReversal -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber 2 `
+                -Date '2024-03-16' -PassThru -WarningVariable warnings -WarningAction SilentlyContinue
+
+            $result.VerificationNumber | Should -Be 3
+            $result.Description | Should -BeLike '*Rättelse ver 2*'
+            $reversal = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber 3
+            $reversal.Rows[0].Amount | Should -Be (-$Debit)
+            $reversal.Rows[1].Amount | Should -Be (-$Credit)
+            $warnings | Should -HaveCount 1
+            "$warnings" | Should -BeLike '*legacy*exactly*'
+            (Get-FileHash -LiteralPath $originalPath).Hash | Should -Be $originalHash
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear).IsValid | Should -BeTrue
+
+            { Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-03-17' `
+                -Description 'Ny post' -Rows @(@{ Account = '1910'; Amount = $Debit }, @{ Account = '3010'; Amount = $Credit }) } |
+                Should -Throw '*more than two decimals*'
+        }
+
+        It 'Should not write a legacy reversal with <Case>' -ForEach @(
+            @{ Case = 'WhatIf'; Credit = '-10.005'; ReversalDate = '2024-03-16'; Closed = $false; Preview = $true; ExpectedError = $null }
+            @{ Case = 'an invalid date'; Credit = '-10.005'; ReversalDate = '2025-03-16'; Closed = $false; Preview = $false; ExpectedError = '*outside fiscal year*' }
+            @{ Case = 'a closed year'; Credit = '-10.005'; ReversalDate = '2024-03-16'; Closed = $true; Preview = $false; ExpectedError = '*Closed*' }
+            @{ Case = 'an invalid legacy balance'; Credit = '-10.025'; ReversalDate = '2024-03-16'; Closed = $false; Preview = $false; ExpectedError = '*does not balance*' }
+        ) {
+            Set-Content -LiteralPath (Join-Path $JournalPath $FiscalYear 'ver0002.txt') -Value @(
+                'Date: 2024-03-15', 'Description: Historisk precision', '', "1910`t10.005", "3010`t$Credit"
+            )
+            if ($Closed) {
+                Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear -SkipResultEntry | Out-Null
+            }
+            $action = {
+                Add-LedgerReversal -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber 2 `
+                    -Date $ReversalDate -WhatIf:$Preview -WarningAction SilentlyContinue
+            }
+            if ($ExpectedError) { $action | Should -Throw $ExpectedError }
+            else { & $action }
+            Join-Path $JournalPath $FiscalYear 'ver0003.txt' | Should -Not -Exist
+        }
     }
 }

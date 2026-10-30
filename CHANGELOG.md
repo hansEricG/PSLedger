@@ -21,6 +21,9 @@
   BAS-Komplett and BAS-Smaforetag templates: it adds the standard BAS accounts,
   writes `vat.txt` rules so amounts already booked are reported in the right box,
   and with `-Date` books a transfer verification to the new accounts.
+- **Legacy precision checks.** `Test-LedgerFiscalYear` reports extra decimals
+  and distinguishes exact balance from amounts that balance only under the old
+  rounding rule.
 
 ### Changed
 - **The BAS-Komplett and BAS-Smaforetag templates use standard BAS accounts**
@@ -41,12 +44,24 @@
   calculated input VAT (2645) was deducted in box 48 overstated the refund.
 - **Unbalanced entries could be stored.** `Add-LedgerEntry` rounded only the
   sum, so rows such as `10.004` and `-10.001` were accepted. Row amounts with
-  more than two decimals are now rejected and the balance check is exact.
+  more than two decimals are now rejected for new manual entries and the
+  balance check is exact. `Add-LedgerReversal` can still mirror historical
+  amounts under the old balance rule, with a warning and without rounding or
+  changing the originals.
+- **Conversion preflight and opening balances.** `Convert-LedgerChart -Date`
+  handles multi-row opening balances and validates the year, date and amounts
+  before writing. Transfers with conflicting effective VAT mappings are
+  rejected instead of moving amounts between declaration boxes.
+- **VAT special cases.** Negative VMB sales on 3212 no longer contribute to
+  box 07 or fall back to box 05. Account 3211 represents a separately calculated
+  taxable positive margin, not an automatic VMB calculation. Other taxable
+  rent (3914) goes to box 05, not the voluntary-taxation box 08.
 - **Closed fiscal years could still be changed.** `Add-LedgerAttachment`,
   `Remove-LedgerAttachment`, `Remove-LedgerDocument` and
   `Copy-LedgerOpeningBalance` (target year) now refuse a closed year.
-  `Set-LedgerReportInput` and `Add-LedgerDocument` remain allowed, since the
-  annual report and its signed copy are produced after closing.
+  `Set-LedgerReportInput` and new documents remain allowed, since the annual
+  report and its signed copy are produced after closing. Existing documents
+  cannot be replaced with `Add-LedgerDocument -Force` in a closed year.
 
 ## [1.0.0] - 2026-10-02
 
@@ -820,4 +835,3 @@ version policy described there; command names and parameters are stable within
 - `Get-LedgerIncomeStatement` — income statement grouped by revenue, costs, operating expenses, financial items
 - `Get-LedgerBalanceSheet` — balance sheet showing assets vs equity and liabilities
 - `Copy-LedgerOpeningBalance` — roll over closing balances to a new fiscal year (including year's result to account 2099)
-

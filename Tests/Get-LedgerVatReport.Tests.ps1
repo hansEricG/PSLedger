@@ -165,6 +165,52 @@ Describe 'Get-LedgerVatReport' {
             $result.Box | Should -Be @(5, 10, 11, 12, 48, 49)
         }
 
+        It 'Should exclude negative VMB sales without reducing a positive taxable margin' {
+            foreach ($account in '3211', '3212', '4212', '2616') {
+                Add-LedgerAccount -JournalPath $JournalPath -AccountNumber $account -AccountName $account
+            }
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-03-01' `
+                -Description 'Negativ VMB: inköp 600, försäljning 500' -Rows @(
+                    @{ Account = '4212'; Amount = 600 }
+                    @{ Account = '1910'; Amount = -600 }
+                    @{ Account = '1910'; Amount = 500 }
+                    @{ Account = '3212'; Amount = -500 }
+                )
+            $negative = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2024-03-01' -ToDate '2024-03-31'
+            $negative | Where-Object Amount -ne 0 | Should -BeNullOrEmpty
+
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-03-02' `
+                -Description 'Separat bokförd positiv vinstmarginal' -Rows @(
+                    @{ Account = '1910'; Amount = 400 }
+                    @{ Account = '3211'; Amount = -320 }
+                    @{ Account = '2616'; Amount = -80 }
+                )
+            $mixed = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2024-03-01' -ToDate '2024-03-31'
+            ($mixed | Where-Object Box -eq 7).Amount | Should -Be 320
+            ($mixed | Where-Object Box -eq 10).Amount | Should -Be 80
+            ($mixed | Where-Object Box -eq 5).Amount | Should -Be 0
+        }
+
+        It 'Should distinguish voluntarily taxed rent from other taxable rent' {
+            foreach ($account in '3913', '3914') {
+                Add-LedgerAccount -JournalPath $JournalPath -AccountNumber $account -AccountName $account
+            }
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-03-01' `
+                -Description 'Hyresintäkter' -Rows @(
+                    @{ Account = '1910'; Amount = 3750 }
+                    @{ Account = '3913'; Amount = -2000 }
+                    @{ Account = '3914'; Amount = -1000 }
+                    @{ Account = '2610'; Amount = -750 }
+                )
+            $result = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2024-03-01' -ToDate '2024-03-31'
+            ($result | Where-Object Box -eq 8).Amount | Should -Be 2000
+            ($result | Where-Object Box -eq 5).Amount | Should -Be 1000
+            ($result | Where-Object Box -eq 10).Amount | Should -Be 750
+        }
+
         It 'Should apply vat.txt overrides before the default mapping' {
             Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '3300' -AccountName 'Försäljning tjänster EU'
             Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `

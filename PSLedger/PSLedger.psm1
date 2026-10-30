@@ -14,6 +14,7 @@
 . $PSScriptRoot\Private\Integrity.ps1
 . $PSScriptRoot\Private\Archive.ps1
 . $PSScriptRoot\Private\OpeningBalance.ps1
+. $PSScriptRoot\Private\EntryWriter.ps1
 . $PSScriptRoot\Private\Holdings.ps1
 . $PSScriptRoot\Private\JournalSchema.ps1
 . $PSScriptRoot\Private\JournalMetadata.ps1

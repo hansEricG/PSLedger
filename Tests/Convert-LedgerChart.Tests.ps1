@@ -86,6 +86,7 @@ Describe 'Convert-LedgerChart' {
             $result = Convert-LedgerChart -JournalPath $JournalPath -WarningAction SilentlyContinue
 
             ($result | Where-Object Account -eq '3300').VatRule | Should -BeFalse
+            ($result | Where-Object Account -eq '3300').Box | Should -Be 40
             $report = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
                 -FromDate '2025-01-01' -ToDate '2025-03-31' -WarningAction SilentlyContinue
             ($report | Where-Object Box -eq 40).Amount | Should -Be 8000
@@ -106,6 +107,72 @@ Describe 'Convert-LedgerChart' {
             $report = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
                 -FromDate '2025-01-01' -ToDate '2025-03-31' -WarningAction SilentlyContinue
             ($report | Where-Object Box -eq 39).Amount | Should -Be 8000
+            $transferPeriod = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2025-03-01' -ToDate '2025-03-31' -WarningAction SilentlyContinue
+            $transferPeriod | Where-Object Amount -ne 0 | Should -BeNullOrEmpty
+        }
+
+        It 'Should convert opening balances and be safe to run again' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2660' -AccountName 'Moms omvänd skattskyldighet'
+            Set-Content -LiteralPath (Join-Path $JournalPath $FiscalYear 'ib.txt') -Value @("1930`t1000", "2660`t-1000")
+
+            $result = Convert-LedgerChart -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2025-03-01' -WarningAction SilentlyContinue
+            ($result | Where-Object Account -eq '2660').Transferred | Should -Be -1000
+            $balances = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+            ($balances | Where-Object AccountNumber -eq '2660').Balance | Should -Be 0
+            ($balances | Where-Object AccountNumber -eq '2614').Balance | Should -Be -1000
+
+            Convert-LedgerChart -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2025-03-01' -WarningAction SilentlyContinue | Out-Null
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear) | Should -HaveCount 3
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear).IsValid | Should -BeTrue
+        }
+
+        It 'Should reject conflicting <Rule> rules before changing any files' -ForEach @(
+            @{ Rule = "3300`t40" }
+            @{ Rule = "3300`t-" }
+            @{ Rule = "3308`t40" }
+            @{ Rule = "3308`t-" }
+        ) {
+            Set-Content -LiteralPath (Join-Path $JournalPath 'vat.txt') -Value $Rule
+            $before = Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Sort-Object FullName |
+                ForEach-Object { "$($_.FullName)|$((Get-FileHash -LiteralPath $_.FullName).Hash)" }
+
+            { Convert-LedgerChart -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2025-03-01' -WarningAction SilentlyContinue } |
+                Should -Throw '*conflicting VAT rules*'
+
+            $after = Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Sort-Object FullName |
+                ForEach-Object { "$($_.FullName)|$((Get-FileHash -LiteralPath $_.FullName).Hash)" }
+            $after | Should -Be $before
+        }
+
+        It 'Should preserve VAT neutrality when both accounts use the same override' {
+            Set-Content -LiteralPath (Join-Path $JournalPath 'vat.txt') -Value "3300-3399`t40"
+            Convert-LedgerChart -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2025-03-01' -WarningAction SilentlyContinue | Out-Null
+
+            $period = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2025-03-01' -ToDate '2025-03-31' -WarningAction SilentlyContinue
+            $period | Where-Object Amount -ne 0 | Should -BeNullOrEmpty
+            $quarter = Get-LedgerVatReport -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate '2025-01-01' -ToDate '2025-03-31' -WarningAction SilentlyContinue
+            ($quarter | Where-Object Box -eq 40).Amount | Should -Be 8000
+        }
+
+        It 'Should reject <Case> before changing any files' -ForEach @(
+            @{ Case = 'a closed year'; Setup = { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear -SkipResultEntry | Out-Null }; TransferDate = '2025-03-01'; ExpectedError = '*Closed*' }
+            @{ Case = 'a date outside the year'; Setup = {}; TransferDate = '2026-03-01'; ExpectedError = '*outside fiscal year*' }
+            @{ Case = 'missing year metadata'; Setup = { Remove-Item -LiteralPath (Join-Path $JournalPath $FiscalYear 'year.txt') }; TransferDate = '2025-03-01'; ExpectedError = '*year.txt not found*' }
+            @{ Case = 'fractional opening balance amounts'; Setup = { Set-Content -LiteralPath (Join-Path $JournalPath $FiscalYear 'ib.txt') -Value @("1930`t10.005", "3300`t-10.005") }; TransferDate = '2025-03-01'; ExpectedError = '*more than two decimals*' }
+        ) {
+            & $Setup
+            $before = Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Sort-Object FullName |
+                ForEach-Object { "$($_.FullName)|$((Get-FileHash -LiteralPath $_.FullName).Hash)" }
+
+            { Convert-LedgerChart -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $TransferDate -WarningAction SilentlyContinue } |
+                Should -Throw $ExpectedError
+
+            $after = Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Sort-Object FullName |
+                ForEach-Object { "$($_.FullName)|$((Get-FileHash -LiteralPath $_.FullName).Hash)" }
+            $after | Should -Be $before
         }
 
         It 'Should change nothing with -WhatIf' {

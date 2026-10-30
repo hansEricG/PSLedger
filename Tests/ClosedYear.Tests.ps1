@@ -64,4 +64,19 @@ Describe 'Closed fiscal year' {
         { Set-LedgerReportInput -JournalPath $J -FiscalYear $Y -SigningPlace 'Uppsala' } | Should -Not -Throw
         { Add-LedgerDocument -JournalPath $J -FiscalYear $Y -Path $signed } | Should -Not -Throw
     }
+
+    It 'Should reject replacing a document in a closed year with Move=<MoveFile>' -ForEach @(
+        @{ MoveFile = $false }
+        @{ MoveFile = $true }
+    ) {
+        $destination = Join-Path $J $Y 'documents' 'avtal.pdf'
+        $before = (Get-FileHash -LiteralPath $destination).Hash
+        Set-Content -LiteralPath $agreement -Value 'replacement'
+
+        { Add-LedgerDocument -JournalPath $J -FiscalYear $Y -Path $agreement -Force -Move:$MoveFile } |
+            Should -Throw '*Closed*replace existing documents*'
+
+        (Get-FileHash -LiteralPath $destination).Hash | Should -Be $before
+        $agreement | Should -Exist
+    }
 }

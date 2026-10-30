@@ -8,6 +8,13 @@ rows but negated amounts. The description is auto-generated to reference the
 original verification number. This follows Swedish bookkeeping law which
 prohibits editing or deleting posted entries.
 
+Historical verifications may contain more than two decimals. Their reversals
+preserve every amount exactly and emit a warning, provided the sum rounds to
+zero at two decimals under the legacy balance rule. This also cancels small
+historical rounding differences without changing the original. New manual
+entries still require whole öre and an exact zero sum. The reversal date must
+be in an open fiscal year.
+
 .PARAMETER JournalPath
 The path to an existing journal directory.
 
@@ -70,8 +77,8 @@ function Add-LedgerReversal {
         $Description = "Rättelse ver $VerificationNumber - $($Original.Description)"
 
         if ($PSCmdlet.ShouldProcess("$FiscalYear ver $VerificationNumber", 'Add reversal verification')) {
-            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description -Rows $ReversedRows -PassThru:$PassThru
+            Write-LedgerVerification -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date `
+                -Description $Description -Rows $ReversedRows -LegacyReversal -PassThru:$PassThru -Confirm:$false
         }
     }
 }
-

@@ -26,6 +26,11 @@ or renamed. Accounts whose correct BAS account depends on what was booked on
 them ('Försäljning tjänster utrikes', 'Försäljning utrikes', 'Inköp varor och
 material utland') are not converted; a warning explains what to decide.
 
+With -Date, the year must be open and the date must be within its range.
+Source and target accounts must have the same effective VAT box after the
+planned mapping changes. Conflicting overrides cause an error before any files
+are changed; resolve the conflict in vat.txt or omit -Date to map accounts only.
+
 One object is returned per legacy account found.
 
 .PARAMETER JournalPath
@@ -101,10 +106,9 @@ function Convert-LedgerChart {
         if ($PSBoundParameters.ContainsKey('Date')) {
             $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
             $yearDir = Join-Path $JournalPath $FiscalYear
-            if (-not (Test-Path -LiteralPath $yearDir -PathType Container)) {
-                throw "Fiscal year not found: $FiscalYear"
-            }
-            foreach ($row in @(Read-LedgerOpeningBalance -YearDir $yearDir)) {
+            Assert-LedgerEntryDate -YearDir $yearDir -FiscalYear $FiscalYear -Date $Date
+            $openingRows = Read-LedgerOpeningBalance -YearDir $yearDir
+            foreach ($row in $openingRows) {
                 $balances[[string]$row.Account] = [decimal]$balances[[string]$row.Account] + [decimal]$row.Amount
             }
             foreach ($entry in @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -ToDate $Date)) {
@@ -150,6 +154,25 @@ function Convert-LedgerChart {
                 Account = $item.Account; Name = $item.Name; NewAccount = $item.NewAccount
                 Box = $item.Box; VatRule = $needsRule; Transferred = $amount; Status = 'Converted'
             }
+        }
+
+        $effectiveRules = @($existingRules) + @($newRules) + @($defaultRules)
+        foreach ($item in $results | Where-Object Status -eq 'Converted') {
+            $sourceRule = Resolve-VatBoxRule -Account $item.Account -Rules $effectiveRules
+            $sourceBox = if ($sourceRule) { $sourceRule.Box } else { $null }
+            $item.Box = $sourceBox
+            if ($item.Transferred -ne 0) {
+                $targetRule = Resolve-VatBoxRule -Account $item.NewAccount -Rules $effectiveRules
+                $targetBox = if ($targetRule) { $targetRule.Box } else { $null }
+                if ($sourceBox -ne $targetBox) {
+                    $sourceLabel = if ($null -eq $sourceBox) { '-' } else { "$sourceBox" }
+                    $targetLabel = if ($null -eq $targetBox) { '-' } else { "$targetBox" }
+                    throw "Cannot transfer account $($item.Account) (VAT box $sourceLabel) to $($item.NewAccount) (VAT box $targetLabel): conflicting VAT rules. Resolve the conflict in vat.txt or omit -Date."
+                }
+            }
+        }
+        if ($transferRows.Count -gt 0) {
+            Assert-LedgerEntryAmounts -Rows $transferRows.ToArray()
         }
 
         if ($PSCmdlet.ShouldProcess($JournalPath, 'Convert legacy template accounts to BAS')) {

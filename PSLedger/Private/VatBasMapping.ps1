@@ -70,13 +70,15 @@ function Get-VatDefaultRule {
         ,@(3105, 3105, 36)   # Försäljning varor till land utanför EU
         ,@(3107, 3107, 38)   # Försäljning varor, mellanman vid trepartshandel
         ,@(3108, 3108, 35)   # Försäljning varor till annat EU-land, momsfri
-        ,@(3211, 3212, 7)    # Försäljning positiv/negativ VMB
+        ,@(3211, 3211, 7)    # Separately booked taxable margin, excluding VAT
+        ,@(3212, 3212, $null) # Negative VMB has no taxable base
         ,@(3231, 3233, 41)   # Försäljning inom byggsektorn m.m., omvänd skattskyldighet
         ,@(3305, 3305, 40)   # Försäljning tjänster till land utanför EU
         ,@(3308, 3308, 39)   # Försäljning tjänster till annat EU-land
         ,@(3401, 3403, 6)    # Egna uttag, momspliktiga
         ,@(3404, 3404, 42)   # Egna uttag, momsfria
-        ,@(3913, 3914, 8)    # Frivilligt momspliktiga hyresintäkter
+        ,@(3913, 3913, 8)    # Frivilligt momspliktiga hyresintäkter
+        ,@(3914, 3914, 5)    # Övriga momspliktiga hyresintäkter
         ,@(4415, 4417, 23)   # Inköpta varor i Sverige, omvänd skattskyldighet
         ,@(4425, 4427, 24)   # Inköpta tjänster i Sverige, omvänd skattskyldighet
         ,@(4512, 4512, 37)   # Inköp av varor, mellanman vid trepartshandel
@@ -103,7 +105,11 @@ function Get-VatDefaultRule {
         ,@(2649, 2649, 48)
     )
     foreach ($r in $rules) {
-        [PSCustomObject]@{ From = [long]$r[0]; To = [long]$r[1]; Box = [int]$r[2]; Source = 'Default'; Implicit = $false }
+        [PSCustomObject]@{
+            From = [long]$r[0]; To = [long]$r[1]
+            Box = if ($null -eq $r[2]) { $null } else { [int]$r[2] }
+            Source = 'Default'; Implicit = $false
+        }
     }
     [PSCustomObject]@{ From = 3000L; To = 3799L; Box = 5; Source = 'Default'; Implicit = $true }
 }

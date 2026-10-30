@@ -33,7 +33,8 @@ If specified, moves the files instead of copying them.
 .PARAMETER Force
 If specified, overwrites an existing document with the same file name. By default
 a file that would overwrite an existing document is skipped with a non-terminating
-error, so the rest of a batch still completes.
+error, so the rest of a batch still completes. Existing documents cannot be
+replaced in a closed fiscal year, even with -Force; new filenames are allowed.
 
 .PARAMETER PassThru
 If specified, returns the created/updated document. By default the command
@@ -126,6 +127,10 @@ function Add-LedgerDocument {
                 if ((Test-Path -LiteralPath $destPath -PathType Leaf) -and -not $Force) {
                     Write-Error "A document named '$($sourceFile.Name)' already exists in fiscal year '$FiscalYear'. Use -Force to overwrite."
                     continue
+                }
+
+                if (Test-Path -LiteralPath $destPath -PathType Leaf) {
+                    Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'replace existing documents'
                 }
 
                 $verb = if ($Move) { 'Move' } else { 'Copy' }
