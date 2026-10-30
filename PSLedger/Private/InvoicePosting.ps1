@@ -11,7 +11,8 @@ function Read-LedgerInvoicePosting {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)] [string]$Path,
-        [switch]$Payment
+        [switch]$Payment,
+        [switch]$Supplier
     )
 
     $fields = @{}
@@ -47,6 +48,11 @@ function Read-LedgerInvoicePosting {
         VerificationHash = $fields.VerificationHash
     }
     if ($Payment) {
+        $invoiceType = if ($Supplier) { 'Supplier' } else { 'Customer' }
+        if (($Supplier -and $fields.InvoiceType -ne 'Supplier') -or
+            ($fields.ContainsKey('InvoiceType') -and $fields.InvoiceType -ne $invoiceType)) {
+            throw "Invalid invoice posting record '$Path': invoice type does not match its payment directory."
+        }
         $date = [datetime]::MinValue
         $amount = [decimal]0
         if (-not [datetime]::TryParseExact([string]$fields.PaymentDate, 'yyyy-MM-dd',
@@ -58,7 +64,7 @@ function Read-LedgerInvoicePosting {
             throw "Invalid invoice posting record '$Path': invalid payment date, amount or account."
         }
         $operation | Add-Member -NotePropertyMembers @{
-            PaymentDate = $date; PaymentAmount = $amount; PaymentAccount = $fields.PaymentAccount
+            PaymentDate = $date; PaymentAmount = $amount; PaymentAccount = $fields.PaymentAccount; InvoiceType = $invoiceType
         }
         if ($fields.ContainsKey('BankTransactionId') -or $fields.ContainsKey('BankStatementNumber') -or $fields.ContainsKey('BankTransactionHash')) {
             $transactionId = 0
@@ -103,7 +109,7 @@ function Save-LedgerInvoicePosting {
     )
     $null = New-Item -ItemType Directory -Path (Split-Path $Path -Parent) -Force -ErrorAction Stop
     $lines = @(
-        '; PSLedger customer invoice posting'
+        $(if ($Payment -and $Operation.InvoiceType -eq 'Supplier') { '; PSLedger supplier invoice payment' } else { '; PSLedger customer invoice posting' })
         "FormatVersion:`t1"
         "OperationId:`t$($Operation.OperationId)"
         "InvoiceNumber:`t$($Operation.InvoiceNumber)"
@@ -113,6 +119,7 @@ function Save-LedgerInvoicePosting {
         "VerificationHash:`t$($Operation.VerificationHash)"
     )
     if ($Payment) {
+        if ($Operation.InvoiceType -eq 'Supplier') { $lines += "InvoiceType:`tSupplier" }
         $lines += @(
             "PaymentDate:`t$($Operation.PaymentDate.ToString('yyyy-MM-dd'))"
             "PaymentAmount:`t$(Format-LedgerInvoiceAmount -Value $Operation.PaymentAmount)"

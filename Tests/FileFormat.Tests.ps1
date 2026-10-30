@@ -379,6 +379,64 @@ Describe 'File format contract' {
             (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
         }
 
+        It 'Should write a typed supplier payment plan with bank origin=<Bank>' -ForEach @(
+            @{ Bank = $false }
+            @{ Bank = $true }
+        ) {
+            $journal = Join-Path $TestDrive "supplier-$Bank.ledger"
+            Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse
+            $hashText = {
+                param([string]$Text)
+                $bytes = [Text.Encoding]::UTF8.GetBytes($Text.Replace("`r`n", "`n"))
+                [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+            }
+            New-LedgerSupplierInvoice -JournalPath $journal -SupplierNumber '100' -Date '2024-05-01' -Description 'Telefoni' `
+                -Rows @(@{ Account = '6210'; Amount = 400; VatRate = 0.25; VatAccount = '2640' })
+            Invoke-LedgerSupplierInvoicePosting -JournalPath $journal -InvoiceNumber 2
+            $invoiceHash = & $hashText (Get-Content -LiteralPath (Join-Path $journal 'supplierinvoices' 'sup0002.txt') -Raw -Encoding UTF8)
+            if ($Bank) {
+                $csv = Join-Path $TestDrive 'contract-supplier-payment.csv'
+                Set-Content -LiteralPath $csv -Value @('Date;Amount;Text', '2024-05-10;-112.50;Telia AB')
+                $statement = Import-LedgerBankStatement -JournalPath $journal -Path $csv -Format Csv `
+                    -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text
+                $transaction = Get-LedgerBankTransaction -JournalPath $journal | Where-Object StatementNumber -eq $statement.StatementNumber
+                Set-LedgerBankTransaction -JournalPath $journal -TransactionId $transaction.TransactionId -SupplierInvoiceNumber 2
+            }
+            else {
+                Add-LedgerSupplierPayment -JournalPath $journal -InvoiceNumber 2 -Date '2024-05-10' -Amount 112.50 -PaymentId (New-Guid)
+            }
+            $plan = Get-ChildItem -LiteralPath (Join-Path $journal 'supplierinvoices' 'payments') -File
+            $fields = @{}
+            foreach ($line in Get-Content -LiteralPath $plan.FullName -Encoding UTF8) {
+                if ($line -match '^([A-Za-z]+):\t(.+)$') { $fields[$Matches[1]] = $Matches[2] }
+            }
+            $invoice = Get-LedgerSupplierInvoice -JournalPath $journal -InvoiceNumber 2
+            $number = $invoice.Payments[0].VerificationNumber
+            $verification = Get-Content -LiteralPath (Join-Path $journal $Y ('ver{0:D4}.txt' -f $number)) -Raw -Encoding UTF8
+            $fields.FormatVersion | Should -Be '1'
+            $fields.InvoiceType | Should -Be 'Supplier'
+            $fields.InvoiceNumber | Should -Be '2'
+            $fields.OperationId | Should -Be $plan.BaseName
+            $fields.InvoiceHash | Should -Be $invoiceHash
+            $fields.VerificationHash | Should -Be (& $hashText $verification)
+            $verification | Should -Match "(?m)^OperationId: $([regex]::Escape($fields.OperationId))\r?$"
+            $entry = Get-LedgerEntry -JournalPath $journal -FiscalYear $Y -VerificationNumber $number
+            $fields.FiscalYear | Should -Be $invoice.Payments[0].FiscalYear
+            $fields.VerificationNumber | Should -Be "$number"
+            $fields.PaymentDate | Should -Be $entry.Date
+            $fields.PaymentAccount | Should -Be $entry.Rows[1].Account
+            [decimal]$fields.PaymentAmount | Should -Be (-$entry.Rows[1].Amount)
+            $entry.Rows[0].Account | Should -Be '2440'
+            $entry.Rows[0].Amount | Should -Be 112.50
+            if ($Bank) {
+                $fields.BankTransactionId | Should -Be "$($transaction.TransactionId)"
+                $fields.BankStatementNumber | Should -Be "$($statement.StatementNumber)"
+                $fields.BankTransactionHash | Should -Be (& $hashText "$($statement.StatementNumber)`t$($transaction.TransactionId)`t1930`t2024-05-10`t-112.5`t`t`t`tTelia AB`n")
+            }
+            else { $fields.ContainsKey('BankTransactionId') | Should -BeFalse }
+            (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
+        }
+
         It 'Should write a verification in the documented format' {
             $rows = @(
                 New-LedgerEntryRow -Debit 6110 -Amount 120.5 -Objects @{ 1 = 10 } -Comment 'Papper'

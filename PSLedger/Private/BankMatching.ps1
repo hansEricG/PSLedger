@@ -249,15 +249,22 @@ function Invoke-LedgerBankInvoicePayment {
         [int]$InvoiceNumber,
 
         [Parameter(Mandatory)]
-        [psobject]$Statement
+        [psobject]$Statement,
+
+        [ValidateSet('Customer', 'Supplier')]
+        [string]$InvoiceType = 'Customer'
     )
-    if ($Transaction.Amount -le 0) {
+    $supplier = $InvoiceType -eq 'Supplier'
+    if ($supplier -and $Transaction.Amount -ge 0) {
+        throw "Bank transaction $($Transaction.TransactionId) is an incoming payment and cannot pay a supplier invoice."
+    }
+    if (-not $supplier -and $Transaction.Amount -le 0) {
         throw "Bank transaction $($Transaction.TransactionId) is an outgoing payment and cannot pay a customer invoice."
     }
     $operation = Get-LedgerBankInvoicePaymentOperation -Transaction $Transaction `
         -Operations @(Get-LedgerInvoicePaymentOperation -JournalPath $JournalPath)
-    if ($operation -and $operation.InvoiceNumber -ne $InvoiceNumber) {
-        throw "Bank transaction $($Transaction.TransactionId) already belongs to invoice $($operation.InvoiceNumber). It cannot pay another invoice."
+    if ($operation -and ($operation.InvoiceType -ne $InvoiceType -or $operation.InvoiceNumber -ne $InvoiceNumber)) {
+        throw "Bank transaction $($Transaction.TransactionId) already belongs to $($operation.InvoiceType) invoice $($operation.InvoiceNumber). It cannot pay another invoice."
     }
     if ($operation) { Assert-LedgerBankPaymentLink -Transaction $Transaction -Operation $operation }
     elseif ($Transaction.Status -ne 'Unmatched' -or $Transaction.MatchType -or $Transaction.MatchRef -or
@@ -265,21 +272,24 @@ function Invoke-LedgerBankInvoicePayment {
         throw "Bank transaction $($Transaction.TransactionId) has conflicting match state. No payment was started."
     }
     $id = if ($operation) { $operation.OperationId } else { [guid]::NewGuid() }
+    $amount = if ($supplier) { -$Transaction.Amount } else { $Transaction.Amount }
+    $store = if ($supplier) { 'supplierinvoices' } else { 'invoices' }
+    $invoiceParameter = if ($supplier) { '-SupplierInvoiceNumber' } else { '-InvoiceNumber' }
     try {
         $null = Add-LedgerInvoicePaymentInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
-            -Date $Transaction.Date -Amount $Transaction.Amount -Account $Transaction.BankAccount -PaymentId $id `
-            -BankTransaction $Transaction -WhatIf:$false -Confirm:$false
-        $operation = Read-LedgerInvoicePosting -Path (Join-Path $JournalPath 'invoices' 'payments' "$id.txt") -Payment
+            -Date $Transaction.Date -Amount $amount -Account $Transaction.BankAccount -PaymentId $id `
+            -BankTransaction $Transaction -InvoiceType $InvoiceType -WhatIf:$false -Confirm:$false
+        $operation = Read-LedgerInvoicePosting -Path (Join-Path $JournalPath $store 'payments' "$id.txt") -Payment -Supplier:$supplier
         Assert-LedgerBankPaymentLink -Transaction $Transaction -Operation $operation
         if ($Transaction.Status -ne 'Matched') {
             Set-LedgerBankTransactionState -Statement $Statement -Transaction $Transaction -Status Matched `
-                -MatchType 'CustomerInvoice' -MatchRef "$InvoiceNumber" -FiscalYear $operation.FiscalYear `
+                -MatchType "${InvoiceType}Invoice" -MatchRef "$InvoiceNumber" -FiscalYear $operation.FiscalYear `
                 -VerificationNumber $operation.VerificationNumber
         }
     }
     catch {
         throw [InvalidOperationException]::new(
-            "Bank transaction $($Transaction.TransactionId) could not complete its customer payment match. Retry Set-LedgerBankTransaction -TransactionId $($Transaction.TransactionId) -InvoiceNumber $InvoiceNumber in this journal, or rerun Invoke-LedgerBankMatching. $($_.Exception.Message)", $_.Exception)
+            "Bank transaction $($Transaction.TransactionId) could not complete its $InvoiceType payment match. Retry Set-LedgerBankTransaction -TransactionId $($Transaction.TransactionId) $invoiceParameter $InvoiceNumber in this journal, or rerun Invoke-LedgerBankMatching. $($_.Exception.Message)", $_.Exception)
     }
     [PSCustomObject]@{ FiscalYear = $operation.FiscalYear; VerificationNumber = $operation.VerificationNumber }
 }
@@ -299,16 +309,13 @@ function Invoke-LedgerBankSupplierPayment {
         [psobject]$Transaction,
 
         [Parameter(Mandatory)]
-        [int]$InvoiceNumber
+        [int]$InvoiceNumber,
+
+        [Parameter(Mandatory)]
+        [psobject]$Statement
     )
-    if ($Transaction.Amount -ge 0) {
-        throw "Bank transaction $($Transaction.TransactionId) is an incoming payment and cannot pay a supplier invoice."
-    }
-    $inv = Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
-        -Date $Transaction.Date -Amount (-$Transaction.Amount) -Account $Transaction.BankAccount `
-        -PassThru -WhatIf:$false -Confirm:$false
-    $payment = @($inv.Payments)[-1]
-    [PSCustomObject]@{ FiscalYear = $payment.FiscalYear; VerificationNumber = $payment.VerificationNumber }
+    Invoke-LedgerBankInvoicePayment -JournalPath $JournalPath -Transaction $Transaction -Statement $Statement `
+        -InvoiceNumber $InvoiceNumber -InvoiceType Supplier
 }
 
 function Invoke-LedgerBankAccountEntry {

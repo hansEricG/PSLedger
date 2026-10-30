@@ -139,5 +139,92 @@ Describe 'Add-LedgerSupplierPayment' {
                 -Rows @(@{ Account = '5010'; Amount = 500 }) | Out-Null
             { Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber 2 -Date '2024-04-05' } | Should -Throw '*not been posted*'
         }
+
+        It 'Replays one payment ID without writes and permits distinct identical partial payments' {
+            $id = New-Guid
+            Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 500.000 -Date '2024-04-05' -PaymentId $id
+            $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash
+            $invoice = Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $id -PassThru
+            $invoice.Payments | Should -HaveCount 1
+            { Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 600 -PaymentId $id } | Should -Throw '*different payment inputs*'
+            @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash | Should -Be $before
+
+            $invoice = Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 500 -Date '2024-04-05' -PaymentId (New-Guid) -PassThru
+            $invoice.Payments | Should -HaveCount 2
+            $invoice.RemainingAmount | Should -Be 9000
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').IsValid | Should -BeTrue
+        }
+
+        It 'Keeps identical invoice numbers separate and rejects cross-type reuse of a <First> payment ID' -ForEach @(
+            @{ First = 'Customer' }
+            @{ First = 'Supplier' }
+        ) {
+            Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name 'Volvo AB'
+            New-TestPostedInvoice -JournalPath $JournalPath -Date '2024-03-01' | Out-Null
+            $commands = if ($First -eq 'Customer') { 'Add-LedgerInvoicePayment', 'Add-LedgerSupplierPayment' }
+            else { 'Add-LedgerSupplierPayment', 'Add-LedgerInvoicePayment' }
+            $id = New-Guid
+            & $commands[0] -JournalPath $JournalPath -InvoiceNumber 1 -Amount 500 -Date '2024-04-05' -PaymentId $id
+            $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash
+            { & $commands[1] -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $id } | Should -Throw '*different payment inputs*'
+            @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash | Should -Be $before
+            & $commands[1] -JournalPath $JournalPath -InvoiceNumber 1 -Amount 500 -Date '2024-04-05' -PaymentId (New-Guid)
+            (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).Payments | Should -HaveCount 1
+            (Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber 1).Payments | Should -HaveCount 1
+        }
+
+        It 'Blocks conflicting payments while a supplier payment is pending without blocking the same customer invoice number' {
+            Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name 'Volvo AB'
+            New-TestPostedInvoice -JournalPath $JournalPath -Date '2024-03-01' | Out-Null
+            $script:RealSupplierSave = & (Get-Module PSLedger) { (Get-Command Save-LedgerSupplierInvoiceFile).ScriptBlock }
+            Mock Save-LedgerSupplierInvoiceFile -ModuleName PSLedger { throw 'Injected invoice save failure' }
+            $id = New-Guid
+            { Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 500 -Date '2024-04-05' -PaymentId $id } |
+                Should -Throw "*retry Add-LedgerSupplierPayment*PaymentId '$id'*"
+            { Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 500 -Date '2024-04-05' } |
+                Should -Throw "*unfinished payment*Add-LedgerSupplierPayment*PaymentId '$id'*"
+            { Invoke-LedgerBankMatching -JournalPath $JournalPath } | Should -Throw '*unfinished payment*Add-LedgerSupplierPayment*'
+            Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 500 -Date '2024-04-05'
+            Mock Save-LedgerSupplierInvoiceFile -ModuleName PSLedger { & $script:RealSupplierSave -Invoice $Invoice }
+            $invoice = Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $id -PassThru
+            $invoice.Payments | Should -HaveCount 1
+            $invoice.Payments[0].VerificationNumber | Should -Be 3
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12') | Should -HaveCount 4
+        }
+
+        It 'Rejects a supplier plan with <Change> before making further writes' -ForEach @(
+            @{ Change = 'missing type'; Expected = '*invoice type does not match*' }
+            @{ Change = 'wrong directory'; Expected = '*invoice type does not match*' }
+            @{ Change = 'duplicate ID'; Expected = '*PaymentId*duplicated*' }
+            @{ Change = 'changed invoice'; Expected = '*changed since payment*' }
+        ) {
+            Mock Write-LedgerVerification -ModuleName PSLedger { throw 'Injected interruption after plan' }
+            $id = New-Guid
+            { Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 500 -Date '2024-04-05' -PaymentId $id } |
+                Should -Throw '*retry Add-LedgerSupplierPayment*'
+            $plan = Join-Path $JournalPath 'supplierinvoices' 'payments' "$id.txt"
+            $text = Get-Content -LiteralPath $plan -Raw
+            switch ($Change) {
+                'missing type' { Set-Content -LiteralPath $plan -Value ($text -replace '(?m)^InvoiceType:\tSupplier\r?\n', '') -NoNewline }
+                'wrong directory' {
+                    $dir = New-Item -ItemType Directory -Path (Join-Path $JournalPath 'invoices' 'payments') -Force
+                    Move-Item -LiteralPath $plan -Destination $dir.FullName
+                }
+                'duplicate ID' {
+                    $dir = New-Item -ItemType Directory -Path (Join-Path $JournalPath 'invoices' 'payments') -Force
+                    Set-Content -LiteralPath (Join-Path $dir.FullName "$id.txt") -Value ($text -replace '(?m)^InvoiceType:\tSupplier\r?\n', '') -NoNewline
+                }
+                'changed invoice' { Add-Content -LiteralPath (Join-Path $JournalPath 'supplierinvoices' 'sup0001.txt') -Value '; External change' }
+            }
+            $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash
+            { Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $id } | Should -Throw $Expected
+            @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash | Should -Be $before
+        }
+
+        It 'Previews a supplier payment without saving a plan or changing the invoice' {
+            $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash
+            Add-LedgerSupplierPayment -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-04-05' -WhatIf
+            @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash | Should -Be $before
+        }
     }
 }

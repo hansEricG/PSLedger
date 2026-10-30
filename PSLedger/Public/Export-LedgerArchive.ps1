@@ -164,14 +164,15 @@ function Export-LedgerArchive {
             $invoices = 0
             $paymentOperations = @(Get-LedgerInvoicePaymentOperation -JournalPath $journalDir)
             foreach ($inv in @(Get-LedgerInvoice -JournalPath $journalDir)) {
+                $invoicePayments = @($paymentOperations | Where-Object { $_.InvoiceType -eq 'Customer' -and $_.InvoiceNumber -eq $inv.InvoiceNumber })
                 if ((& $inYear $inv.InvoiceDate) -or $inv.BookedFiscalYear -eq $FiscalYear -or
-                    @($inv.Payments | Where-Object { $_.FiscalYear -eq $FiscalYear }).Count -gt 0) {
+                    @($inv.Payments | Where-Object { $_.FiscalYear -eq $FiscalYear }).Count -gt 0 -or $FiscalYear -in $invoicePayments.FiscalYear) {
                     & $copyDocument $inv.FilePath 'invoices'
                     $postingPath = Get-LedgerInvoicePostingPath -JournalPath $journalDir -InvoiceNumber $inv.InvoiceNumber
                     if (Test-Path -LiteralPath $postingPath -PathType Leaf) {
                         & $copyDocument $postingPath (Join-Path 'invoices' 'posting')
                     }
-                    foreach ($operation in $paymentOperations | Where-Object InvoiceNumber -eq $inv.InvoiceNumber) {
+                    foreach ($operation in $invoicePayments) {
                         $paymentPath = Join-Path $journalDir 'invoices' 'payments' "$($operation.OperationId).txt"
                         & $copyDocument $paymentPath (Join-Path 'invoices' 'payments')
                     }
@@ -180,9 +181,14 @@ function Export-LedgerArchive {
             }
             $supplierInvoices = 0
             foreach ($inv in @(Get-LedgerSupplierInvoice -JournalPath $journalDir)) {
+                $invoicePayments = @($paymentOperations | Where-Object { $_.InvoiceType -eq 'Supplier' -and $_.InvoiceNumber -eq $inv.InvoiceNumber })
                 if ((& $inYear $inv.InvoiceDate) -or $inv.BookedFiscalYear -eq $FiscalYear -or
-                    @($inv.Payments | Where-Object { $_.FiscalYear -eq $FiscalYear }).Count -gt 0) {
+                    @($inv.Payments | Where-Object { $_.FiscalYear -eq $FiscalYear }).Count -gt 0 -or $FiscalYear -in $invoicePayments.FiscalYear) {
                     & $copyDocument $inv.FilePath 'supplierinvoices'
+                    foreach ($operation in $invoicePayments) {
+                        $paymentPath = Join-Path $journalDir 'supplierinvoices' 'payments' "$($operation.OperationId).txt"
+                        & $copyDocument $paymentPath (Join-Path 'supplierinvoices' 'payments')
+                    }
                     $supplierInvoices++
                 }
             }

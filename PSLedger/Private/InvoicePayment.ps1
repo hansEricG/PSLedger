@@ -2,10 +2,15 @@ function Get-LedgerInvoicePaymentOperation {
     [CmdletBinding()]
     param ([Parameter(Mandatory)] [string]$JournalPath)
 
-    $directory = Join-Path $JournalPath 'invoices' 'payments'
-    if (-not (Test-Path -LiteralPath $directory)) { return }
-    foreach ($file in Get-ChildItem -LiteralPath $directory -Filter '*.txt' -File -ErrorAction Stop) {
-        Read-LedgerInvoicePosting -Path $file.FullName -Payment
+    $ids = [Collections.Generic.HashSet[guid]]::new()
+    foreach ($store in 'invoices', 'supplierinvoices') {
+        $directory = Join-Path $JournalPath $store 'payments'
+        if (-not (Test-Path -LiteralPath $directory)) { continue }
+        foreach ($file in Get-ChildItem -LiteralPath $directory -Filter '*.txt' -File -ErrorAction Stop) {
+            $operation = Read-LedgerInvoicePosting -Path $file.FullName -Payment -Supplier:($store -eq 'supplierinvoices')
+            if (-not $ids.Add($operation.OperationId)) { throw "PaymentId $($operation.OperationId) is duplicated in the journal." }
+            $operation
+        }
     }
 }
 
@@ -35,11 +40,15 @@ function Assert-LedgerInvoicePaymentVerification {
     $path = Join-Path $JournalPath $Operation.FiscalYear ('ver{0:D4}.txt' -f $Operation.VerificationNumber)
     Assert-LedgerInvoicePostingVerification -Path $path -Operation $Operation
     $entry = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $Operation.FiscalYear -VerificationNumber $Operation.VerificationNumber
+    $supplier = $Operation.InvoiceType -eq 'Supplier'
+    $description = if ($supplier) { "Betalning leverantörsfaktura $($Operation.InvoiceNumber)" } else { "Betalning kundfaktura $($Operation.InvoiceNumber)" }
+    $debitAccount = if ($supplier) { $Invoice.PayableAccount } else { $Operation.PaymentAccount }
+    $creditAccount = if ($supplier) { $Operation.PaymentAccount } else { $Invoice.ReceivableAccount }
     if ($entry.Date -ne $Operation.PaymentDate.ToString('yyyy-MM-dd') -or
-        $entry.Description -ne "Betalning kundfaktura $($Operation.InvoiceNumber)" -or
+        $entry.Description -ne $description -or
         $entry.Rows.Count -ne 2 -or
-        $entry.Rows[0].Account -ne $Operation.PaymentAccount -or $entry.Rows[0].Amount -ne $Operation.PaymentAmount -or
-        $entry.Rows[1].Account -ne $Invoice.ReceivableAccount -or $entry.Rows[1].Amount -ne -$Operation.PaymentAmount) {
+        $entry.Rows[0].Account -ne $debitAccount -or $entry.Rows[0].Amount -ne $Operation.PaymentAmount -or
+        $entry.Rows[1].Account -ne $creditAccount -or $entry.Rows[1].Amount -ne -$Operation.PaymentAmount) {
         throw "Payment $($Operation.OperationId) inputs do not match its saved verification. Recovery stopped."
     }
 }
@@ -49,17 +58,26 @@ function Assert-LedgerNoPendingInvoicePayment {
     param (
         [Parameter(Mandatory)] [string]$JournalPath,
         [psobject]$Invoice,
+        [ValidateSet('Customer', 'Supplier')] [string]$InvoiceType = 'Customer',
         [guid]$ExceptPaymentId = [guid]::Empty
     )
     foreach ($operation in Get-LedgerInvoicePaymentOperation -JournalPath $JournalPath) {
         if ($operation.OperationId -eq $ExceptPaymentId -or
-            ($Invoice -and $operation.InvoiceNumber -ne $Invoice.InvoiceNumber)) { continue }
+            ($Invoice -and ($operation.InvoiceNumber -ne $Invoice.InvoiceNumber -or $operation.InvoiceType -ne $InvoiceType))) { continue }
+        $supplier = $operation.InvoiceType -eq 'Supplier'
         $current = if ($Invoice) { $Invoice } else {
-            $path = Join-Path $JournalPath 'invoices' (Get-LedgerInvoiceFileName -InvoiceNumber $operation.InvoiceNumber)
-            Read-LedgerInvoiceFile -Path $path
+            if ($supplier) {
+                $path = Join-Path $JournalPath 'supplierinvoices' (Get-LedgerSupplierInvoiceFileName -InvoiceNumber $operation.InvoiceNumber)
+                Read-LedgerSupplierInvoiceFile -Path $path
+            }
+            else {
+                $path = Join-Path $JournalPath 'invoices' (Get-LedgerInvoiceFileName -InvoiceNumber $operation.InvoiceNumber)
+                Read-LedgerInvoiceFile -Path $path
+            }
         }
         if (-not (Get-LedgerRecordedInvoicePayment -Invoice $current -Operation $operation)) {
-            throw "Invoice $($operation.InvoiceNumber) has an unfinished payment. Resume it with Add-LedgerInvoicePayment -JournalPath '$JournalPath' -InvoiceNumber $($operation.InvoiceNumber) -PaymentId '$($operation.OperationId)' before making other changes or matching bank transactions."
+            $command = if ($supplier) { 'Add-LedgerSupplierPayment' } else { 'Add-LedgerInvoicePayment' }
+            throw "$($operation.InvoiceType) invoice $($operation.InvoiceNumber) has an unfinished payment. Resume it with $command -JournalPath '$JournalPath' -InvoiceNumber $($operation.InvoiceNumber) -PaymentId '$($operation.OperationId)' before making other changes or matching bank transactions."
         }
     }
 }

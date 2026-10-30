@@ -107,17 +107,21 @@ Describe 'Export-LedgerArchive' {
         }
 
         It 'Preserves invoice posting records with the archived invoices' {
-            $journal = New-TestLedger -Root $TestDrive -Customers @(@{ Number = '10'; Name = 'Volvo AB' })
+            $journal = New-TestLedger -Root $TestDrive -Customers @(@{ Number = '10'; Name = 'Volvo AB' }) `
+                -Suppliers @(@{ Number = '100'; Name = 'Kontorsbolaget AB' })
             Set-LedgerJournal -JournalPath $journal -OrgNumber '556677-8899'
             New-LedgerInvoice -JournalPath $journal -CustomerNumber '10' -Date '2024-01-15' -Description 'Konsult' `
                 -Rows @(@{ Account = '3010'; Amount = 1000; VatRate = 0.25; VatAccount = '2610' })
             Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 1
             $csv = Join-Path $TestDrive 'archive-payment.csv'
-            Set-Content -LiteralPath $csv -Value @('Date;Amount;Text', '2024-01-20;1250;Volvo AB')
+            Set-Content -LiteralPath $csv -Value @('Date;Amount;Text', '2024-01-20;1250;Volvo AB', '2024-01-21;-1250;Kontorsbolaget AB')
             Import-LedgerBankStatement -JournalPath $journal -Path $csv -Format Csv `
                 -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text | Out-Null
             Set-LedgerBankTransaction -JournalPath $journal -TransactionId 1 -InvoiceNumber 1
             $paymentId = (Get-ChildItem -LiteralPath (Join-Path $journal 'invoices' 'payments') -File).BaseName
+            New-TestPostedSupplierInvoice -JournalPath $journal -Date '2024-01-15' -Net 1000 | Out-Null
+            Set-LedgerBankTransaction -JournalPath $journal -TransactionId 2 -SupplierInvoiceNumber 1
+            $supplierId = (Get-ChildItem -LiteralPath (Join-Path $journal 'supplierinvoices' 'payments') -File).BaseName
             Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $OpenYear -SkipResultEntry | Out-Null
             $package = Export-LedgerArchive -JournalPath $journal -FiscalYear $OpenYear -AsDirectory
             $original = Join-Path $journal 'invoices' 'posting' 'inv0001.txt'
@@ -133,6 +137,39 @@ Describe 'Export-LedgerArchive' {
             $archivedTransaction = Get-LedgerBankTransaction -JournalPath (Join-Path $package.FullName 'journal') -TransactionId 1
             $archivedTransaction.MatchType | Should -Be 'CustomerInvoice'
             $archivedTransaction.VerificationNumber | Should -Be 2
+            $originalSupplier = Join-Path $journal 'supplierinvoices' 'payments' "$supplierId.txt"
+            $archivedSupplier = Join-Path $package.FullName 'journal' 'supplierinvoices' 'payments' "$supplierId.txt"
+            (Get-FileHash -LiteralPath $archivedSupplier).Hash | Should -Be (Get-FileHash -LiteralPath $originalSupplier).Hash
+            Get-Content -LiteralPath (Join-Path $package.FullName 'checksums.txt') -Raw |
+                Should -BeLike "*journal/supplierinvoices/payments/$supplierId.txt*"
+            $archivedJournal = Join-Path $package.FullName 'journal'
+            $archivedTransaction = Get-LedgerBankTransaction -JournalPath $archivedJournal -TransactionId 2
+            $archivedTransaction.MatchType | Should -Be 'SupplierInvoice'
+            $archivedTransaction.VerificationNumber | Should -Be 4
+            (Add-LedgerSupplierPayment -JournalPath $archivedJournal -InvoiceNumber 1 -PaymentId $supplierId -PassThru).Payments | Should -HaveCount 1
+            (Add-LedgerInvoicePayment -JournalPath $archivedJournal -InvoiceNumber 1 -PaymentId $paymentId -PassThru).Payments | Should -HaveCount 1
+        }
+
+        It 'Includes an earlier invoice for a pending <Type> payment in the archived year without conflating invoice numbers' -ForEach @(
+            @{ Type = 'Customer'; Command = 'Add-LedgerInvoicePayment'; Store = 'invoices'; File = 'inv0001.txt'; Other = 'supplierinvoices' }
+            @{ Type = 'Supplier'; Command = 'Add-LedgerSupplierPayment'; Store = 'supplierinvoices'; File = 'sup0001.txt'; Other = 'invoices' }
+        ) {
+            $journal = New-TestLedger -Root $TestDrive -Customers @(@{ Number = '10'; Name = 'Volvo AB' }) `
+                -Suppliers @(@{ Number = '100'; Name = 'Kontorsbolaget AB' })
+            Set-LedgerJournal -JournalPath $journal -OrgNumber '556677-8899'
+            New-TestPostedInvoice -JournalPath $journal | Out-Null
+            New-TestPostedSupplierInvoice -JournalPath $journal | Out-Null
+            New-LedgerFiscalYear -JournalPath $journal -StartDate '2025-01-01' -EndDate '2025-12-31'
+            Mock Write-LedgerVerification -ModuleName PSLedger { throw 'Injected interruption after plan' }
+            $id = New-Guid
+            { & $Command -JournalPath $journal -InvoiceNumber 1 -Amount 500 -Date '2025-01-20' -PaymentId $id } | Should -Throw '*retry*'
+            $package = Export-LedgerArchive -JournalPath $journal -FiscalYear '2025-01_2025-12' -AsDirectory -Force -WarningAction SilentlyContinue
+            $archivedJournal = Join-Path $package.FullName 'journal'
+            Test-Path -LiteralPath (Join-Path $archivedJournal $Store $File) | Should -BeTrue
+            Test-Path -LiteralPath (Join-Path $archivedJournal $Other) | Should -BeFalse
+            $original = Join-Path $journal $Store 'payments' "$id.txt"
+            $archived = Join-Path $archivedJournal $Store 'payments' "$id.txt"
+            (Get-FileHash -LiteralPath $archived).Hash | Should -Be (Get-FileHash -LiteralPath $original).Hash
         }
 
         It 'Leaves out invoices, payslips and bank statements of other years' {

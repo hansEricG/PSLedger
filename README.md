@@ -621,8 +621,8 @@ for another invoice. Bookkeeping corrections require separate handling.
 
 An unfinished payment started outside bank matching still needs to be resumed
 with its `PaymentId` first, then linked with `-VerificationNumber` and
-`-FiscalYear`; do not register another payment. Supplier-payment and rule/account
-bank matching, charges and credit notes do not yet have end-to-end recovery.
+`-FiscalYear`; do not register another payment. Rule/account bank matching,
+own-account transfers, charges and credit notes do not yet have end-to-end recovery.
 
 `Export-LedgerInvoice` produces the PDF with a built-in, dependency-free writer.
 Add payment details (bankgiro, plusgiro, IBAN/BIC) to the document by storing them
@@ -667,6 +667,34 @@ Add-LedgerSupplierPayment -InvoiceNumber 1 -Date '2024-04-05'
 Get-LedgerAccountsPayable
 Get-LedgerAccountsPayable -Summary       # one row per bucket with the total
 ```
+
+**Supplier payments and their bank matches are recoverable**, using the same
+rules as customer payments:
+
+```powershell
+$paymentId = New-Guid
+Add-LedgerSupplierPayment -InvoiceNumber 1 -Date '2024-04-05' -Amount 5000 -PaymentId $paymentId
+# After interruption, reuse the saved ID; omitted inputs come from the plan:
+Add-LedgerSupplierPayment -InvoiceNumber 1 -PaymentId $paymentId -PassThru
+
+# For a payment started by bank matching, repeat the same match instead:
+Set-LedgerBankTransaction -TransactionId 16 -SupplierInvoiceNumber 1
+# Or resume it through automatic matching:
+Invoke-LedgerBankMatching
+```
+
+Different IDs allow identical real partial payments; without an ID, each call
+starts a new payment. An unfinished payment reports the ID to resume and blocks
+conflicting writes. IDs are unique across customer and supplier payments, while
+invoice numbers belong to separate series. Plans are kept in
+`supplierinvoices/payments/<guid>.txt`, retained after completion and included in
+archives. Do not remove them from backups. Recovery in a closed year may finish
+an existing verification's payment, but never create a new verification.
+
+Bank Reset retains ownership: only the same supplier payment can be relinked,
+not a customer invoice with the same number or another supplier invoice.
+**Supplier invoice posting itself is not yet resumable**; its journal lock
+prevents concurrent stale updates but does not make its multi-file writes atomic.
 
 For a full walkthrough see [docs/Leverantorsreskontra.md](docs/Leverantorsreskontra.md).
 
@@ -821,10 +849,10 @@ This is not a transaction across files: an interrupted process can still leave
 a saved verification without its integrity record or all attachments. If a
 posting reports such a partial failure, inspect the saved verification and run
 `Test-LedgerIntegrity` before taking recovery action; do not simply post it
-again. `Invoke-LedgerInvoicePosting` and `Add-LedgerInvoicePayment -PaymentId`
-can resume their saved plans as described under customer invoices above.
-Supplier payments, imports and other multi-file workflows do not yet have this
-protection.
+again. `Invoke-LedgerInvoicePosting`, `Add-LedgerInvoicePayment -PaymentId` and
+`Add-LedgerSupplierPayment -PaymentId` can resume their saved plans as described
+above, as can customer/supplier bank matches. Supplier invoice posting, imports
+and other multi-file workflows do not yet have this protection.
 
 Other register and metadata writers, older PSLedger versions and external
 editors do not all participate in the lock. Readers and backups do not acquire

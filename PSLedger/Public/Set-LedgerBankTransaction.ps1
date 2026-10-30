@@ -19,14 +19,14 @@ Choose one of:
   verification it created is left in place; reverse it with
   Add-LedgerReversal if needed.
 
-Only unmatched transactions can be newly posted, linked or ignored. Customer
+Only unmatched transactions can be newly posted, linked or ignored. Customer and supplier
 invoice matches with saved payment plans can also be retried after completion:
 the same invoice/payment is reused without another payment or verification.
-After interruption, repeat -InvoiceNumber with the same invoice, or rerun
+After interruption, repeat -InvoiceNumber or -SupplierInvoiceNumber with the same invoice, or rerun
 Invoke-LedgerBankMatching. Input or link conflicts are rejected.
 
-Reset preserves a saved customer-payment plan. Only relinking that same
-payment (with -InvoiceNumber or its -VerificationNumber) is allowed afterwards;
+Reset preserves a saved payment plan. Only relinking that same payment (with
+-InvoiceNumber, -SupplierInvoiceNumber or its -VerificationNumber) is allowed afterwards;
 Reset does not permit paying another invoice, reposting or ignoring the
 transaction. Corrections to the bookkeeping are a separate operation.
 
@@ -166,15 +166,17 @@ function Set-LedgerBankTransaction {
             }
 
             if ($operation) {
-                $sameInvoice = $PSCmdlet.ParameterSetName -eq 'Invoice' -and $InvoiceNumber -eq $operation.InvoiceNumber
+                $sameInvoice = ($operation.InvoiceType -eq 'Customer' -and $PSCmdlet.ParameterSetName -eq 'Invoice' -and $InvoiceNumber -eq $operation.InvoiceNumber) -or
+                    ($operation.InvoiceType -eq 'Supplier' -and $PSCmdlet.ParameterSetName -eq 'SupplierInvoice' -and $SupplierInvoiceNumber -eq $operation.InvoiceNumber)
                 $sameVerification = $PSCmdlet.ParameterSetName -eq 'Verification' -and
                     $VerificationNumber -eq $operation.VerificationNumber -and
                     (-not $FiscalYear -or $FiscalYear -eq $operation.FiscalYear)
                 if (-not ($sameInvoice -or $sameVerification)) {
-                    throw "Bank transaction $TransactionId belongs to the saved payment of invoice $($operation.InvoiceNumber). Reset does not undo that payment; only relinking the same payment is allowed."
+                    throw "Bank transaction $TransactionId belongs to the saved payment of $($operation.InvoiceType) invoice $($operation.InvoiceNumber). Reset does not undo that payment; only relinking the same payment is allowed."
                 }
-                if (-not $PSCmdlet.ShouldProcess($target, 'Resume saved customer payment match')) { return }
-                $null = Invoke-LedgerBankInvoicePayment -JournalPath $JournalPath -Transaction $t -Statement $statement -InvoiceNumber $operation.InvoiceNumber
+                if (-not $PSCmdlet.ShouldProcess($target, 'Resume saved invoice payment match')) { return }
+                $null = Invoke-LedgerBankInvoicePayment -JournalPath $JournalPath -Transaction $t -Statement $statement `
+                    -InvoiceNumber $operation.InvoiceNumber -InvoiceType $operation.InvoiceType
                 if ($PassThru) { ConvertTo-LedgerBankTransactionOutput -Transaction $t }
                 return
             }
@@ -224,9 +226,7 @@ function Set-LedgerBankTransaction {
                 }
                 'SupplierInvoice' {
                     if (-not $PSCmdlet.ShouldProcess($target, "Register payment of supplier invoice $SupplierInvoiceNumber")) { return }
-                    $result = Invoke-LedgerBankSupplierPayment -JournalPath $JournalPath -Transaction $t -InvoiceNumber $SupplierInvoiceNumber
-                    Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched -MatchType 'SupplierInvoice' `
-                        -MatchRef ([string]$SupplierInvoiceNumber) -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
+                    $null = Invoke-LedgerBankSupplierPayment -JournalPath $JournalPath -Transaction $t -Statement $statement -InvoiceNumber $SupplierInvoiceNumber
                 }
                 'Account' {
                     if (-not $PSCmdlet.ShouldProcess($target, "Post against account $Account")) { return }

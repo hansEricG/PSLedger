@@ -152,7 +152,7 @@ enabled and cooperating writers. Other register/metadata writers and readers
 are not yet covered by a journal-wide transaction or snapshot. This is not a
 distributed lock for synchronised or network directories. An interrupted
 operation can still leave a saved but unsealed verification; the integrity
-check diagnoses that state. Customer-invoice posting and payments can resume
+check diagnoses that state. Customer-invoice posting and customer/supplier payments can resume
 from their saved plans below; other multi-file recovery remains separate work.
 
 ### Unknown content
@@ -340,7 +340,7 @@ Description: Kontorsmaterial
 |-----|----------|-------|
 | `Date` | yes | Transaction date. MUST fall within the fiscal year. |
 | `Description` | yes | Text of the verification. |
-| `OperationId` | no | Non-empty GUID in `D` form identifying the customer-invoice posting or payment plan. Included in the verification content hash; ordinary entries omit it. |
+| `OperationId` | no | Non-empty GUID in `D` form identifying the customer-invoice posting or customer/supplier payment plan. Included in the verification content hash; ordinary entries omit it. |
 
 A blank line follows the header.
 
@@ -621,7 +621,8 @@ does not contain these plans and is not a full recovery-state backup.
 
 Each payment has an immutable plan using the posting-plan fields above.
 `OperationId` is the `PaymentId`, a non-empty GUID unique among payments in the
-journal and matching the filename (without `.txt`). `InvoiceNumber` identifies
+journal across both customer and supplier payment directories, and matching the
+filename (without `.txt`). `InvoiceNumber` identifies
 the invoice being paid. `InvoiceHash` covers the invoice immediately before this
 payment, not its original draft. Three additional fields are required:
 
@@ -630,6 +631,13 @@ payment, not its original draft. Three additional fields are required:
 | `PaymentDate` | Payment date, `yyyy-MM-dd`. |
 | `PaymentAmount` | Positive invariant decimal in whole ore, at most two fraction digits. |
 | `PaymentAccount` | Cash/bank account number, digits only. |
+
+Customer plans omit `InvoiceType` for backward compatibility; omission means
+`Customer` only in `invoices/payments/`. An explicit type MUST agree with the
+directory. Supplier plans use `supplierinvoices/payments/` and MUST explicitly
+record `InvoiceType:<TAB>Supplier`; see the supplier section below. The type and
+invoice number together identify the invoice. Duplicate payment IDs across
+either directory are rejected.
 
 Plans use the same hash normalisation, reservation, create-if-absent and retention
 rules as posting plans. Payment inputs MUST agree with the saved verification's
@@ -650,9 +658,11 @@ unfinished payment prevents further payment, charge, reminder or credit writes
 to that invoice and blocks unrelated bank matching until it is resumed with its ID.
 Identical dates and amounts alone never deduplicate payments. Plans remain after
 completion and are copied with included invoices into archives, with checksums.
+A payment plan in the archived year also includes its invoice even if that invoice
+belongs to an earlier year and the payment row has not yet been saved.
 SIE exports do not retain them.
 
-**Bank-originated customer payments** additionally require all three fields
+**Bank-originated customer and supplier payments** additionally require all three fields
 below together (all are absent on ordinary payments). These are additive fields
 in payment-plan format version 1:
 
@@ -665,14 +675,17 @@ in payment-plan format version 1:
 The bank hash covers, in order, the statement number, transaction ID, ledger bank
 account, ISO date, amount, bank reference, reference, counterparty and text,
 separated by tabs and followed by one LF, encoded as UTF-8. The amount uses an
-invariant decimal point without insignificant trailing fractional zeros; empty
+invariant decimal point without insignificant trailing fractional zeros. It is
+positive for customer receipts and negative for supplier payments, while the
+plan's `PaymentAmount` is always positive. Empty
 fields remain empty. Status and match fields are excluded because they change
 on completion or Reset. Other transactions in the statement are not hashed, so
 their legitimate changes do not prevent recovery or get overwritten by it.
 
 A bank-originated payment reserves its verification for that bank transaction.
 Matching resumes saved plans before using amount/reference heuristics. It first
-finishes or verifies the payment, then saves `CustomerInvoice` match type, invoice
+finishes or verifies the payment, then saves `CustomerInvoice` or `SupplierInvoice`
+match type, invoice
 number, fiscal year and verification number on the bank transaction. A matching
 completed payment is reused even when the invoice has since changed. Bank input
 or link conflicts stop recovery, including retries directly through `PaymentId`.
@@ -680,8 +693,8 @@ Reset clears only the bank link, never the plan: only the same payment may be
 relinked. Duplicate transaction IDs or conflicting plans are rejected.
 
 Existing payment plans without bank fields remain supported and are not
-automatically associated with a bank transaction. Supplier payments, rule/account
-postings and own-account transfer workflows do not yet have end-to-end recovery.
+automatically associated with a bank transaction. Supplier invoice posting,
+rule/account postings and own-account transfers do not yet have end-to-end recovery.
 
 ### `invoices/invNNNN.txt` — customer invoices
 
@@ -837,6 +850,23 @@ The file is a header followed by the sections `Rows:` and `Payments:`.
   first four columns of a customer invoice row; the VAT account is input VAT,
   e.g. `2640`.
 - **Payments:** same as for customer invoices.
+
+### `supplierinvoices/payments/<guid>.txt` — supplier payment plans
+
+Supplier payments use the same immutable version-1 plan and bank-origin fields
+documented under customer payment plans, with the additional required field
+`InvoiceType:<TAB>Supplier`. `InvoiceNumber` refers to `supNNNN.txt`, never
+`invoices/invNNNN.txt`. The verification debits the invoice's payable account and
+credits `PaymentAccount` by the positive `PaymentAmount`, in that row order.
+
+Retry with `Add-LedgerSupplierPayment -PaymentId <guid>`, or repeat the bank match
+using `-SupplierInvoiceNumber` or automatic matching. The same hash, reservation,
+integrity, closed-year and completed-payment checks apply. Reset preserves supplier
+payment ownership, even if a customer invoice has the same number.
+Payment plans MUST remain after completion and in backups; archive packages copy
+them with their invoices. These additive files do not change the schema version
+or existing supplier payment rows. Supplier invoice posting has a journal lock
+but does not yet retain a recoverable posting plan.
 
 ## Payroll
 

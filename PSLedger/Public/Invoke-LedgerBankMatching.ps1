@@ -5,7 +5,7 @@ Matches unmatched bank transactions and posts them to the ledger.
 .DESCRIPTION
 Works through the unmatched transactions imported with
 Import-LedgerBankStatement and resolves every transaction it can match with
-certainty. Saved customer-payment plans are resumed first, before applying
+certainty. Saved customer and supplier payment plans are resumed first, before applying
 the following matching rules to transactions without plans:
 
 1. Entry - an existing verification with the same amount on the bank account
@@ -19,7 +19,7 @@ the following matching rules to transactions without plans:
 3. SupplierInvoice (outgoing payments) - an open supplier invoice whose
    payment reference or own invoice number appears in the payment, or whose
    supplier name appears in the counterparty or text and whose remaining
-   amount equals the payment. The payment is registered with
+   amount equals the payment. The payment uses the same recoverable writer as
    Add-LedgerSupplierPayment.
 4. Rule - the first bank rule (see Add-LedgerBankRule) whose pattern matches
    the counterparty, text or reference. The transaction is posted against the
@@ -38,12 +38,12 @@ qualifies. Transactions that cannot be matched remain 'Unmatched' and are
 listed with Get-LedgerBankTransaction -Status Unmatched; resolve them with
 Set-LedgerBankTransaction. Use -WhatIf to preview the matches without posting.
 
-Customer payments retain the bank transaction's identity and input hash in
+Customer and supplier payments retain the bank transaction's identity and input hash in
 their immutable payment plan. Rerun this command after interruption to finish
 both payment and bank link, even when the invoice has already become Paid.
 Conflicting inputs or links stop recovery. Resetting a bank link retains its
-payment ownership. Supplier payments and rule postings do not yet have this
-end-to-end recovery. An unassociated unfinished customer payment must still
+payment ownership. Rule/account postings and own-account transfers do not yet
+have this end-to-end recovery. An unassociated unfinished invoice payment must still
 be resumed separately before bank matching.
 
 .PARAMETER JournalPath
@@ -149,7 +149,7 @@ function Invoke-LedgerBankMatching {
             $entry = Find-LedgerBankEntryMatch -Transaction $t -Movements $movementCache[$cacheKey] -Linked $linked -DateTolerance $DateTolerance
             if ($operation) {
                 Assert-LedgerBankPaymentLink -Transaction $t -Operation $operation
-                $match = @{ Type = 'CustomerInvoice'; Ref = "$($operation.InvoiceNumber)"; Action = 'Resume saved customer payment match' }
+                $match = @{ Type = "$($operation.InvoiceType)Invoice"; Ref = "$($operation.InvoiceNumber)"; Action = 'Resume saved invoice payment match' }
             }
             elseif ($entry) {
                 $match = @{ Type = 'Entry'; Ref = "$($entry.FiscalYear)/$($entry.VerificationNumber)"; Action = "Link to existing verification $($entry.VerificationNumber) in $($entry.FiscalYear)" }
@@ -176,7 +176,7 @@ function Invoke-LedgerBankMatching {
                 $result = switch ($match.Type) {
                     'Entry' { [PSCustomObject]@{ FiscalYear = $entry.FiscalYear; VerificationNumber = $entry.VerificationNumber } }
                     'CustomerInvoice' { Invoke-LedgerBankInvoicePayment -JournalPath $JournalPath -Transaction $t -Statement $statement -InvoiceNumber ([int]$match.Ref) }
-                    'SupplierInvoice' { Invoke-LedgerBankSupplierPayment -JournalPath $JournalPath -Transaction $t -InvoiceNumber $sup.InvoiceNumber }
+                    'SupplierInvoice' { Invoke-LedgerBankSupplierPayment -JournalPath $JournalPath -Transaction $t -Statement $statement -InvoiceNumber ([int]$match.Ref) }
                     'Rule' {
                         Invoke-LedgerBankAccountEntry -JournalPath $JournalPath -Transaction $t -Account $rule.Account `
                             -Description $rule.Description -VatRate $rule.VatRate -VatAccount $rule.VatAccount -FiscalYear $year.Name
@@ -184,12 +184,12 @@ function Invoke-LedgerBankMatching {
                 }
             }
             catch {
-                if ($match.Type -eq 'CustomerInvoice') { throw }
+                if ($match.Type -in 'CustomerInvoice', 'SupplierInvoice') { throw }
                 Write-Warning "Bank transaction $($t.TransactionId): $($_.Exception.Message)"
                 continue
             }
 
-            if ($match.Type -ne 'CustomerInvoice') {
+            if ($match.Type -notin 'CustomerInvoice', 'SupplierInvoice') {
                 Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched `
                     -MatchType $match.Type -MatchRef $match.Ref -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
             }

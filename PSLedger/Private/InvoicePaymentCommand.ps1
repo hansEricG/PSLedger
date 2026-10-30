@@ -102,7 +102,11 @@ function Add-LedgerInvoicePaymentInternal {
         [switch]$PassThru,
 
         [Parameter()]
-        [psobject]$BankTransaction
+        [psobject]$BankTransaction,
+
+        [Parameter()]
+        [ValidateSet('Customer', 'Supplier')]
+        [string]$InvoiceType = 'Customer'
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
@@ -110,19 +114,24 @@ function Add-LedgerInvoicePaymentInternal {
         try {
             $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
             Assert-LedgerJournalSchema -Path $JournalPath -Write
-            $invoiceDir = Get-LedgerInvoiceDirectory -JournalPath $JournalPath
-            $filePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber)
+            $supplier = $InvoiceType -eq 'Supplier'
+            $store = if ($supplier) { 'supplierinvoices' } else { 'invoices' }
+            $paymentCommand = if ($supplier) { 'Add-LedgerSupplierPayment' } else { 'Add-LedgerInvoicePayment' }
+            $postingCommand = if ($supplier) { 'Invoke-LedgerSupplierInvoicePosting' } else { 'Invoke-LedgerInvoicePosting' }
+            $getCommand = if ($supplier) { 'Get-LedgerSupplierInvoice' } else { 'Get-LedgerInvoice' }
+            $fileName = if ($supplier) { Get-LedgerSupplierInvoiceFileName -InvoiceNumber $InvoiceNumber } else { Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber }
+            $filePath = Join-Path $JournalPath $store $fileName
             if (-not (Test-Path $filePath)) {
                 throw "Invoice $InvoiceNumber does not exist."
             }
 
-            $invoice = Read-LedgerInvoiceFile -Path $filePath
+            $invoice = if ($supplier) { Read-LedgerSupplierInvoiceFile -Path $filePath } else { Read-LedgerInvoiceFile -Path $filePath }
             if ($invoice.InvoiceNumber -ne $InvoiceNumber) {
                 throw "Invoice $InvoiceNumber has an inconsistent identity."
             }
             $id = if ($PSBoundParameters.ContainsKey('PaymentId')) { $PaymentId } else { [guid]::NewGuid() }
-            $operationPath = Join-Path $JournalPath 'invoices' 'payments' "$id.txt"
-            $operation = if (Test-Path -LiteralPath $operationPath) { Read-LedgerInvoicePosting -Path $operationPath -Payment }
+            $operationPath = Join-Path $JournalPath $store 'payments' "$id.txt"
+            $operation = Get-LedgerInvoicePaymentOperation -JournalPath $JournalPath | Where-Object OperationId -eq $id
             $paymentAmount = $Amount
             $paymentDate = $Date
             $paymentAccount = $Account
@@ -133,7 +142,7 @@ function Add-LedgerInvoicePaymentInternal {
                     $null = Get-LedgerBankInvoicePaymentOperation -Transaction $source.Transaction -Operations @($operation)
                     Assert-LedgerBankPaymentLink -Transaction $source.Transaction -Operation $operation
                 }
-                if ($operation.InvoiceNumber -ne $InvoiceNumber -or
+                if ($operation.InvoiceType -ne $InvoiceType -or $operation.InvoiceNumber -ne $InvoiceNumber -or
                     ($PSBoundParameters.ContainsKey('Amount') -and $Amount -ne $operation.PaymentAmount) -or
                     ($PSBoundParameters.ContainsKey('Date') -and $Date.Date -ne $operation.PaymentDate) -or
                     ($PSBoundParameters.ContainsKey('Account') -and $Account -ne $operation.PaymentAccount) -or
@@ -148,23 +157,23 @@ function Add-LedgerInvoicePaymentInternal {
                 if (Get-LedgerRecordedInvoicePayment -Invoice $invoice -Operation $operation) {
                     Assert-LedgerInvoicePaymentVerification -JournalPath $JournalPath -Invoice $invoice -Operation $operation
                     Assert-LedgerInvoicePostingIntegrity -JournalPath $JournalPath -FiscalYear $paymentYear
-                    if ($PassThru) { Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber }
+                    if ($PassThru) { & $getCommand -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber }
                     return
                 }
                 if ((Get-LedgerContentHash -Path $filePath) -ne $operation.InvoiceHash) {
                     throw "Invoice $InvoiceNumber has changed since payment $id was planned. Recovery stopped."
                 }
             }
-            Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath -Invoice $invoice -ExceptPaymentId $id
+            Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath -Invoice $invoice -InvoiceType $InvoiceType -ExceptPaymentId $id
 
             if ($invoice.Status -eq 'Draft') {
-                throw "Invoice $InvoiceNumber has not been posted. Post it first with Invoke-LedgerInvoicePosting."
+                throw "Invoice $InvoiceNumber has not been posted. Post it first with $postingCommand."
             }
             if ($invoice.Status -eq 'Paid') {
                 throw "Invoice $InvoiceNumber is already fully paid."
             }
             if ($invoice.Status -notin 'Booked', 'Partial') {
-                throw "Invoice $InvoiceNumber is not an open receivable (status '$($invoice.Status)')."
+                throw "Invoice $InvoiceNumber is not open for payment (status '$($invoice.Status)')."
             }
 
             if (-not $operation -and -not $PSBoundParameters.ContainsKey('Amount')) {
@@ -187,11 +196,13 @@ function Add-LedgerInvoicePaymentInternal {
 
             $paymentAmount = [decimal]::Parse($paymentAmount.ToString('0.############################',
                     [Globalization.CultureInfo]::InvariantCulture), [Globalization.CultureInfo]::InvariantCulture)
+            $debitAccount = if ($supplier) { $invoice.PayableAccount } else { $paymentAccount }
+            $creditAccount = if ($supplier) { $paymentAccount } else { $invoice.ReceivableAccount }
             $rows = @(
-                @{ Account = $paymentAccount; Amount = $paymentAmount }
-                @{ Account = $invoice.ReceivableAccount; Amount = -$paymentAmount }
+                @{ Account = $debitAccount; Amount = $paymentAmount }
+                @{ Account = $creditAccount; Amount = -$paymentAmount }
             )
-            $description = "Betalning kundfaktura $InvoiceNumber"
+            $description = if ($supplier) { "Betalning leverantörsfaktura $InvoiceNumber" } else { "Betalning kundfaktura $InvoiceNumber" }
             $entryParameters = @{
                 JournalPath = $JournalPath; FiscalYear = $paymentYear; Date = $paymentDate
                 Description = $description; Rows = $rows; OperationId = $id
@@ -211,6 +222,7 @@ function Add-LedgerInvoicePaymentInternal {
                         VerificationNumber = Get-LedgerNextVerificationNumber -JournalPath $JournalPath -FiscalYear $paymentYear
                         InvoiceHash = Get-LedgerContentHash -Path $filePath; VerificationHash = $hash
                         PaymentDate = $paymentDate.Date; PaymentAmount = $paymentAmount; PaymentAccount = $paymentAccount
+                        InvoiceType = $InvoiceType
                     }
                     if ($BankTransaction) {
                         $operation | Add-Member -NotePropertyMembers @{
@@ -248,16 +260,17 @@ function Add-LedgerInvoicePaymentInternal {
                 $paid = ($invoice.Payments | Measure-Object -Property Amount -Sum).Sum
                 $invoice.Status = if ([Math]::Round($invoice.Total - $paid, 2) -le 0) { 'Paid' } else { 'Partial' }
 
-                Save-LedgerInvoiceFile -Invoice $invoice
+                if ($supplier) { Save-LedgerSupplierInvoiceFile -Invoice $invoice }
+                else { Save-LedgerInvoiceFile -Invoice $invoice }
             }
             catch {
                 throw [InvalidOperationException]::new(
-                    "Could not confirm completion of payment $id for invoice $InvoiceNumber. Keep '$operationPath' and retry Add-LedgerInvoicePayment -JournalPath '$JournalPath' -InvoiceNumber $InvoiceNumber -PaymentId '$id'. $($_.Exception.Message)",
+                    "Could not confirm completion of payment $id for $InvoiceType invoice $InvoiceNumber. Keep '$operationPath' and retry $paymentCommand -JournalPath '$JournalPath' -InvoiceNumber $InvoiceNumber -PaymentId '$id'. $($_.Exception.Message)",
                     $_.Exception)
             }
 
             if ($PassThru) {
-                Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+                & $getCommand -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
             }
         }
         finally { Exit-LedgerJournalLock -Lock $journalLock }

@@ -208,6 +208,9 @@ writers outside the shared lock can still collide or lose a line.
       Bank-matching writers use the lock and respect unfinished customer payments.
 - [x] Serialize bank-import identity allocation and create-if-absent statement
       writes; reject duplicate bank transaction identities when matching.
+- [x] Extend the payment lock to supplier payments and supplier invoice posting,
+      keeping validation, payment plans, verification writes and status updates
+      within the same boundary. Bank matching respects unfinished payments of both types.
 - [ ] Extend operation-wide locking and conflict detection to remaining
       registers, invoices, payments, payroll, imports and metadata writers.
       Pair this with recovery in step 30; the first increment is not general
@@ -387,9 +390,15 @@ invoice-status writes. Other multi-file workflows still need equivalent protecti
       reserve verifications for their originating transaction, and preserve
       ownership through Reset. Cover interruption, later invoice/statement changes,
       identical real payments, conflicts, concurrency and archive retention.
-- [ ] Extend bank-matching recovery to supplier payments and rule/account postings,
+- [x] Resume supplier payments with optional `PaymentId` and complete their bank
+      matches using the shared payment workflow. Keep customer/supplier identities
+      separate, reject cross-type ID reuse, preserve Reset ownership and retain
+      plans in archives, including pending payments of earlier invoices.
+      Cover process termination, concurrent retries, remaining-balance validation,
+      closed years, bank-input conflicts and identical real payments.
+- [ ] Extend bank-matching recovery to rule/account postings,
       including both sides of own-account transfers.
-- [ ] Define recoverable operation boundaries for remaining invoice/payment/payroll
+- [ ] Define recoverable operation boundaries for supplier invoice posting and remaining invoice/payment/payroll
       posting, SIE import, chart conversion and fiscal-year closing.
 - [ ] Extend durable operation identity and progress to those workflows without
       losing or duplicating bookkeeping.

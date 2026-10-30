@@ -494,94 +494,130 @@ Describe 'Set-LedgerBankTransaction' {
         (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1).MatchType | Should -Be 'CustomerInvoice'
     }
 
-    It 'Resumes a paid invoice link without reverting changes to other statement transactions' {
+    It 'Resumes a paid <Type> invoice link without reverting changes to other statement transactions' -ForEach @(
+        @{ Type = 'Customer'; Id = 1; Parameter = 'InvoiceNumber'; Getter = 'Get-LedgerInvoice' }
+        @{ Type = 'Supplier'; Id = 2; Parameter = 'SupplierInvoiceNumber'; Getter = 'Get-LedgerSupplierInvoice' }
+    ) {
+        $selection = @{ $Parameter = 1; TransactionId = $Id }
         $script:RealBankSave = & (Get-Module PSLedger) { (Get-Command Save-LedgerBankStatementFile).ScriptBlock }
         Mock Save-LedgerBankStatementFile -ModuleName PSLedger { throw 'Injected bank state failure' }
-        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -InvoiceNumber 1 } | Should -Throw '*Retry Set-LedgerBankTransaction*'
-        (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).Status | Should -Be 'Paid'
-        (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1).Status | Should -Be 'Unmatched'
+        { Set-LedgerBankTransaction -JournalPath $JournalPath @selection } | Should -Throw '*Retry Set-LedgerBankTransaction*'
+        (& $Getter -JournalPath $JournalPath -InvoiceNumber 1).Status | Should -Be 'Paid'
+        (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $Id).Status | Should -Be 'Unmatched'
         $count = @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FY).Count
         Mock Save-LedgerBankStatementFile -ModuleName PSLedger { & $script:RealBankSave -Statement $Statement }
         Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 4 -Ignore
 
-        $result = Invoke-LedgerBankMatching -JournalPath $JournalPath -TransactionId 1
-        $result.MatchType | Should -Be 'CustomerInvoice'
+        $result = Invoke-LedgerBankMatching -JournalPath $JournalPath -TransactionId $Id
+        $result.MatchType | Should -Be "${Type}Invoice"
         $result.MatchRef | Should -Be '1'
         (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 4).Status | Should -Be 'Ignored'
         @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FY).Count | Should -Be $count
-        (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).Payments | Should -HaveCount 1
+        (& $Getter -JournalPath $JournalPath -InvoiceNumber 1).Payments | Should -HaveCount 1
     }
 
-    It 'Preserves payment ownership through Reset and only permits relinking the same payment' {
-        $matched = Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -InvoiceNumber 1 -PassThru
-        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -Reset
+    It 'Preserves <Type> payment ownership through Reset and only permits relinking the same payment' -ForEach @(
+        @{ Type = 'Customer'; Id = 1; Parameter = 'InvoiceNumber'; OtherParameter = 'SupplierInvoiceNumber' }
+        @{ Type = 'Supplier'; Id = 2; Parameter = 'SupplierInvoiceNumber'; OtherParameter = 'InvoiceNumber' }
+    ) {
+        $selection = @{ $Parameter = 1; TransactionId = $Id }
+        $other = @{ $OtherParameter = 1; TransactionId = $Id }
+        $matched = Set-LedgerBankTransaction -JournalPath $JournalPath @selection -PassThru
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $Id -Reset
         $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash
-        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -InvoiceNumber 2 } | Should -Throw '*only relinking the same payment*'
-        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -Account '3010' } | Should -Throw '*only relinking the same payment*'
-        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -Ignore } | Should -Throw '*only relinking the same payment*'
-        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 2 -VerificationNumber $matched.VerificationNumber -FiscalYear $FY } |
+        { Set-LedgerBankTransaction -JournalPath $JournalPath @other } | Should -Throw '*only relinking the same payment*'
+        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $Id -InvoiceNumber 2 } | Should -Throw '*only relinking the same payment*'
+        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $Id -Account '3010' } | Should -Throw '*only relinking the same payment*'
+        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $Id -Ignore } | Should -Throw '*only relinking the same payment*'
+        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3 -VerificationNumber $matched.VerificationNumber -FiscalYear $FY } |
             Should -Throw '*reserved for another bank transaction*'
         @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash | Should -Be $before
 
-        $linked = Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 `
+        $linked = Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $Id `
             -VerificationNumber $matched.VerificationNumber -FiscalYear $FY -PassThru
-        $linked.MatchType | Should -Be 'CustomerInvoice'
+        $linked.MatchType | Should -Be "${Type}Invoice"
         $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash
-        $again = Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -InvoiceNumber 1 -PassThru
+        $again = Set-LedgerBankTransaction -JournalPath $JournalPath @selection -PassThru
         $again.VerificationNumber | Should -Be $matched.VerificationNumber
         @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash | Should -Be $before
     }
 
-    It 'Reserves a saved payment for its bank transaction when two real payments have identical amounts and dates' {
+    It 'Reserves a saved <Type> payment for its bank transaction when two real payments have identical amounts and dates' -ForEach @(
+        @{ Type = 'Customer'; Parameter = 'InvoiceNumber'; Getter = 'Get-LedgerInvoice'; Amount = 5000 }
+        @{ Type = 'Supplier'; Parameter = 'SupplierInvoiceNumber'; Getter = 'Get-LedgerSupplierInvoice'; Amount = -5000 }
+    ) {
         $JournalPath = New-BankTestJournal -Root $TestDrive
-        $number = New-TestPostedInvoice -JournalPath $JournalPath -Date '2024-03-01'
-        $ocr = (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $number).OcrReference
+        if ($Type -eq 'Supplier') {
+            New-LedgerSupplierInvoice -JournalPath $JournalPath -SupplierNumber '100' -Date '2024-03-01' -Description 'Hyra' `
+                -Reference '998877' -Rows @(@{ Account = '5010'; Amount = 8000; VatRate = 0.25; VatAccount = '2640' })
+            Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
+            $number = 1
+            $ocr = '998877'
+        }
+        else {
+            $number = New-TestPostedInvoice -JournalPath $JournalPath -Date '2024-03-01'
+            $ocr = (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $number).OcrReference
+        }
+        $selection = @{ $Parameter = $number; TransactionId = 2 }
         $camt = New-CamtFile -Path (Join-Path $TestDrive 'twins.xml') -Opening 0 -Entries @(
-            @{ Date = '2024-03-20'; Amount = 5000; Ref = 'FIRST'; Ocr = $ocr }
-            @{ Date = '2024-03-20'; Amount = 5000; Ref = 'SECOND'; Ocr = $ocr }
+            @{ Date = '2024-03-20'; Amount = $Amount; Ref = 'FIRST'; Ocr = $ocr }
+            @{ Date = '2024-03-20'; Amount = $Amount; Ref = 'SECOND'; Ocr = $ocr }
         )
         Import-LedgerBankStatement -JournalPath $JournalPath -Path $camt | Out-Null
         $script:RealBankSave = & (Get-Module PSLedger) { (Get-Command Save-LedgerBankStatementFile).ScriptBlock }
         Mock Save-LedgerBankStatementFile -ModuleName PSLedger { throw 'Injected bank state failure' }
-        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 2 -InvoiceNumber $number } | Should -Throw '*Retry Set-LedgerBankTransaction*'
+        { Set-LedgerBankTransaction -JournalPath $JournalPath @selection } | Should -Throw '*Retry Set-LedgerBankTransaction*'
         Mock Save-LedgerBankStatementFile -ModuleName PSLedger { & $script:RealBankSave -Statement $Statement }
         Invoke-LedgerBankMatching -JournalPath $JournalPath | Out-Null
         (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 2).VerificationNumber | Should -Be 2
         (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1).VerificationNumber | Should -Be 3
-        $invoice = Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $number
+        $invoice = & $Getter -JournalPath $JournalPath -InvoiceNumber $number
         $invoice.Payments | Should -HaveCount 2
         $invoice.PaidAmount | Should -Be 10000
     }
 
-    It 'Stops bank recovery after changing <Change> without further writes' -ForEach @(
-        @{ Change = 'reference'; Expected = '*differs from its saved payment plan*' }
-        @{ Change = 'amount'; Expected = '*differs from its saved payment plan*' }
-        @{ Change = 'link'; Expected = '*conflicting saved link*' }
-        @{ Change = 'plan'; Expected = '*invalid bank transaction identity or hash*' }
+    It 'Stops <Type> bank recovery after changing <Change> without further writes' -ForEach @(
+        foreach ($type in 'Customer', 'Supplier') {
+            foreach ($change in 'reference', 'amount', 'link', 'plan') {
+                @{
+                    Type = $type; Change = $change
+                    Expected = switch ($change) {
+                        'link' { '*conflicting saved link*' }
+                        'plan' { '*invalid bank transaction identity or hash*' }
+                        default { '*differs from its saved payment plan*' }
+                    }
+                }
+            }
+        }
     ) {
+        $id = if ($Type -eq 'Supplier') { 2 } else { 1 }
+        $parameter = if ($Type -eq 'Supplier') { 'SupplierInvoiceNumber' } else { 'InvoiceNumber' }
+        $store = if ($Type -eq 'Supplier') { 'supplierinvoices' } else { 'invoices' }
+        $command = if ($Type -eq 'Supplier') { 'Add-LedgerSupplierPayment' } else { 'Add-LedgerInvoicePayment' }
+        $selection = @{ $parameter = 1; TransactionId = $id }
         Mock Write-LedgerVerification -ModuleName PSLedger { throw 'Injected interruption after plan' }
-        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -InvoiceNumber 1 } | Should -Throw '*Retry Set-LedgerBankTransaction*'
+        { Set-LedgerBankTransaction -JournalPath $JournalPath @selection } | Should -Throw '*Retry Set-LedgerBankTransaction*'
         if ($Change -eq 'plan') {
-            $path = (Get-ChildItem -LiteralPath (Join-Path $JournalPath 'invoices' 'payments') -File).FullName
+            $path = (Get-ChildItem -LiteralPath (Join-Path $JournalPath $store 'payments') -File).FullName
             $text = (Get-Content -LiteralPath $path -Raw) -replace '(?m)^BankTransactionHash:\t[^\r\n]+\r?\n', ''
             Set-Content -LiteralPath $path -Value $text -NoNewline
         }
         else {
             & (Get-Module PSLedger) {
-                param ($JournalPath, $Change)
-                $found = Find-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1
+                param ($JournalPath, $Change, $Id)
+                $found = Find-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $Id
                 switch ($Change) {
                     'reference' { $found.Transaction.Reference = 'Changed reference' }
                     'amount' { $found.Transaction.Amount += 1 }
                     'link' { $found.Transaction.MatchRef = '2' }
                 }
                 Save-LedgerBankStatementFile -Statement $found.Statement
-            } $JournalPath $Change
+            } $JournalPath $Change $id
         }
         $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash
-        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -InvoiceNumber 1 } | Should -Throw $Expected
-        $paymentId = [guid](Get-ChildItem -LiteralPath (Join-Path $JournalPath 'invoices' 'payments') -File).BaseName
-        { Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $paymentId } | Should -Throw $Expected
+        { Set-LedgerBankTransaction -JournalPath $JournalPath @selection } | Should -Throw $Expected
+        $paymentId = [guid](Get-ChildItem -LiteralPath (Join-Path $JournalPath $store 'payments') -File).BaseName
+        { & $command -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $paymentId } | Should -Throw $Expected
         @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash | Should -Be $before
     }
 

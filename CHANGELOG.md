@@ -27,6 +27,12 @@
   duplication, even after the invoice was paid. Saved plans take priority over
   matching heuristics and reserve their verifications for the originating
   transaction. `-Reset` retains ownership and permits only same-payment relinking.
+- **Recoverable supplier payments and their bank matches.** `Add-LedgerSupplierPayment`
+  accepts the same optional `-PaymentId` retry contract. Supplier and customer
+  invoice identities remain separate even when their invoice numbers coincide;
+  payment IDs are unique across both stores. Supplier plans retain outgoing bank
+  identity, survive Reset and are included in archives. Closed-year recovery
+  requires an already-saved verification.
 
 ### Fixed
 - **Verification filename conflicts no longer overwrite existing entries.**
@@ -44,10 +50,16 @@
 - **Bank imports allocate identities under the journal lock** and publish new
   statement files without overwriting existing ones. Matching rejects duplicate
   transaction identities rather than selecting the first occurrence.
+- **Supplier invoice posting holds the payment lock** across reading and saving
+  invoice status, preventing stale concurrent updates. Posting itself is not yet
+  resumable after interruption.
+- **Archives retain invoices with pending payments in the selected year**, even
+  when the invoice belongs to an earlier year and its payment row is not saved yet.
 
-Recovery currently covers customer-invoice posting and payments. Changed inputs,
+Recovery currently covers customer-invoice posting, customer/supplier payments
+and their bank matches. Changed inputs,
 conflicting verifications and damaged integrity chains stop recovery explicitly.
-Supplier payments, rule/account bank postings, charges, credit notes, payroll
+Supplier invoice posting, rule/account bank postings, charges, credit notes, payroll
 and multi-statement imports still need recovery. Locking is not a multi-file
 transaction or general multi-user support.
 

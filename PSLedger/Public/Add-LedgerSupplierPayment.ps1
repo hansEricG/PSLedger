@@ -13,6 +13,14 @@ than the invoice total the status becomes 'Partial'; once the invoice is fully
 paid it becomes 'Paid'. The payment is recorded on the invoice together with the
 verification it created so the payable can be reconciled against the ledger.
 
+Use a stable PaymentId for safe retries. Reusing the ID resumes its saved plan
+or returns the current supplier invoice without recording a completed payment
+again. Different IDs permit identical real partial payments. Without an ID,
+each call starts a new payment; an unfinished payment blocks new payments and
+reports the ID to resume. Keep plans after completion and in backups.
+A matching saved verification may finish payment after year closure, but no
+new verification is created in a closed year.
+
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal
 set via Set-LedgerCurrentJournal.
@@ -40,6 +48,11 @@ fiscal year containing the payment date is used.
 If specified, returns the updated supplier invoice object. By default the command
 produces no output.
 
+.PARAMETER PaymentId
+Optional non-empty GUID identifying this payment across retries. Generate and
+retain it before the first attempt. IDs are unique across customer and supplier
+payments in the journal. Omitted retry inputs use the saved plan.
+
 .EXAMPLE
 Add-LedgerSupplierPayment -JournalPath .\MinFirma.ledger -InvoiceNumber 1 -Date '2024-04-10'
 
@@ -50,8 +63,17 @@ Add-LedgerSupplierPayment -JournalPath .\MinFirma.ledger -InvoiceNumber 1 -Amoun
 
 Registers a partial cash payment of 5 000 kr from account 1910 (Kassa), leaving
 the invoice in 'Partial' status.
+
+.EXAMPLE
+$paymentId = New-Guid
+Add-LedgerSupplierPayment -JournalPath .\MinFirma.ledger -InvoiceNumber 1 -Amount 5000 -Date '2024-04-10' -PaymentId $paymentId
+Add-LedgerSupplierPayment -JournalPath .\MinFirma.ledger -InvoiceNumber 1 -PaymentId $paymentId -PassThru
+
+Registers a partial payment to a supplier, then safely resumes or retrieves
+that payment without recording another one.
 #>
 function Add-LedgerSupplierPayment {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '', Justification = 'The shared payment writer performs ShouldProcess; common parameters are forwarded.')]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
@@ -73,71 +95,13 @@ function Add-LedgerSupplierPayment {
         [string]$FiscalYear,
 
         [Parameter()]
+        [ValidateScript({ if ($_ -eq [guid]::Empty) { throw 'PaymentId must not be an empty GUID.' }; $true })]
+        [guid]$PaymentId,
+
+        [Parameter()]
         [switch]$PassThru
     )
     process {
-        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-
-        $invoiceDir = Get-LedgerSupplierInvoiceDirectory -JournalPath $JournalPath
-        $filePath = Join-Path $invoiceDir (Get-LedgerSupplierInvoiceFileName -InvoiceNumber $InvoiceNumber)
-        if (-not (Test-Path $filePath)) {
-            throw "Supplier invoice $InvoiceNumber does not exist."
-        }
-
-        $invoice = Read-LedgerSupplierInvoiceFile -Path $filePath
-
-        if ($invoice.Status -eq 'Draft') {
-            throw "Supplier invoice $InvoiceNumber has not been posted. Post it first with Invoke-LedgerSupplierInvoicePosting."
-        }
-        if ($invoice.Status -eq 'Paid') {
-            throw "Supplier invoice $InvoiceNumber is already fully paid."
-        }
-
-        if (-not $PSBoundParameters.ContainsKey('Amount')) {
-            $Amount = $invoice.RemainingAmount
-        }
-        if ($Amount -le 0) {
-            throw "Payment amount must be greater than zero."
-        }
-        if ($Amount -gt $invoice.RemainingAmount) {
-            throw "Payment amount $Amount exceeds the remaining amount $($invoice.RemainingAmount) on supplier invoice $InvoiceNumber."
-        }
-
-        # Resolve the fiscal year from the payment date unless one was supplied.
-        if (-not $FiscalYear) {
-            $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $Date
-            if (-not $FiscalYear) {
-                throw "No fiscal year covers the payment date $($Date.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
-            }
-        }
-
-        $rows = @(
-            @{ Account = $invoice.PayableAccount; Amount = $Amount }
-            @{ Account = $Account; Amount = -$Amount }
-        )
-        $description = "Betalning leverantörsfaktura $InvoiceNumber"
-
-        if (-not $PSCmdlet.ShouldProcess("Supplier invoice $InvoiceNumber", "Register payment of $Amount")) {
-            return
-        }
-
-        $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-            -Date $Date -Description $description -Rows $rows -PassThru
-
-        $invoice.Payments += [PSCustomObject]@{
-            Date               = $Date
-            Amount             = $Amount
-            VerificationNumber = $verification.VerificationNumber
-            FiscalYear         = $FiscalYear
-        }
-
-        $paid = ($invoice.Payments | Measure-Object -Property Amount -Sum).Sum
-        $invoice.Status = if ([Math]::Round($invoice.Total - $paid, 2) -le 0) { 'Paid' } else { 'Partial' }
-
-        Save-LedgerSupplierInvoiceFile -Invoice $invoice
-
-        if ($PassThru) {
-            Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
-        }
+        Add-LedgerInvoicePaymentInternal @PSBoundParameters -InvoiceType Supplier
     }
 }
