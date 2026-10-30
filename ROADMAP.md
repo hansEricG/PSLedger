@@ -77,9 +77,29 @@ Verifications are plain text files and can be edited afterwards.
 
 ## Later (1.x)
 
-Items are grouped and listed in the suggested order: correctness first, then
-technical debt, tooling, and features. Findings come from a code review in
-October 2026.
+The numbered items below are a backlog with stable identifiers, not a release
+sequence. The milestones define the suggested order. Findings come from code
+reviews in October 2026; a checked implementation task does not by itself mean
+that the whole workflow is ready to release.
+
+The next release cycle focuses on reliable bookkeeping for small Swedish
+service companies (AB), rather than adding more business types and integrations.
+Existing functionality for other users remains supported.
+
+### Milestones and release criteria
+
+| Order | Milestone | Scope | Done when |
+|-------|-----------|-------|-----------|
+| A | Finish the correctness fixes | 8–10 | Conversion works with opening balances, preserves effective VAT boxes, and rejects invalid plans before writing; VAT special cases have independent reference examples; legacy corrections and closed-year document replacement have explicit policies. |
+| B | Reliable storage and recovery | 11–12, 30 | Number allocation, ledger writes and integrity records share one locking boundary; interrupted operations can be diagnosed and retried without lost or duplicate bookkeeping. |
+| C | Consistent validation | 13 and correctness tests from 18 | Writers, readers, imports and checks agree on amounts, dates and required fields; supported legacy data has a documented correction path. |
+| D | Finalised periods and reproducible reports | 21, 31 | Locked periods reject all affected posting paths, while submitted reports retain their original inputs, rule versions and correction history. |
+| E | Complete existing business workflows | Priority parts of 17, 22, 24 | Effective-dated rules, EU VAT reporting, credit notes and refunds work end to end for the target users. |
+
+Relevant tests and release checks from 18–19 belong to every milestone, not to
+a later cleanup phase. Refactoring in 14–16 and documentation work in 20 should
+support these outcomes. Currency, payment integrations, expanded payroll,
+K10, ROT/RUT and new business types remain demand-driven backlog items.
 
 ### Correctness
 
@@ -90,62 +110,87 @@ knew boxes 05, 10–12 and 48.
 - [x] Map exports and EU sales to their own boxes instead of box 05 (for
       example 3105 → 36, 3108 → 35, 3305/3308 → 39–40).
 - [x] Map reverse-charge output VAT (2614, 2624, 2634) to boxes 30–32 and the
-      purchase bases to boxes 20–24. Today a purchase booked with 2645 is
-      deducted in box 48 while the matching output VAT is missing, so the
-      declaration overstates the refund.
+      purchase bases to boxes 20–24, instead of deducting input VAT without
+      reporting the matching output VAT.
 - [x] Import VAT (box 50 and 60–62) and the remaining boxes (06–08, 41–42).
 - [x] Write box 48 with the eSKD tag `MomsIngAvdr` (it was `MomsIngaende`).
 - [x] Use standard BAS accounts in the BAS-Komplett and BAS-Smaforetag
       templates, a journal-level `vat.txt` to override the mapping, and
       `Convert-LedgerChart` for journals created from the earlier templates.
+- [x] Correct the special-case rules for negative VMB and other taxable rent,
+      using BAS definitions and Skatteverket reference examples.
+- [x] Support conversion with a normal multi-row opening balance.
+- [x] Validate source and target accounts' effective VAT rules before a
+      transfer; reject conflicts rather than changing a user's overrides.
+- [x] Validate the transfer date, fiscal year and rows before changing the
+      chart or VAT rules. Interrupted multi-file writes are tracked in step 30.
+
+VMB support here is limited to an already calculated positive taxable margin
+booked separately on 3211, and exclusion of negative VMB sales on 3212. It does
+not calculate margins automatically or implement simplified VMB.
 
 #### 9. Balance check on rounded amounts
-`Add-LedgerEntry` rounds only the sum, so rows such as `10.004` and `-10.001`
-are accepted and stored although the entry is 0.003 off.
+Previously `Add-LedgerEntry` rounded only the sum, so rows such as `10.004` and
+`-10.001` were accepted and stored although the entry was 0.003 off.
 
-- [x] Reject (or round) row amounts with more than two decimals, so every
-      stored verification balances exactly.
+- [x] Reject new row amounts with more than two decimals and sum as decimal.
+- [x] Provide an explicit correction path for historical entries with extra
+      decimals, without rewriting the original verifications or silently
+      rounding their reversals. `Add-LedgerReversal` mirrors the amounts under
+      the legacy balance rule and warns; the rule for new manual entries is
+      not relaxed.
+- [x] Make fiscal-year checks and the file-format contract distinguish legacy
+      precision from the stricter rules for new entries.
 
 #### 10. Closed-year guards
-`Add-LedgerEntry`, holdings and projects reject a closed year, but
-`Add-LedgerAttachment`, `Remove-LedgerAttachment`, `Add-LedgerDocument`,
-`Remove-LedgerDocument`, `Copy-LedgerOpeningBalance` and
-`Set-LedgerReportInput` do not.
-
-- [x] One shared guard for year-scoped writes, with a test that runs every
-      writing command against a closed year. `Set-LedgerReportInput` and
-      `Add-LedgerDocument` stay allowed by design: the annual report and its
-      signed copy are produced after the year is closed.
+- [x] Reuse the fiscal-year guard in `Add-LedgerAttachment`,
+      `Remove-LedgerAttachment`, `Remove-LedgerDocument` and
+      `Copy-LedgerOpeningBalance` (target year), with regression cases for
+      these commands. This is not an exhaustive test of every writing command.
+- [x] Keep report input and new documents allowed after closing: the annual
+      report and its signed copy are produced after the bookkeeping is closed.
+- [x] Reject replacement of existing documents in a closed year, including
+      `Add-LedgerDocument -Force`, while still allowing new filenames.
 
 #### 11. Integrity chain robustness and coverage
+Implement the locking part together with step 12, not as a separate append lock.
+
 - [ ] `Write-LedgerIntegrityRecord` appends with `File.AppendAllText` outside
-      the atomic write helper; make the read-head-and-append step safe against
-      concurrent writers.
+      the atomic write helper; protect the read-head-and-append step within
+      the same operation lock as the content being sealed.
 - [ ] Report a duplicate `Verification` record for the same key as a chain
       error instead of silently keeping the first one.
-- [ ] Consider sealing `ib.txt` and `year.txt` as well: a changed opening
-      balance changes every balance in the year without being detected.
+- [ ] Seal opening balances and relevant fiscal-year metadata, with an explicit
+      lifecycle for legitimate updates and a compatibility plan for old chains.
+      A changed opening balance changes every balance in the year.
 
 #### 12. Concurrent writers
 Verification numbers come from scanning `ver*.txt`, and register files
 (`Add-LedgerFileLine`) are read-modify-write, so two processes writing at the
 same time can pick the same number or lose a line.
 
-- [ ] Create verification files with create-if-absent (`FileMode.CreateNew`)
-      and retry on conflict, or take a journal lock file around writes.
-      Prerequisite for multi-user workflows (step 21).
+- [ ] Define a journal-level write-lock boundary covering validation, number
+      allocation, content writes and integrity records, including nested calls.
+- [ ] Use create-if-absent or equivalent conflict detection for new numbered
+      files; do not silently overwrite a concurrently created verification.
+- [ ] Test two writers and lock cleanup after process failure. Document the
+      supported filesystem assumptions; a local lock does not make Git or
+      synchronised folders a distributed multi-user store (see step 32).
 
-### Technical debt
+### Shared validation and technical debt
 
-#### 13. One verification reader
+#### 13. One verification reader and consistent validation
 Verification files are parsed in more than one place (for example
 `Get-LedgerBalance` reads `ver*.txt` itself instead of going through
 `Get-LedgerEntry`).
 
 - [ ] Move parsing into one private reader used by every command, so there is
       a single interpretation of the file format.
+- [ ] Share validation of decimal precision, exact balance, dates, account
+      references and required fields across writing, importing and checking.
+      Define explicit errors for malformed input and supported legacy cases.
 - [ ] Consider caching the parsed verifications per fiscal year (invalidated
-      on write) to speed up reports on large years.
+      on write) only after the benchmark in step 18 demonstrates a need.
 
 #### 14. Shared register store
 Customers, suppliers and employees are read and written by hand-written
@@ -169,19 +214,31 @@ A new public function must be added to the dot-source list and
 #### 16. Split the annual report code
 - [ ] Split `Private/AnnualReportModel.ps1` (about 49 KB) and
       `Private/AnnualReportRender.ps1` into smaller files per section
-      (management report, income statement, balance sheet, notes).
+      (management report, income statement, balance sheet, notes), where this
+      improves change isolation. Preserve report output with reference cases;
+      file size alone is not a release priority.
 
 #### 17. Yearly rates in one place
 The employer contribution rate 31.42 % is a default in both
 `New-LedgerPayslip` and `Add-LedgerVacationLiability`, and other yearly
 values (SRU mapping, tax rates) live in code.
 
-- [ ] Keep yearly rates in a data file per year (like the chart templates),
-      including reduced employer contributions by age.
+- [ ] Store rates and rule mappings as versioned data with authoritative
+      sources and effective-from/to dates, including mid-year changes and
+      reduced employer contributions by age.
+- [ ] Retain the rule version used for historical calculations; do not
+      recalculate old payroll or declarations with today's defaults.
 
 ### Testing, CI and documentation
 
 #### 18. Tests
+- [ ] Independent reference examples for VAT boxes and tax exports, including
+      negative VMB, credit notes and effective mapping overrides. Internal
+      export/import round-trips alone cannot establish accounting correctness.
+- [ ] Fault-injection and retry tests for multi-file writes, imports, posting
+      and closing, plus concurrent-writer tests for steps 11–12 and 30.
+- [ ] Legacy compatibility cases that cover reading, validation and correction,
+      not just successful module import.
 - [ ] Performance test (or benchmark script) with about 10 000 verifications
       in a year, measuring the common reports.
 - [ ] Property-style test: random balanced entries, reversals and SIE
@@ -211,12 +268,13 @@ values (SRU mapping, tax rates) live in code.
 
 ### Features
 
-#### 21. Period locking and multi-user
+#### 21. Period locking
 - [ ] Lock a fiscal year per month (for example after the VAT return), so new
       verifications cannot be dated in a locked period. Fits with the
       integrity chain.
-- [ ] Multi-user workflows (builds on step 12), including who did what in the
-      integrity chain.
+- [ ] Apply the same period check to manual entries, imports, reversals and
+      indirect posting commands. Define how corrections of submitted periods
+      are recorded, together with step 31.
 
 #### 22. VAT: reverse charge, EU and periods
 - [ ] Invoice and supplier invoice rows with VAT type (domestic, reverse
@@ -262,6 +320,36 @@ values (SRU mapping, tax rates) live in code.
 #### 29. Direct submission to Skatteverket
 - [ ] VAT return and employer declaration (AGI) submitted directly through
       Skatteverket's API (requires BankID/e-legitimation; large effort).
+
+#### 30. Interrupted operations and safe retries
+Atomic replacement of one file is not a transaction across several files.
+For example, invoice posting writes a verification before saving the invoice's
+booked status; a failure between those writes can cause duplicate posting on retry.
+
+- [ ] Define recoverable operation boundaries for invoice/payment/payroll
+      posting, SIE import, chart conversion and fiscal-year closing.
+- [ ] Record enough operation identity and progress to diagnose and resume an
+      interrupted operation without losing or duplicating bookkeeping.
+- [ ] Validate complete plans before the first write; report partial failures
+      with actionable recovery instructions instead of a success-shaped result.
+- [ ] Integrate recovery with the locks and integrity chain in steps 11–12.
+
+#### 31. Reproducible declarations and final reports
+The journal-wide `vat.txt` can change how old periods are reported. Closing
+bookkeeping is also distinct from finalising and signing the annual report.
+
+- [ ] Save each final declaration/report with its period, input snapshot,
+      effective mapping/rule versions and PSLedger version.
+- [ ] Retain submitted versions and link corrections to the version corrected;
+      never silently replace a historical submission with a regenerated report.
+- [ ] Define finalisation separately from fiscal-year closing, and include
+      report versions and supporting metadata in archive packages.
+
+#### 32. Multi-user workflows
+- [ ] Define the supported deployment and storage model before promising
+      multi-user operation; build on steps 11–12 and 30.
+- [ ] Record who performed each operation with a documented identity/trust
+      model. An actor field in a hash chain is not authentication by itself.
 
 #### Other ideas
 - E-invoicing (Peppol BIS Billing / Svefaktura) for customer invoices.
