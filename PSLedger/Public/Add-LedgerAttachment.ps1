@@ -69,60 +69,65 @@ function Add-LedgerAttachment {
 
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $YearDir = Join-Path $JournalPath $FiscalYear
-        if (-not (Test-Path $YearDir -PathType Container)) {
-            throw "Fiscal year not found: $FiscalYear"
-        }
-        Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'add attachments'
+            $YearDir = Join-Path $JournalPath $FiscalYear
+            if (-not (Test-Path $YearDir -PathType Container)) {
+                throw "Fiscal year not found: $FiscalYear"
+            }
+            Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'add attachments'
 
-        # Verify the verification exists
-        $verFileName = 'ver' + $VerificationNumber.ToString('0000') + '.txt'
-        $verFilePath = Join-Path $YearDir $verFileName
-        if (-not (Test-Path $verFilePath)) {
-            throw "Verification $VerificationNumber not found in fiscal year $FiscalYear."
-        }
+            # Verify the verification exists
+            $verFileName = 'ver' + $VerificationNumber.ToString('0000') + '.txt'
+            $verFilePath = Join-Path $YearDir $verFileName
+            if (-not (Test-Path $verFilePath)) {
+                throw "Verification $VerificationNumber not found in fiscal year $FiscalYear."
+            }
 
-        # Verify all source files exist before copying any
-        foreach ($sourcePath in $Path) {
-            if (-not (Test-Path $sourcePath -PathType Leaf)) {
-                throw "File not found: $sourcePath"
+            # Verify all source files exist before copying any
+            foreach ($sourcePath in $Path) {
+                if (-not (Test-Path $sourcePath -PathType Leaf)) {
+                    throw "File not found: $sourcePath"
+                }
+            }
+
+            # Create attachment directory on demand
+            $attachDir = Join-Path $YearDir ('ver' + $VerificationNumber.ToString('0000'))
+
+            foreach ($sourcePath in $Path) {
+                $sourceFile = Get-Item $sourcePath
+                $destPath = Join-Path $attachDir $sourceFile.Name
+                $integrityKey = "$VerificationNumber/$($sourceFile.Name)"
+                if (Test-LedgerIntegrityAttachmentSealed -YearDir $YearDir -Key $integrityKey) {
+                    throw "Attachment '$($sourceFile.Name)' on verification $VerificationNumber is sealed and cannot be replaced. Remove it with Remove-LedgerAttachment first."
+                }
+
+                $verb = if ($Move) { 'Move' } else { 'Copy' }
+                if (-not $PSCmdlet.ShouldProcess($destPath, "$verb attachment")) {
+                    continue
+                }
+
+                if (-not (Test-Path $attachDir)) {
+                    New-Item -ItemType Directory -Path $attachDir -Force | Out-Null
+                }
+
+                if ($Move) {
+                    Move-Item -Path $sourcePath -Destination $destPath -Force
+                }
+                else {
+                    Copy-Item -Path $sourcePath -Destination $destPath -Force
+                }
+                Register-LedgerIntegrityItem -YearDir $YearDir -Kind Attachment -Key $integrityKey -Path $destPath
+
+                if ($PassThru) {
+                    Get-LedgerAttachment -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber $VerificationNumber |
+                        Where-Object { $_.FileName -eq $sourceFile.Name }
+                }
             }
         }
-
-        # Create attachment directory on demand
-        $attachDir = Join-Path $YearDir ('ver' + $VerificationNumber.ToString('0000'))
-
-        foreach ($sourcePath in $Path) {
-            $sourceFile = Get-Item $sourcePath
-            $destPath = Join-Path $attachDir $sourceFile.Name
-            $integrityKey = "$VerificationNumber/$($sourceFile.Name)"
-            if (Test-LedgerIntegrityAttachmentSealed -YearDir $YearDir -Key $integrityKey) {
-                throw "Attachment '$($sourceFile.Name)' on verification $VerificationNumber is sealed and cannot be replaced. Remove it with Remove-LedgerAttachment first."
-            }
-
-            $verb = if ($Move) { 'Move' } else { 'Copy' }
-            if (-not $PSCmdlet.ShouldProcess($destPath, "$verb attachment")) {
-                continue
-            }
-
-            if (-not (Test-Path $attachDir)) {
-                New-Item -ItemType Directory -Path $attachDir -Force | Out-Null
-            }
-
-            if ($Move) {
-                Move-Item -Path $sourcePath -Destination $destPath -Force
-            }
-            else {
-                Copy-Item -Path $sourcePath -Destination $destPath -Force
-            }
-            Register-LedgerIntegrityItem -YearDir $YearDir -Kind Attachment -Key $integrityKey -Path $destPath
-
-            if ($PassThru) {
-                Get-LedgerAttachment -JournalPath $JournalPath -FiscalYear $FiscalYear -VerificationNumber $VerificationNumber |
-                    Where-Object { $_.FileName -eq $sourceFile.Name }
-            }
-        }
+        finally { Exit-LedgerJournalLock -Lock $journalLock }
     }
 }

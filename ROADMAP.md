@@ -101,10 +101,10 @@ a later cleanup phase. Refactoring in 14–16 and documentation work in 20 shoul
 support these outcomes. Currency, payment integrations, expanded payroll,
 K10, ROT/RUT and new business types remain demand-driven backlog items.
 
-### 1.1.0 release preparation
+### 1.1.0 — released 2026-10-30
 
-This is an additive feature release, not a 1.0.1 patch. Keep it bounded to
-milestone A and the following directly related improvements:
+This additive feature release completed milestone A and the following
+directly related improvements:
 
 - [x] Complete the reviewed correctness fixes in 8–10.
 - [x] Account-level VAT explanations (`Get-LedgerVatReportDetail`): amounts,
@@ -115,9 +115,9 @@ milestone A and the following directly related improvements:
       triangular trade and separately calculated VMB.
 - [x] Configure macOS CI and restore/import checks on the actual module
       package; publish the verified artifact, not a second build.
-- [ ] Require successful Windows, Linux and macOS CI runs before release.
+- [x] Require successful Windows, Linux and macOS CI runs before release.
 - [x] Set `ModuleVersion` to 1.1.0 and prepare the changelog.
-- [ ] Tag and publish the release after the cross-platform checks pass.
+- [x] Tag and publish the release after the cross-platform checks pass.
 
 Locking, interrupted-operation recovery and period locks remain subsequent
 milestones, not prerequisites silently added to this release.
@@ -176,9 +176,9 @@ Previously `Add-LedgerEntry` rounded only the sum, so rows such as `10.004` and
 #### 11. Integrity chain robustness and coverage
 Implement the locking part together with step 12, not as a separate append lock.
 
-- [ ] `Write-LedgerIntegrityRecord` appends with `File.AppendAllText` outside
-      the atomic write helper; protect the read-head-and-append step within
-      the same operation lock as the content being sealed.
+- [x] Protect the integrity read-head-and-append step within the same journal
+      lock as verification and attachment writes, sealing and credit rollback.
+      The chain remains append-only; interrupted-operation recovery is separate.
 - [x] Confirm that duplicate `Verification` records are reported even with
       valid chain hashes, including a repeated key with a different content
       hash. The earlier review mistook the state reader keeping the first seal
@@ -192,13 +192,19 @@ Verification numbers come from scanning `ver*.txt`, and register files
 (`Add-LedgerFileLine`) are read-modify-write, so two processes writing at the
 same time can pick the same number or lose a line.
 
-- [ ] Define a journal-level write-lock boundary covering validation, number
+- [x] Introduce a journal-level lock around verification validation, number
       allocation, content writes and integrity records, including nested calls.
-- [ ] Use create-if-absent or equivalent conflict detection for new numbered
-      files; do not silently overwrite a concurrently created verification.
-- [ ] Test two writers and lock cleanup after process failure. Document the
-      supported filesystem assumptions; a local lock does not make Git or
-      synchronised folders a distributed multi-user store (see step 32).
+      Attachment changes, sealing, closing and credit rollback participate.
+      Lock contention waits up to 30 seconds before returning an explicit error.
+- [x] Publish new verifications with create-if-absent conflict detection;
+      never silently overwrite a concurrently created verification.
+- [x] Add real-process tests for concurrent posting/sealing, lock contention,
+      closing while a writer waits and process termination after a file save.
+      Document local-filesystem assumptions and retained `.write.lock` files.
+- [ ] Extend operation-wide locking and conflict detection to remaining
+      registers, invoices, payments, payroll, imports and metadata writers.
+      Pair this with recovery in step 30; the first increment is not general
+      multi-user support or a consistent reader/backup snapshot (see step 32).
 
 ### Shared validation and technical debt
 

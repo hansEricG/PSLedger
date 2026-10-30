@@ -128,6 +128,28 @@ The one exception is `integrity.txt`, which is append-only: new records are
 appended to the end of the file. An interrupted append can leave an incomplete
 last line, which `Test-LedgerIntegrity` reports as `Malformed`.
 
+### Runtime coordination
+
+The journal root MAY contain an empty `.write.lock` file. This is a runtime
+coordination file, not bookkeeping data or a new schema version. Participating
+writers hold an exclusive open handle while validating and writing a
+verification and its integrity records. New verification files are published
+without replacing an existing filename. The same journal lock covers attachment
+changes, sealing, year closing and credit-note rollback.
+
+The file remains after the handle is released, including after a crashed
+process. Its existence does not indicate ownership. It MUST NOT be deleted or
+replaced while writers may be active: doing so can let processes lock different
+files at the same path. A competing writer waits up to 30 seconds before
+reporting an error. Dry runs do not acquire or create the lock.
+
+The supported storage model is a local filesystem with .NET file locking
+enabled and cooperating writers. Other register/metadata writers and readers
+are not yet covered by a journal-wide transaction or snapshot. This is not a
+distributed lock for synchronised or network directories. An interrupted
+operation can still leave a saved but unsealed verification; the integrity
+check diagnoses that state, but automatic multi-file recovery is separate work.
+
 ### Unknown content
 
 Readers ignore keys and columns they do not know.

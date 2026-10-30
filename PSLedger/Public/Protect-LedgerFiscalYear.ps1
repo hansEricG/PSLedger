@@ -48,17 +48,22 @@ function Protect-LedgerFiscalYear {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $yearDir = Join-Path $JournalPath $FiscalYear
-        if (-not (Test-Path -LiteralPath $yearDir -PathType Container)) {
-            throw "Fiscal year not found: $FiscalYear"
-        }
+            $yearDir = Join-Path $JournalPath $FiscalYear
+            if (-not (Test-Path -LiteralPath $yearDir -PathType Container)) {
+                throw "Fiscal year not found: $FiscalYear"
+            }
 
-        if ($PSCmdlet.ShouldProcess($FiscalYear, 'Seal verifications and attachments')) {
-            $sealed = Protect-LedgerYearContent -YearDir $yearDir
-            Write-Verbose "Sealed $sealed item(s) in $FiscalYear."
-            Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
+            if ($PSCmdlet.ShouldProcess($FiscalYear, 'Seal verifications and attachments')) {
+                $sealed = Protect-LedgerYearContent -YearDir $yearDir
+                Write-Verbose "Sealed $sealed item(s) in $FiscalYear."
+                Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
+            }
         }
+        finally { Exit-LedgerJournalLock -Lock $journalLock }
     }
 }

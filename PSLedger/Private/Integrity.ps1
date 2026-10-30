@@ -89,10 +89,10 @@ function Read-LedgerIntegrityChain {
         if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith(';')) { continue }
         $parts = $line -split "`t"
         $wellFormed = $parts.Count -eq 5 -and
-            $script:LedgerIntegrityKinds -ccontains $parts[0] -and
-            $parts[1] -ne '' -and
-            $parts[3] -cmatch '^[0-9a-f]{64}$' -and
-            $parts[4] -cmatch '^[0-9a-f]{64}$'
+        $script:LedgerIntegrityKinds -ccontains $parts[0] -and
+        $parts[1] -ne '' -and
+        $parts[3] -cmatch '^[0-9a-f]{64}$' -and
+        $parts[4] -cmatch '^[0-9a-f]{64}$'
         $records.Add([pscustomobject]@{
                 LineNumber = $lineNumber
                 WellFormed = $wellFormed
@@ -177,42 +177,43 @@ function Write-LedgerIntegrityRecord {
 
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
-        [object[]]$Record,
-
-        [Parameter()]
-        [AllowNull()]
-        [object]$Chain
+        [object[]]$Record
     )
     if ($Record.Count -eq 0) { return }
 
-    $path = Get-LedgerIntegrityPath -YearDir $YearDir
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        Set-LedgerFileContent -Path $path -Value @(
-            '; PSLedger integrity chain'
-            "; Kind`tKey`tSealed`tHash`tChainHash"
-        )
-        $Chain = $null
-    }
-    elseif ($null -eq $Chain) {
-        $Chain = Read-LedgerIntegrityChain -YearDir $YearDir
-    }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath (Split-Path -Path $YearDir -Parent)
+        $path = Get-LedgerIntegrityPath -YearDir $YearDir
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            Set-LedgerFileContent -Path $path -Value @(
+                '; PSLedger integrity chain'
+                "; Kind`tKey`tSealed`tHash`tChainHash"
+            )
+            $Chain = $null
+        }
+        else {
+            $Chain = Read-LedgerIntegrityChain -YearDir $YearDir
+        }
 
-    $previous = Get-LedgerIntegrityHead -Chain $Chain
-    $sealed = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
-    $nl = [Environment]::NewLine
-    $sb = [System.Text.StringBuilder]::new()
+        $previous = Get-LedgerIntegrityHead -Chain $Chain
+        $sealed = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
+        $nl = [Environment]::NewLine
+        $sb = [System.Text.StringBuilder]::new()
 
-    # The chain is append-only, so it is appended rather than rewritten. If the
-    # last line lacks its line break (an interrupted append) start a new line.
-    $bytes = [System.IO.File]::ReadAllBytes($path)
-    if ($bytes.Length -gt 0 -and $bytes[-1] -ne 10) { [void]$sb.Append($nl) }
+        # The chain is append-only, so it is appended rather than rewritten. If the
+        # last line lacks its line break (an interrupted append) start a new line.
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        if ($bytes.Length -gt 0 -and $bytes[-1] -ne 10) { [void]$sb.Append($nl) }
 
-    foreach ($r in $Record) {
-        $chainHash = Get-LedgerIntegrityChainHash -Previous $previous -Kind $r.Kind -Key $r.Key -Sealed $sealed -Hash $r.Hash
-        [void]$sb.Append("$($r.Kind)`t$($r.Key)`t$sealed`t$($r.Hash)`t$chainHash$nl")
-        $previous = $chainHash
+        foreach ($r in $Record) {
+            $chainHash = Get-LedgerIntegrityChainHash -Previous $previous -Kind $r.Kind -Key $r.Key -Sealed $sealed -Hash $r.Hash
+            [void]$sb.Append("$($r.Kind)`t$($r.Key)`t$sealed`t$($r.Hash)`t$chainHash$nl")
+            $previous = $chainHash
+        }
+        [System.IO.File]::AppendAllText($path, $sb.ToString(), [System.Text.UTF8Encoding]::new($false))
     }
-    [System.IO.File]::AppendAllText($path, $sb.ToString(), [System.Text.UTF8Encoding]::new($false))
+    finally { Exit-LedgerJournalLock -Lock $journalLock }
 }
 
 function Protect-LedgerYearContent {
@@ -223,23 +224,28 @@ function Protect-LedgerYearContent {
     [CmdletBinding()]
     param ([Parameter(Mandatory)] [string]$YearDir)
 
-    $chain = Read-LedgerIntegrityChain -YearDir $YearDir
-    $state = Get-LedgerIntegrityState -Chain $chain
-    $content = Get-LedgerYearContent -YearDir $YearDir
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath (Split-Path -Path $YearDir -Parent)
+        $chain = Read-LedgerIntegrityChain -YearDir $YearDir
+        $state = Get-LedgerIntegrityState -Chain $chain
+        $content = Get-LedgerYearContent -YearDir $YearDir
 
-    $records = [System.Collections.Generic.List[object]]::new()
-    foreach ($v in $content.Verifications) {
-        if (-not $state.Verifications.Contains($v.Key)) {
-            $records.Add([pscustomobject]@{ Kind = 'Verification'; Key = $v.Key; Hash = (Get-LedgerContentHash -Path $v.Path) })
-        }
-        foreach ($a in @($content.Attachments | Where-Object Number -EQ $v.Number)) {
-            if (-not $state.Attachments.Contains($a.Key)) {
-                $records.Add([pscustomobject]@{ Kind = 'Attachment'; Key = $a.Key; Hash = (Get-LedgerContentHash -Path $a.Path) })
+        $records = [System.Collections.Generic.List[object]]::new()
+        foreach ($v in $content.Verifications) {
+            if (-not $state.Verifications.Contains($v.Key)) {
+                $records.Add([pscustomobject]@{ Kind = 'Verification'; Key = $v.Key; Hash = (Get-LedgerContentHash -Path $v.Path) })
+            }
+            foreach ($a in @($content.Attachments | Where-Object Number -EQ $v.Number)) {
+                if (-not $state.Attachments.Contains($a.Key)) {
+                    $records.Add([pscustomobject]@{ Kind = 'Attachment'; Key = $a.Key; Hash = (Get-LedgerContentHash -Path $a.Path) })
+                }
             }
         }
+        Write-LedgerIntegrityRecord -YearDir $YearDir -Record $records.ToArray()
+        return $records.Count
     }
-    Write-LedgerIntegrityRecord -YearDir $YearDir -Record $records.ToArray() -Chain $chain
-    return $records.Count
+    finally { Exit-LedgerJournalLock -Lock $journalLock }
 }
 
 function Register-LedgerIntegrityItem {
@@ -258,12 +264,17 @@ function Register-LedgerIntegrityItem {
         [Parameter(Mandatory)] [string]$Key,
         [Parameter(Mandatory)] [string]$Path
     )
-    if (-not (Test-Path -LiteralPath (Get-LedgerIntegrityPath -YearDir $YearDir) -PathType Leaf)) {
-        [void](Protect-LedgerYearContent -YearDir $YearDir)
-        return
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath (Split-Path -Path $YearDir -Parent)
+        if (-not (Test-Path -LiteralPath (Get-LedgerIntegrityPath -YearDir $YearDir) -PathType Leaf)) {
+            [void](Protect-LedgerYearContent -YearDir $YearDir)
+            return
+        }
+        $record = [pscustomobject]@{ Kind = $Kind; Key = $Key; Hash = (Get-LedgerContentHash -Path $Path) }
+        Write-LedgerIntegrityRecord -YearDir $YearDir -Record @($record)
     }
-    $record = [pscustomobject]@{ Kind = $Kind; Key = $Key; Hash = (Get-LedgerContentHash -Path $Path) }
-    Write-LedgerIntegrityRecord -YearDir $YearDir -Record @($record)
+    finally { Exit-LedgerJournalLock -Lock $journalLock }
 }
 
 function Test-LedgerIntegrityAttachmentSealed {
@@ -289,15 +300,20 @@ function Remove-LedgerIntegrityTail {
         [Parameter(Mandatory)] [string]$Kind,
         [Parameter(Mandatory)] [string]$Key
     )
-    $chain = Read-LedgerIntegrityChain -YearDir $YearDir
-    if ($null -eq $chain -or $chain.Count -eq 0) { return }
-    $last = $chain[$chain.Count - 1]
-    if (-not $last.WellFormed -or $last.Kind -ne $Kind -or $last.Key -ne $Key) { return }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath (Split-Path -Path $YearDir -Parent)
+        $chain = Read-LedgerIntegrityChain -YearDir $YearDir
+        if ($null -eq $chain -or $chain.Count -eq 0) { return }
+        $last = $chain[$chain.Count - 1]
+        if (-not $last.WellFormed -or $last.Kind -ne $Kind -or $last.Key -ne $Key) { return }
 
-    $path = Get-LedgerIntegrityPath -YearDir $YearDir
-    $lines = [System.IO.File]::ReadAllLines($path, [System.Text.UTF8Encoding]::new($false))
-    $kept = for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($i -ne $last.LineNumber - 1) { $lines[$i] }
+        $path = Get-LedgerIntegrityPath -YearDir $YearDir
+        $lines = [System.IO.File]::ReadAllLines($path, [System.Text.UTF8Encoding]::new($false))
+        $kept = for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($i -ne $last.LineNumber - 1) { $lines[$i] }
+        }
+        Set-LedgerFileContent -Path $path -Value @($kept)
     }
-    Set-LedgerFileContent -Path $path -Value @($kept)
+    finally { Exit-LedgerJournalLock -Lock $journalLock }
 }

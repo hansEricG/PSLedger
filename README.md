@@ -734,6 +734,35 @@ The chain detects edits made without rebuilding it. Someone who rewrites both
 the files and the chain is only caught by `-ExpectedHash`. Opening balances,
 `year.txt`, year documents and the registers are not part of the chain.
 
+### Concurrent writes and interrupted operations
+
+Verification posting (including reversals), attachment changes, sealing,
+fiscal-year closing and credit-note rollback share a journal-level write lock.
+The verification writer holds it across validation, number allocation, file
+creation and integrity registration. Nested calls reuse the same lock. A
+competing process waits for up to 30 seconds, then reports that the journal is
+busy. New verification files never overwrite an existing filename.
+
+The lock uses `.write.lock` in the journal root on a local filesystem with
+normal .NET file locking enabled. The file is empty and remains after use;
+its existence does **not** mean the journal is locked. The operating system
+releases the open handle when the operation finishes or its process exits.
+Do not delete or replace the file while writers may be running. `-WhatIf`
+does not acquire the lock or create this file.
+
+This is not a transaction across files: an interrupted process can still leave
+a saved verification without its integrity record or all attachments. If a
+posting reports such a partial failure, inspect the saved verification and run
+`Test-LedgerIntegrity` before taking recovery action; do not simply post it
+again. There is no automatic resume or duplicate-posting prevention for a
+whole invoice/payment/import workflow yet.
+
+Other register and metadata writers, older PSLedger versions and external
+editors do not all participate in the lock. Readers and backups do not acquire
+a consistent-snapshot lock either. Avoid running those operations concurrently
+with writes. Shared network filesystems and simultaneous writes through Git,
+OneDrive or similar synchronisation are not supported by this mechanism.
+
 ## Archiving (Arkivering)
 
 Bokföringslagen requires the accounting records to be kept for seven years in a

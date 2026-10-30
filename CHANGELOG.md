@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Added
+- **Journal write locking for verification and integrity operations.** Posting,
+  reversals, attachment changes, sealing, year closing and credit-note rollback
+  share a reentrant journal lock. A competing process waits up to 30 seconds,
+  then fails explicitly. The operating system releases the lock on process exit.
+- **Concurrent-writer and interruption cases** exercise real PowerShell
+  processes, including a writer killed after saving an unsealed verification.
+
+### Fixed
+- **Verification filename conflicts no longer overwrite existing entries.**
+  New verifications use atomic create-if-absent publication.
+- **Partial verification writes report their state.** If the verification was
+  saved but sealing or attachment registration fails, the error identifies the
+  saved file and warns against repeating the posting.
+
+This is the first storage-hardening increment, not general multi-user support
+or automatic recovery of interrupted multi-file operations. Other register,
+invoice and import workflows still need operation-wide locking and recovery.
+
 ## [1.1.0] - 2026-10-30
 
 ### Added

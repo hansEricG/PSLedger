@@ -90,97 +90,102 @@ function Close-LedgerFiscalYear {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $YearDir = Join-Path $JournalPath $FiscalYear
-        if (-not (Test-Path $YearDir -PathType Container)) {
-            throw "Fiscal year not found: $FiscalYear"
-        }
-
-        $YearFile = Join-Path $YearDir 'year.txt'
-        if (-not (Test-Path $YearFile)) {
-            throw "Invalid fiscal year - year.txt not found in: $FiscalYear"
-        }
-
-        $Lines = Get-Content $YearFile
-
-        # Check current status and capture the year's end date for the result entry.
-        $EndDate = $null
-        $resultEntry = $null
-        foreach ($Line in $Lines) {
-            if ($Line -match '^Status:\s*Closed') {
-                throw "Fiscal year $FiscalYear is already closed."
+            $YearDir = Join-Path $JournalPath $FiscalYear
+            if (-not (Test-Path $YearDir -PathType Container)) {
+                throw "Fiscal year not found: $FiscalYear"
             }
-            elseif ($Line -match '^EndDate:\s*(.+)$') {
-                $EndDate = [datetime]$Matches[1]
-            }
-        }
 
-        if (-not $PSCmdlet.ShouldProcess($FiscalYear, 'Close fiscal year and book net result')) {
-            return
-        }
-
-        # Book the net result to equity unless explicitly skipped. When the profit
-        # and loss accounts net to zero there is nothing to book, so the year is
-        # simply flagged as closed (this also keeps legacy no-result years working).
-        if (-not $SkipResultEntry) {
-            $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
-            $ResultRows = @($Balance | Where-Object { $_.AccountNumber -match '^[3-8]' })
-            $RawResult = if ($ResultRows) {
-                ($ResultRows | Measure-Object -Property Balance -Sum).Sum
+            $YearFile = Join-Path $YearDir 'year.txt'
+            if (-not (Test-Path $YearFile)) {
+                throw "Invalid fiscal year - year.txt not found in: $FiscalYear"
             }
-            else {
-                [decimal]0
-            }
-            $RawResult = [Math]::Round([decimal]$RawResult, 2)
 
-            if ($RawResult -ne 0) {
-                $Equity = if ($EquityAccount) {
-                    $EquityAccount
+            $Lines = Get-Content $YearFile
+
+            # Check current status and capture the year's end date for the result entry.
+            $EndDate = $null
+            $resultEntry = $null
+            foreach ($Line in $Lines) {
+                if ($Line -match '^Status:\s*Closed') {
+                    throw "Fiscal year $FiscalYear is already closed."
+                }
+                elseif ($Line -match '^EndDate:\s*(.+)$') {
+                    $EndDate = [datetime]$Matches[1]
+                }
+            }
+
+            if (-not $PSCmdlet.ShouldProcess($FiscalYear, 'Close fiscal year and book net result')) {
+                return
+            }
+
+            # Book the net result to equity unless explicitly skipped. When the profit
+            # and loss accounts net to zero there is nothing to book, so the year is
+            # simply flagged as closed (this also keeps legacy no-result years working).
+            if (-not $SkipResultEntry) {
+                $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+                $ResultRows = @($Balance | Where-Object { $_.AccountNumber -match '^[3-8]' })
+                $RawResult = if ($ResultRows) {
+                    ($ResultRows | Measure-Object -Property Balance -Sum).Sum
                 }
                 else {
-                    Resolve-LedgerEquityAccount -JournalPath $JournalPath
+                    [decimal]0
                 }
+                $RawResult = [Math]::Round([decimal]$RawResult, 2)
 
-                if (-not $EndDate) {
-                    throw "Cannot determine the result date - EndDate missing from year.txt in $FiscalYear."
+                if ($RawResult -ne 0) {
+                    $Equity = if ($EquityAccount) {
+                        $EquityAccount
+                    }
+                    else {
+                        Resolve-LedgerEquityAccount -JournalPath $JournalPath
+                    }
+
+                    if (-not $EndDate) {
+                        throw "Cannot determine the result date - EndDate missing from year.txt in $FiscalYear."
+                    }
+
+                    # Debit the result account and credit equity for a profit; the raw
+                    # balance of the P&L accounts is negative for a profit, so negating
+                    # it gives the debit amount on the result account.
+                    $Rows = @(
+                        @{ Account = $ResultAccount; Amount = -$RawResult }
+                        @{ Account = $Equity; Amount = $RawResult }
+                    )
+
+                    $resultEntry = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                        -Date $EndDate -Description 'Årets resultat (bokslut)' -Rows $Rows -PassThru
                 }
+            }
 
-                # Debit the result account and credit equity for a profit; the raw
-                # balance of the P&L accounts is negative for a profit, so negating
-                # it gives the debit amount on the result account.
-                $Rows = @(
-                    @{ Account = $ResultAccount; Amount = -$RawResult }
-                    @{ Account = $Equity; Amount = $RawResult }
-                )
+            # Rewrite year.txt with updated status.
+            $NewLines = foreach ($Line in $Lines) {
+                if ($Line -match '^Status:\s*') {
+                    'Status: Closed'
+                }
+                else {
+                    $Line
+                }
+            }
 
-                $resultEntry = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-                    -Date $EndDate -Description 'Årets resultat (bokslut)' -Rows $Rows -PassThru
+            Set-LedgerFileContent -Path $YearFile -Value $NewLines
+
+            [void](Protect-LedgerYearContent -YearDir $YearDir)
+            $integrity = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
+            if (-not $integrity.IsValid) {
+                Write-Warning "Fiscal year $FiscalYear has integrity issues: $(@($integrity.Issues | ForEach-Object Detail) -join ' ')"
+            }
+
+            [PSCustomObject]@{
+                FiscalYear         = $FiscalYear
+                ResultVerification = if ($resultEntry) { $resultEntry.VerificationNumber } else { $null }
+                ChainHash          = $integrity.ChainHash
             }
         }
-
-        # Rewrite year.txt with updated status.
-        $NewLines = foreach ($Line in $Lines) {
-            if ($Line -match '^Status:\s*') {
-                'Status: Closed'
-            }
-            else {
-                $Line
-            }
-        }
-
-        Set-LedgerFileContent -Path $YearFile -Value $NewLines
-
-        [void](Protect-LedgerYearContent -YearDir $YearDir)
-        $integrity = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
-        if (-not $integrity.IsValid) {
-            Write-Warning "Fiscal year $FiscalYear has integrity issues: $(@($integrity.Issues | ForEach-Object Detail) -join ' ')"
-        }
-
-        [PSCustomObject]@{
-            FiscalYear         = $FiscalYear
-            ResultVerification = if ($resultEntry) { $resultEntry.VerificationNumber } else { $null }
-            ChainHash          = $integrity.ChainHash
-        }
+        finally { Exit-LedgerJournalLock -Lock $journalLock }
     }
 }

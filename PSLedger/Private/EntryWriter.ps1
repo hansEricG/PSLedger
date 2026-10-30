@@ -94,97 +94,110 @@ function Write-LedgerVerification {
 
     $Description = ConvertTo-LedgerTextField $Description
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-    $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
-    $YearDir = Join-Path $JournalPath $FiscalYear
-    Assert-LedgerEntryDate -YearDir $YearDir -FiscalYear $FiscalYear -Date $Date
-    Assert-LedgerEntryAmounts -Rows $Rows -LegacyReversal:$LegacyReversal
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
+        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
+        $YearDir = Join-Path $JournalPath $FiscalYear
+        Assert-LedgerEntryDate -YearDir $YearDir -FiscalYear $FiscalYear -Date $Date
+        Assert-LedgerEntryAmounts -Rows $Rows -LegacyReversal:$LegacyReversal
 
-    $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
-    if (Test-Path $KontoplanFile) {
-        $ValidAccounts = @{}
-        foreach ($Line in (Get-Content $KontoplanFile)) {
-            if ($Line -match '^(\d+)\t') {
-                $ValidAccounts[$Matches[1]] = $true
+        $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
+        if (Test-Path $KontoplanFile) {
+            $ValidAccounts = @{}
+            foreach ($Line in (Get-Content $KontoplanFile)) {
+                if ($Line -match '^(\d+)\t') {
+                    $ValidAccounts[$Matches[1]] = $true
+                }
+            }
+            foreach ($Row in $Rows) {
+                if (-not $ValidAccounts.ContainsKey($Row.Account)) {
+                    throw "Account $($Row.Account) does not exist in chart of accounts."
+                }
             }
         }
+
+        if ($Attachment) {
+            foreach ($attachmentPath in $Attachment) {
+                if (-not (Test-Path $attachmentPath -PathType Leaf)) {
+                    throw "Attachment file not found: $attachmentPath"
+                }
+            }
+        }
+
+        $ExistingFiles = Get-ChildItem -LiteralPath $YearDir -Filter 'ver*.txt' -File -ErrorAction Stop
+        if ($ExistingFiles) {
+            $MaxNum = $ExistingFiles |
+                ForEach-Object { if ($_.BaseName -match '^ver(\d+)$') { [int]$Matches[1] } } |
+                Measure-Object -Maximum |
+                Select-Object -ExpandProperty Maximum
+            $NextNum = $MaxNum + 1
+        }
+        else {
+            $NextNum = 1
+        }
+
+        $FileName = 'ver' + $NextNum.ToString('0000') + '.txt'
+        $FilePath = Join-Path $YearDir $FileName
+        $Lines = @(
+            "Date: $($Date.ToString('yyyy-MM-dd'))"
+            "Description: $Description"
+            ""
+        )
         foreach ($Row in $Rows) {
-            if (-not $ValidAccounts.ContainsKey($Row.Account)) {
-                throw "Account $($Row.Account) does not exist in chart of accounts."
-            }
-        }
-    }
-
-    if ($Attachment) {
-        foreach ($attachmentPath in $Attachment) {
-            if (-not (Test-Path $attachmentPath -PathType Leaf)) {
-                throw "Attachment file not found: $attachmentPath"
-            }
-        }
-    }
-
-    $ExistingFiles = Get-ChildItem -Path $YearDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
-    if ($ExistingFiles) {
-        $MaxNum = $ExistingFiles |
-            ForEach-Object { if ($_.BaseName -match '^ver(\d+)$') { [int]$Matches[1] } } |
-            Measure-Object -Maximum |
-            Select-Object -ExpandProperty Maximum
-        $NextNum = $MaxNum + 1
-    }
-    else {
-        $NextNum = 1
-    }
-
-    $FileName = 'ver' + $NextNum.ToString('0000') + '.txt'
-    $FilePath = Join-Path $YearDir $FileName
-    $Lines = @(
-        "Date: $($Date.ToString('yyyy-MM-dd'))"
-        "Description: $Description"
-        ""
-    )
-    foreach ($Row in $Rows) {
-        $line = "$($Row.Account)`t$($Row.Amount)"
-        if ($Row.ContainsKey('Objects') -and $Row.Objects -and $Row.Objects.Count -gt 0) {
-            foreach ($dimNum in $Row.Objects.Keys) {
-                $dim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum
-                if (-not $dim) {
-                    throw "Dimension $dimNum does not exist."
+            $line = "$($Row.Account)`t$($Row.Amount)"
+            if ($Row.ContainsKey('Objects') -and $Row.Objects -and $Row.Objects.Count -gt 0) {
+                foreach ($dimNum in $Row.Objects.Keys) {
+                    $dim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum
+                    if (-not $dim) {
+                        throw "Dimension $dimNum does not exist."
+                    }
+                    $obj = Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $dimNum -ObjectNumber $Row.Objects[$dimNum]
+                    if (-not $obj) {
+                        throw "Object '$($Row.Objects[$dimNum])' does not exist in dimension $dimNum."
+                    }
                 }
-                $obj = Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $dimNum -ObjectNumber $Row.Objects[$dimNum]
-                if (-not $obj) {
-                    throw "Object '$($Row.Objects[$dimNum])' does not exist in dimension $dimNum."
+                $line += "`t$(Format-ObjectTag -Objects $Row.Objects)"
+            }
+            if ($Row.ContainsKey('Comment') -and $null -ne $Row.Comment) {
+                $commentText = ([string]$Row.Comment) -replace "[`t`r`n]+", ' '
+                $commentText = $commentText.Trim()
+                if ($commentText) {
+                    $line += "`t$commentText"
                 }
             }
-            $line += "`t$(Format-ObjectTag -Objects $Row.Objects)"
+            $Lines += $line
         }
-        if ($Row.ContainsKey('Comment') -and $null -ne $Row.Comment) {
-            $commentText = ([string]$Row.Comment) -replace "[`t`r`n]+", ' '
-            $commentText = $commentText.Trim()
-            if ($commentText) {
-                $line += "`t$commentText"
+
+        if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Add verification $FileName")) {
+            return
+        }
+        Set-LedgerFileContent -Path $FilePath -Value $Lines -NoClobber
+        try {
+            Register-LedgerIntegrityItem -YearDir $YearDir -Kind Verification -Key "$NextNum" -Path $FilePath
+
+            $attached = @()
+            if ($Attachment) {
+                $attached = Add-LedgerAttachment -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                    -VerificationNumber $NextNum -Path $Attachment -PassThru
             }
         }
-        $Lines += $line
-    }
-
-    if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Add verification $FileName")) {
-        return
-    }
-    Set-LedgerFileContent -Path $FilePath -Value $Lines
-    Register-LedgerIntegrityItem -YearDir $YearDir -Kind Verification -Key "$NextNum" -Path $FilePath
-
-    $attached = @()
-    if ($Attachment) {
-        $attached = Add-LedgerAttachment -JournalPath $JournalPath -FiscalYear $FiscalYear `
-            -VerificationNumber $NextNum -Path $Attachment -PassThru
-    }
-    if ($PassThru) {
-        [PSCustomObject]@{
-            VerificationNumber = $NextNum
-            FiscalYear         = $FiscalYear
-            Date               = $Date
-            Description        = $Description
-            Path               = $FilePath
-            Attachments        = @($attached | ForEach-Object { $_.FileName })
+        catch {
+            throw [System.InvalidOperationException]::new(
+                "Verification '$FilePath' was saved, but sealing or attachment registration failed. Do not post it again. Inspect the saved verification and run Test-LedgerIntegrity before taking recovery action. $($_.Exception.Message)",
+                $_.Exception)
+        }
+        if ($PassThru) {
+            [PSCustomObject]@{
+                VerificationNumber = $NextNum
+                FiscalYear         = $FiscalYear
+                Date               = $Date
+                Description        = $Description
+                Path               = $FilePath
+                Attachments        = @($attached | ForEach-Object { $_.FileName })
+            }
         }
     }
+    finally { Exit-LedgerJournalLock -Lock $journalLock }
 }

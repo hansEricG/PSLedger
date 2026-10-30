@@ -50,41 +50,46 @@ function Remove-LedgerAttachment {
 
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $YearDir = Join-Path $JournalPath $FiscalYear
-        if (-not (Test-Path $YearDir -PathType Container)) {
-            throw "Fiscal year not found: $FiscalYear"
-        }
-        Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'remove attachments'
-
-        $FileName = Assert-LedgerSafeLeafName -Name $FileName -Kind 'attachment'
-
-        $attachDir = Join-Path $YearDir ('ver' + $VerificationNumber.ToString('0000'))
-        if (-not (Test-Path $attachDir -PathType Container)) {
-            throw "No attachments found for verification $VerificationNumber."
-        }
-
-        $filePath = Join-Path $attachDir $FileName
-        if (-not (Test-Path $filePath -PathType Leaf)) {
-            throw "Attachment not found: $FileName"
-        }
-
-        if ($PSCmdlet.ShouldProcess($filePath, 'Remove attachment')) {
-            # A sealed attachment is not deleted silently: the removal is logged in
-            # the integrity chain so Test-LedgerIntegrity does not report it missing.
-            $integrityKey = "$VerificationNumber/$FileName"
-            if (Test-LedgerIntegrityAttachmentSealed -YearDir $YearDir -Key $integrityKey) {
-                $removed = [pscustomobject]@{ Kind = 'AttachmentRemoved'; Key = $integrityKey; Hash = (Get-LedgerContentHash -Path $filePath) }
-                Write-LedgerIntegrityRecord -YearDir $YearDir -Record @($removed)
+            $YearDir = Join-Path $JournalPath $FiscalYear
+            if (-not (Test-Path $YearDir -PathType Container)) {
+                throw "Fiscal year not found: $FiscalYear"
             }
-            Remove-Item -Path $filePath -Force
+            Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'remove attachments'
 
-            # Remove directory if empty
-            $remaining = Get-ChildItem -Path $attachDir -File
-            if (-not $remaining) {
-                Remove-Item -Path $attachDir -Force
+            $FileName = Assert-LedgerSafeLeafName -Name $FileName -Kind 'attachment'
+
+            $attachDir = Join-Path $YearDir ('ver' + $VerificationNumber.ToString('0000'))
+            if (-not (Test-Path $attachDir -PathType Container)) {
+                throw "No attachments found for verification $VerificationNumber."
+            }
+
+            $filePath = Join-Path $attachDir $FileName
+            if (-not (Test-Path $filePath -PathType Leaf)) {
+                throw "Attachment not found: $FileName"
+            }
+
+            if ($PSCmdlet.ShouldProcess($filePath, 'Remove attachment')) {
+                # A sealed attachment is not deleted silently: the removal is logged in
+                # the integrity chain so Test-LedgerIntegrity does not report it missing.
+                $integrityKey = "$VerificationNumber/$FileName"
+                if (Test-LedgerIntegrityAttachmentSealed -YearDir $YearDir -Key $integrityKey) {
+                    $removed = [pscustomobject]@{ Kind = 'AttachmentRemoved'; Key = $integrityKey; Hash = (Get-LedgerContentHash -Path $filePath) }
+                    Write-LedgerIntegrityRecord -YearDir $YearDir -Record @($removed)
+                }
+                Remove-Item -Path $filePath -Force
+
+                # Remove directory if empty
+                $remaining = Get-ChildItem -Path $attachDir -File
+                if (-not $remaining) {
+                    Remove-Item -Path $attachDir -Force
+                }
             }
         }
+        finally { Exit-LedgerJournalLock -Lock $journalLock }
     }
 }
