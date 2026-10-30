@@ -39,50 +39,57 @@ function Add-LedgerInvoiceChargeInternal {
         [string]$FiscalYear
     )
 
-    $invoiceDir = Get-LedgerInvoiceDirectory -JournalPath $JournalPath
-    $filePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber)
-    if (-not (Test-Path $filePath)) {
-        throw "Invoice $InvoiceNumber does not exist."
-    }
-
-    $invoice = Read-LedgerInvoiceFile -Path $filePath
-
-    if ($invoice.Status -eq 'Draft') {
-        throw "Invoice $InvoiceNumber has not been posted. Post it first with Invoke-LedgerInvoicePosting."
-    }
-    if ($invoice.Status -notin @('Booked', 'Partial')) {
-        throw "Invoice $InvoiceNumber is not an open receivable (status '$($invoice.Status)'). Charges can only be booked on posted, unpaid invoices."
-    }
-    if ($Amount -le 0) {
-        throw "Charge amount must be greater than zero."
-    }
-
-    if (-not $FiscalYear) {
-        $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $Date
-        if (-not $FiscalYear) {
-            throw "No fiscal year covers the charge date $($Date.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
+        $invoiceDir = Get-LedgerInvoiceDirectory -JournalPath $JournalPath
+        $filePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber)
+        if (-not (Test-Path $filePath)) {
+            throw "Invoice $InvoiceNumber does not exist."
         }
+
+        $invoice = Read-LedgerInvoiceFile -Path $filePath
+        Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath -Invoice $invoice
+
+        if ($invoice.Status -eq 'Draft') {
+            throw "Invoice $InvoiceNumber has not been posted. Post it first with Invoke-LedgerInvoicePosting."
+        }
+        if ($invoice.Status -notin @('Booked', 'Partial')) {
+            throw "Invoice $InvoiceNumber is not an open receivable (status '$($invoice.Status)'). Charges can only be booked on posted, unpaid invoices."
+        }
+        if ($Amount -le 0) {
+            throw "Charge amount must be greater than zero."
+        }
+
+        if (-not $FiscalYear) {
+            $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $Date
+            if (-not $FiscalYear) {
+                throw "No fiscal year covers the charge date $($Date.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+            }
+        }
+
+        $label = if ($Type -eq 'Interest') { 'Dröjsmålsränta' } else { 'Påminnelseavgift' }
+        $description = "$label kundfaktura $InvoiceNumber"
+
+        $entryRows = @(
+            @{ Account = $invoice.ReceivableAccount; Amount = $Amount }
+            @{ Account = $Account; Amount = -$Amount }
+        )
+
+        $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+            -Date $Date -Description $description -Rows $entryRows -PassThru
+
+        $invoice.Charges += [PSCustomObject]@{
+            Date               = $Date
+            Type               = $Type
+            Amount             = $Amount
+            Account            = $Account
+            VerificationNumber = $verification.VerificationNumber
+            FiscalYear         = $FiscalYear
+        }
+
+        Save-LedgerInvoiceFile -Invoice $invoice
     }
-
-    $label = if ($Type -eq 'Interest') { 'Dröjsmålsränta' } else { 'Påminnelseavgift' }
-    $description = "$label kundfaktura $InvoiceNumber"
-
-    $entryRows = @(
-        @{ Account = $invoice.ReceivableAccount; Amount = $Amount }
-        @{ Account = $Account; Amount = -$Amount }
-    )
-
-    $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-        -Date $Date -Description $description -Rows $entryRows -PassThru
-
-    $invoice.Charges += [PSCustomObject]@{
-        Date               = $Date
-        Type               = $Type
-        Amount             = $Amount
-        Account            = $Account
-        VerificationNumber = $verification.VerificationNumber
-        FiscalYear         = $FiscalYear
-    }
-
-    Save-LedgerInvoiceFile -Invoice $invoice
+    finally { Exit-LedgerJournalLock -Lock $journalLock }
 }

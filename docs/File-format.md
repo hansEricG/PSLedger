@@ -112,7 +112,8 @@ are named by a prefix and a number zero-padded to at least four digits.
 - Number 10000 is written `ver10000.txt`; nothing is truncated.
 - A new document gets the highest existing number plus one, or 1 if there is
   none. For verifications, the maximum also includes numbers reserved by
-  `invoices/posting/invNNNN.txt`. Recovery uses its already reserved number,
+  `invoices/posting/invNNNN.txt` and `invoices/payments/<guid>.txt`.
+  Recovery uses its already reserved number,
   even if later numbers have since been written. Gaps are allowed.
 - Verifications are numbered per fiscal year. Every other kind of document is
   numbered across the whole journal.
@@ -137,8 +138,8 @@ coordination file, not bookkeeping data or a new schema version. Participating
 writers hold an exclusive open handle while validating and writing a
 verification and its integrity records. New verification files are published
 without replacing an existing filename. The same journal lock covers attachment
-changes, customer-invoice posting and recovery, sealing, year closing and
-credit-note rollback.
+changes, customer-invoice posting and payments, charges, reminders, bank matching,
+sealing, year closing and credit-note rollback.
 
 The file remains after the handle is released, including after a crashed
 process. Its existence does not indicate ownership. It MUST NOT be deleted or
@@ -151,8 +152,8 @@ enabled and cooperating writers. Other register/metadata writers and readers
 are not yet covered by a journal-wide transaction or snapshot. This is not a
 distributed lock for synchronised or network directories. An interrupted
 operation can still leave a saved but unsealed verification; the integrity
-check diagnoses that state. Customer-invoice posting can resume from its saved
-plan below; other multi-file recovery remains separate work.
+check diagnoses that state. Customer-invoice posting and payments can resume
+from their saved plans below; other multi-file recovery remains separate work.
 
 ### Unknown content
 
@@ -339,7 +340,7 @@ Description: Kontorsmaterial
 |-----|----------|-------|
 | `Date` | yes | Transaction date. MUST fall within the fiscal year. |
 | `Description` | yes | Text of the verification. |
-| `OperationId` | no | Non-empty GUID in `D` form identifying the customer-invoice posting plan. Included in the verification content hash; ordinary entries omit it. |
+| `OperationId` | no | Non-empty GUID in `D` form identifying the customer-invoice posting or payment plan. Included in the verification content hash; ordinary entries omit it. |
 
 A blank line follows the header.
 
@@ -615,6 +616,42 @@ Their reserved numbers are never automatically freed. Malformed records block
 new-number allocation rather than allowing unsafe reuse. Archive packages copy
 each included invoice's plan and cover it with archive checksums. A SIE export
 does not contain these plans and is not a full recovery-state backup.
+
+### `invoices/payments/<guid>.txt` — customer-invoice payment plans
+
+Each payment has an immutable plan using the posting-plan fields above.
+`OperationId` is the `PaymentId`, a non-empty GUID unique among payments in the
+journal and matching the filename (without `.txt`). `InvoiceNumber` identifies
+the invoice being paid. `InvoiceHash` covers the invoice immediately before this
+payment, not its original draft. Three additional fields are required:
+
+| Key | Value |
+|-----|-------|
+| `PaymentDate` | Payment date, `yyyy-MM-dd`. |
+| `PaymentAmount` | Positive invariant decimal in whole ore, at most two fraction digits. |
+| `PaymentAccount` | Cash/bank account number, digits only. |
+
+Plans use the same hash normalisation, reservation, create-if-absent and retention
+rules as posting plans. Payment inputs MUST agree with the saved verification's
+date, accounts and amounts as well as its hash and operation identity. Recovery
+never replaces an existing verification. In a closed year it may finish a payment
+whose matching verification already exists, but cannot create a missing one.
+Payment plans are additive; existing four-column invoice payment rows remain
+unchanged, with fiscal year and verification number identifying the payment.
+
+On retry, the original invoice hash MUST match unless that payment is already
+recorded. A matching payment row, verification and integrity chain identify a
+completed operation even if later payments have changed the invoice. Reusing
+its ID returns the current invoice without adding a payment. Omitted inputs
+use the saved plan; explicit conflicting inputs are rejected.
+
+Without `PaymentId`, the command generates a new ID for each payment. An
+unfinished payment prevents further payment, charge, reminder or credit writes
+to that invoice and blocks bank matching until it is resumed with its ID.
+Identical dates and amounts alone never deduplicate payments. Plans remain after
+completion and are copied with included invoices into archives, with checksums.
+SIE exports do not retain them. Other multi-file workflows, including the bank
+transaction update after payment, do not yet have end-to-end recovery.
 
 ### `invoices/invNNNN.txt` — customer invoices
 

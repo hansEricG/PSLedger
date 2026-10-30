@@ -203,6 +203,9 @@ writers outside the shared lock can still collide or lose a line.
       Document local-filesystem assumptions and retained `.write.lock` files.
 - [x] Hold the lock across customer-invoice posting and recovery, from invoice
       validation and reservation through verification sealing and booked status.
+- [x] Extend that boundary to customer payments and dependent invoice updates
+      (charges, reminders, credit notes), including interest calculation.
+      Bank-matching writers use the lock and reject unfinished customer payments.
 - [ ] Extend operation-wide locking and conflict detection to remaining
       registers, invoices, payments, payroll, imports and metadata writers.
       Pair this with recovery in step 30; the first increment is not general
@@ -372,6 +375,14 @@ invoice-status writes. Other multi-file workflows still need equivalent protecti
 - [x] Exercise process termination after plan, verification, seal and status
       writes, plus concurrent retries and interleaved number allocation.
       Preserve recovery records in archive packages and document backup retention.
+- [x] Resume customer payments with an optional stable `PaymentId`, including
+      replay after completion. Separate IDs allow identical real partial payments;
+      unfinished payments block conflicting invoice changes and bank matching.
+      Cover process termination, concurrent same/different IDs, remaining-balance
+      validation, closed years, conflicting inputs and archive retention.
+- [ ] Extend recovery to the complete bank-transaction matching workflow;
+      customer-payment recovery currently requires linking the saved verification
+      separately when the bank transaction update was interrupted.
 - [ ] Define recoverable operation boundaries for remaining invoice/payment/payroll
       posting, SIE import, chart conversion and fiscal-year closing.
 - [ ] Extend durable operation identity and progress to those workflows without

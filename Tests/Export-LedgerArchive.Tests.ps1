@@ -112,6 +112,8 @@ Describe 'Export-LedgerArchive' {
             New-LedgerInvoice -JournalPath $journal -CustomerNumber '10' -Date '2024-01-15' -Description 'Konsult' `
                 -Rows @(@{ Account = '3010'; Amount = 1000; VatRate = 0.25; VatAccount = '2610' })
             Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 1
+            $paymentId = New-Guid
+            Add-LedgerInvoicePayment -JournalPath $journal -InvoiceNumber 1 -Date '2024-01-20' -PaymentId $paymentId
             Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $OpenYear -SkipResultEntry | Out-Null
             $package = Export-LedgerArchive -JournalPath $journal -FiscalYear $OpenYear -AsDirectory
             $original = Join-Path $journal 'invoices' 'posting' 'inv0001.txt'
@@ -119,6 +121,11 @@ Describe 'Export-LedgerArchive' {
             (Get-FileHash -LiteralPath $archived).Hash | Should -Be (Get-FileHash -LiteralPath $original).Hash
             Get-Content -LiteralPath (Join-Path $package.FullName 'checksums.txt') -Raw |
                 Should -BeLike '*journal/invoices/posting/inv0001.txt*'
+            $originalPayment = Join-Path $journal 'invoices' 'payments' "$paymentId.txt"
+            $archivedPayment = Join-Path $package.FullName 'journal' 'invoices' 'payments' "$paymentId.txt"
+            (Get-FileHash -LiteralPath $archivedPayment).Hash | Should -Be (Get-FileHash -LiteralPath $originalPayment).Hash
+            Get-Content -LiteralPath (Join-Path $package.FullName 'checksums.txt') -Raw |
+                Should -BeLike "*journal/invoices/payments/$paymentId.txt*"
         }
 
         It 'Leaves out invoices, payslips and bank statements of other years' {

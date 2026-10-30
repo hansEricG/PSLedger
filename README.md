@@ -574,8 +574,35 @@ invoice was already fully posted, the command still reports "already posted".
 Keep these immutable plans after success and in backups; never delete them to
 clear an error or free a reserved number. Changed invoice data, conflicting
 verification content or a damaged integrity chain stop recovery and require
-diagnosis rather than automatic repair. This recovery applies to customer-invoice
-posting, not payments, credit notes or other multi-file workflows.
+diagnosis rather than automatic repair.
+
+For **customer-invoice payments**, retain a GUID before the first attempt and
+reuse it for retries:
+
+```powershell
+$paymentId = New-Guid  # Save this ID before registering the payment.
+Add-LedgerInvoicePayment -JournalPath .\HEG.ledger -InvoiceNumber 1 `
+    -Date '2024-04-10' -Amount 5000 -PaymentId $paymentId
+# Resume, or return the current invoice if this payment already completed:
+Add-LedgerInvoicePayment -JournalPath .\HEG.ledger -InvoiceNumber 1 `
+    -PaymentId $paymentId -PassThru
+```
+
+An omitted date, amount, bank account or fiscal year uses the saved plan on a
+retry. Explicit conflicting inputs are rejected. Distinct IDs allow two real
+payments with the same date and amount. Without `-PaymentId`, each call starts
+a new payment: do not repeat an unkeyed call blindly after an uncertain result.
+Inspect `invoices/payments/<guid>.txt` and retry with that ID. An unfinished
+payment blocks further payments and invoice changes and reports the recovery
+command. A matching saved verification may complete the payment after year
+closure, but a missing verification cannot be created in a closed year.
+
+Keep payment plans after success and in backups, just like posting plans.
+Bank matching stops while a customer payment is unfinished. Resume the payment
+first, then link its existing verification with `Set-LedgerBankTransaction
+-VerificationNumber ... -FiscalYear ...`; do not register another invoice
+payment. This is not yet automatic recovery of the whole bank-matching workflow,
+nor recovery for supplier payments, charges or credit notes.
 
 `Export-LedgerInvoice` produces the PDF with a built-in, dependency-free writer.
 Add payment details (bankgiro, plusgiro, IBAN/BIC) to the document by storing them
@@ -755,9 +782,9 @@ the files and the chain is only caught by `-ExpectedHash`. Opening balances,
 
 ### Concurrent writes and interrupted operations
 
-Verification posting (including reversals), customer-invoice posting, attachment
-changes, sealing, fiscal-year closing and credit-note rollback share a
-journal-level write lock.
+Verification posting (including reversals), customer-invoice posting and payments,
+charges, reminders, bank matching, attachment changes, sealing, fiscal-year closing
+and credit-note rollback share a journal-level write lock.
 The verification writer holds it across validation, number allocation, file
 creation and integrity registration. Nested calls reuse the same lock. A
 competing process waits for up to 30 seconds, then reports that the journal is
@@ -774,9 +801,10 @@ This is not a transaction across files: an interrupted process can still leave
 a saved verification without its integrity record or all attachments. If a
 posting reports such a partial failure, inspect the saved verification and run
 `Test-LedgerIntegrity` before taking recovery action; do not simply post it
-again. The exception is `Invoke-LedgerInvoicePosting`: its saved plan allows
-safe same-command resumption as described under customer invoices above.
-Payments, imports and other multi-file workflows do not yet have this protection.
+again. `Invoke-LedgerInvoicePosting` and `Add-LedgerInvoicePayment -PaymentId`
+can resume their saved plans as described under customer invoices above.
+Supplier payments, imports and other multi-file workflows do not yet have this
+protection.
 
 Other register and metadata writers, older PSLedger versions and external
 editors do not all participate in the lock. Readers and backups do not acquire

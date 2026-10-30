@@ -131,80 +131,89 @@ function Set-LedgerBankTransaction {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
     }
     process {
-        $found = Find-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $TransactionId
-        $statement = $found.Statement
-        $t = $found.Transaction
-        $target = "Bank transaction $TransactionId ($($t.Date.ToString('yyyy-MM-dd')), $($t.Amount))"
-
-        if ($PSCmdlet.ParameterSetName -eq 'Reset') {
-            if ($t.Status -eq 'Unmatched') { return }
-            if (-not $PSCmdlet.ShouldProcess($target, 'Reset to Unmatched')) { return }
-            Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Unmatched
-            if ($PassThru) { ConvertTo-LedgerBankTransactionOutput -Transaction $t }
-            return
-        }
-
-        if ($t.Status -ne 'Unmatched') {
-            throw "Bank transaction $TransactionId is already $($t.Status.ToLowerInvariant()). Use -Reset first to change it."
-        }
-
-        switch ($PSCmdlet.ParameterSetName) {
-            'Ignore' {
-                if (-not $PSCmdlet.ShouldProcess($target, 'Ignore')) { return }
-                Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Ignored -MatchType 'Ignored'
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
+            if ($PSCmdlet.ParameterSetName -notin 'Ignore', 'Reset') {
+                Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath
             }
-            'Verification' {
-                if (-not $FiscalYear) {
-                    $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $t.Date
+            $found = Find-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $TransactionId
+            $statement = $found.Statement
+            $t = $found.Transaction
+            $target = "Bank transaction $TransactionId ($($t.Date.ToString('yyyy-MM-dd')), $($t.Amount))"
+
+            if ($PSCmdlet.ParameterSetName -eq 'Reset') {
+                if ($t.Status -eq 'Unmatched') { return }
+                if (-not $PSCmdlet.ShouldProcess($target, 'Reset to Unmatched')) { return }
+                Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Unmatched
+                if ($PassThru) { ConvertTo-LedgerBankTransactionOutput -Transaction $t }
+                return
+            }
+
+            if ($t.Status -ne 'Unmatched') {
+                throw "Bank transaction $TransactionId is already $($t.Status.ToLowerInvariant()). Use -Reset first to change it."
+            }
+
+            switch ($PSCmdlet.ParameterSetName) {
+                'Ignore' {
+                    if (-not $PSCmdlet.ShouldProcess($target, 'Ignore')) { return }
+                    Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Ignored -MatchType 'Ignored'
+                }
+                'Verification' {
                     if (-not $FiscalYear) {
-                        throw "No fiscal year covers the transaction date $($t.Date.ToString('yyyy-MM-dd')). Specify -FiscalYear."
+                        $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $t.Date
+                        if (-not $FiscalYear) {
+                            throw "No fiscal year covers the transaction date $($t.Date.ToString('yyyy-MM-dd')). Specify -FiscalYear."
+                        }
                     }
+                    $movement = Get-LedgerBankAccountMovements -JournalPath $JournalPath -FiscalYear $FiscalYear -BankAccount $t.BankAccount |
+                        Where-Object VerificationNumber -eq $VerificationNumber
+                    if (-not $movement) {
+                        throw "Verification $VerificationNumber in $FiscalYear does not exist or has no row on account $($t.BankAccount)."
+                    }
+                    if ($movement.Amount -ne $t.Amount) {
+                        Write-Warning "Verification $VerificationNumber has $($movement.Amount) on account $($t.BankAccount), but the bank transaction is $($t.Amount)."
+                    }
+                    $linked = Get-LedgerBankLinkedVerifications -Statements @(Get-LedgerBankStatementData -JournalPath $JournalPath)
+                    if ($linked.Contains("$($t.BankAccount)|$FiscalYear|$VerificationNumber")) {
+                        Write-Warning "Verification $VerificationNumber in $FiscalYear is already linked to another bank transaction."
+                    }
+                    if (-not $PSCmdlet.ShouldProcess($target, "Link to verification $VerificationNumber in $FiscalYear")) { return }
+                    Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched -MatchType 'Entry' `
+                        -MatchRef "$FiscalYear/$VerificationNumber" -FiscalYear $FiscalYear -VerificationNumber $VerificationNumber
                 }
-                $movement = Get-LedgerBankAccountMovements -JournalPath $JournalPath -FiscalYear $FiscalYear -BankAccount $t.BankAccount |
-                    Where-Object VerificationNumber -eq $VerificationNumber
-                if (-not $movement) {
-                    throw "Verification $VerificationNumber in $FiscalYear does not exist or has no row on account $($t.BankAccount)."
+                'Invoice' {
+                    if (-not $PSCmdlet.ShouldProcess($target, "Register payment of customer invoice $InvoiceNumber")) { return }
+                    $result = Invoke-LedgerBankInvoicePayment -JournalPath $JournalPath -Transaction $t -InvoiceNumber $InvoiceNumber
+                    Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched -MatchType 'CustomerInvoice' `
+                        -MatchRef ([string]$InvoiceNumber) -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
                 }
-                if ($movement.Amount -ne $t.Amount) {
-                    Write-Warning "Verification $VerificationNumber has $($movement.Amount) on account $($t.BankAccount), but the bank transaction is $($t.Amount)."
+                'SupplierInvoice' {
+                    if (-not $PSCmdlet.ShouldProcess($target, "Register payment of supplier invoice $SupplierInvoiceNumber")) { return }
+                    $result = Invoke-LedgerBankSupplierPayment -JournalPath $JournalPath -Transaction $t -InvoiceNumber $SupplierInvoiceNumber
+                    Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched -MatchType 'SupplierInvoice' `
+                        -MatchRef ([string]$SupplierInvoiceNumber) -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
                 }
-                $linked = Get-LedgerBankLinkedVerifications -Statements @(Get-LedgerBankStatementData -JournalPath $JournalPath)
-                if ($linked.Contains("$($t.BankAccount)|$FiscalYear|$VerificationNumber")) {
-                    Write-Warning "Verification $VerificationNumber in $FiscalYear is already linked to another bank transaction."
+                'Account' {
+                    if (-not $PSCmdlet.ShouldProcess($target, "Post against account $Account")) { return }
+                    $entryParams = @{
+                        JournalPath = $JournalPath
+                        Transaction = $t
+                        Account     = $Account
+                        Description = $Description
+                        VatRate     = $VatRate
+                        VatAccount  = $VatAccount
+                        FiscalYear  = $FiscalYear
+                    }
+                    $result = Invoke-LedgerBankAccountEntry @entryParams
+                    Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched -MatchType 'Manual' `
+                        -MatchRef $Account -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
                 }
-                if (-not $PSCmdlet.ShouldProcess($target, "Link to verification $VerificationNumber in $FiscalYear")) { return }
-                Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched -MatchType 'Entry' `
-                    -MatchRef "$FiscalYear/$VerificationNumber" -FiscalYear $FiscalYear -VerificationNumber $VerificationNumber
             }
-            'Invoice' {
-                if (-not $PSCmdlet.ShouldProcess($target, "Register payment of customer invoice $InvoiceNumber")) { return }
-                $result = Invoke-LedgerBankInvoicePayment -JournalPath $JournalPath -Transaction $t -InvoiceNumber $InvoiceNumber
-                Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched -MatchType 'CustomerInvoice' `
-                    -MatchRef ([string]$InvoiceNumber) -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
-            }
-            'SupplierInvoice' {
-                if (-not $PSCmdlet.ShouldProcess($target, "Register payment of supplier invoice $SupplierInvoiceNumber")) { return }
-                $result = Invoke-LedgerBankSupplierPayment -JournalPath $JournalPath -Transaction $t -InvoiceNumber $SupplierInvoiceNumber
-                Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched -MatchType 'SupplierInvoice' `
-                    -MatchRef ([string]$SupplierInvoiceNumber) -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
-            }
-            'Account' {
-                if (-not $PSCmdlet.ShouldProcess($target, "Post against account $Account")) { return }
-                $entryParams = @{
-                    JournalPath = $JournalPath
-                    Transaction = $t
-                    Account     = $Account
-                    Description = $Description
-                    VatRate     = $VatRate
-                    VatAccount  = $VatAccount
-                    FiscalYear  = $FiscalYear
-                }
-                $result = Invoke-LedgerBankAccountEntry @entryParams
-                Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched -MatchType 'Manual' `
-                    -MatchRef $Account -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
-            }
-        }
 
-        if ($PassThru) { ConvertTo-LedgerBankTransactionOutput -Transaction $t }
+            if ($PassThru) { ConvertTo-LedgerBankTransactionOutput -Transaction $t }
+        }
+        finally { Exit-LedgerJournalLock -Lock $journalLock }
     }
 }

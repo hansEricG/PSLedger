@@ -76,6 +76,7 @@ function Add-LedgerCreditInvoice {
             }
 
             $original = Read-LedgerInvoiceFile -Path $filePath
+            Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath -Invoice $original
 
             switch ($original.Status) {
                 'Booked' { }

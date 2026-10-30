@@ -323,6 +323,105 @@ Describe 'Add-LedgerInvoicePayment' {
             $paid.RemainingAmount | Should -Be 0
         }
 
+        It 'Should replay a completed PaymentId without duplicating payments, even after later payments' {
+            $id = New-Guid
+            Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $id -Amount 5000 -Date '2024-04-10'
+            Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 5000 -Date '2024-04-10'
+            Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-04-20'
+            $paid = Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $id -PassThru
+            $paid.Status | Should -Be 'Paid'
+            $paid.Payments | Should -HaveCount 3
+            $paid.PaidAmount | Should -Be 12500
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12') | Should -HaveCount 4
+        }
+
+        It 'Should reject reuse of a PaymentId with changed <Field>' -ForEach @(
+            @{ Field = 'Amount'; Value = 4999 }
+            @{ Field = 'Date'; Value = '2024-04-11' }
+            @{ Field = 'Account'; Value = '1910' }
+            @{ Field = 'FiscalYear'; Value = '2025-01_2025-12' }
+            @{ Field = 'InvoiceNumber'; Value = 2 }
+        ) {
+            New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2024-03-20' -Description 'Annan faktura' -Rows $rows
+            $id = New-Guid
+            Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $id -Amount 5000 -Date '2024-04-10'
+            $retry = @{ JournalPath = $JournalPath; InvoiceNumber = 1; PaymentId = $id }
+            $retry[$Field] = $Value
+            { Add-LedgerInvoicePayment @retry } | Should -Throw '*different payment inputs*'
+            (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).Payments | Should -HaveCount 1
+        }
+
+        It 'Should block conflicting work until an unkeyed interrupted payment is resumed' {
+            $script:RealInvoiceSave = & (Get-Module PSLedger) { (Get-Command Save-LedgerInvoiceFile).ScriptBlock }
+            Mock Save-LedgerInvoiceFile -ModuleName PSLedger { throw 'Injected payment save failure' }
+            { Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 5000 -Date '2024-04-10' } |
+                Should -Throw '*PaymentId*'
+            $plan = Get-ChildItem -LiteralPath (Join-Path $JournalPath 'invoices' 'payments') -File
+            $id = [guid]$plan.BaseName
+            $before = @(Get-ChildItem -LiteralPath $JournalPath -File -Recurse | Get-FileHash).Hash
+
+            { Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 5000 -Date '2024-04-10' } | Should -Throw '*unfinished payment*'
+            { Add-LedgerInvoiceReminder -JournalPath $JournalPath -InvoiceNumber 1 } | Should -Throw '*unfinished payment*'
+            { Add-LedgerInvoiceFee -JournalPath $JournalPath -InvoiceNumber 1 -Amount 60 } | Should -Throw '*unfinished payment*'
+            { Add-LedgerInvoiceInterest -JournalPath $JournalPath -InvoiceNumber 1 -Amount 60 } | Should -Throw '*unfinished payment*'
+            { Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 } | Should -Throw '*unfinished payment*'
+            { Invoke-LedgerBankMatching -JournalPath $JournalPath } | Should -Throw '*unfinished payment*'
+            { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -InvoiceNumber 1 } | Should -Throw '*unfinished payment*'
+            @(Get-ChildItem -LiteralPath $JournalPath -File -Recurse | Get-FileHash).Hash | Should -Be $before
+
+            Mock Save-LedgerInvoiceFile -ModuleName PSLedger { & $script:RealInvoiceSave -Invoice $Invoice }
+            $partial = Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $id -PassThru
+            $partial.RemainingAmount | Should -Be 7500
+            $partial.Payments | Should -HaveCount 1
+        }
+
+        It 'Should leave no payment plan on WhatIf or failed amount preflight' {
+            Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-04-10' -WhatIf
+            { Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 1.001 -Date '2024-04-10' } | Should -Throw '*more than two decimals*'
+            Test-Path -LiteralPath (Join-Path $JournalPath 'invoices' 'payments') | Should -BeFalse
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12') | Should -HaveCount 1
+        }
+
+        It 'Should reject recovery after changing <Change> without further writes' -ForEach @(
+            @{ Change = 'invoice'; Expected = '*has changed since payment*' }
+            @{ Change = 'verification'; Expected = '*differs from the invoice posting plan*' }
+            @{ Change = 'integrity'; Expected = '*integrity issues*' }
+            @{ Change = 'plan amount'; Expected = '*inputs do not match*' }
+            @{ Change = 'malformed plan'; Expected = '*Invalid invoice posting record*' }
+        ) {
+            $id = New-Guid
+            Mock Save-LedgerInvoiceFile -ModuleName PSLedger { throw 'Injected payment save failure' }
+            { Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $id -Amount 5000 -Date '2024-04-10' } | Should -Throw '*PaymentId*'
+            $plan = Join-Path $JournalPath 'invoices' 'payments' "$id.txt"
+            switch ($Change) {
+                'invoice' { Add-Content -LiteralPath (Join-Path $JournalPath 'invoices' 'inv0001.txt') -Value '; changed' }
+                'verification' { Add-Content -LiteralPath (Join-Path $JournalPath '2024-01_2024-12' 'ver0002.txt') -Value '; changed' }
+                'integrity' { Add-Content -LiteralPath (Join-Path $JournalPath '2024-01_2024-12' 'integrity.txt') -Value 'partial append' }
+                'plan amount' {
+                    $text = (Get-Content -LiteralPath $plan -Raw) -replace "PaymentAmount:`t5000", "PaymentAmount:`t4999"
+                    Set-Content -LiteralPath $plan -Value $text -NoNewline
+                }
+                'malformed plan' { Set-Content -LiteralPath $plan -Value "FormatVersion:`t1" }
+            }
+            $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash
+            { Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $id } | Should -Throw $Expected
+            @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash | Should -Be $before
+        }
+
+        It 'Should allocate distinct default payment identities for piped invoices' {
+            New-LedgerFiscalYear -JournalPath $JournalPath -StartDate '2025-01-01' -EndDate '2025-12-31'
+            New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2025-03-15' -Description 'Nytt uppdrag' `
+                -Rows @(@{ Account = '3010'; Amount = 2000 })
+            Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 2
+            @(
+                [pscustomobject]@{ InvoiceNumber = 1 }
+                [pscustomobject]@{ InvoiceNumber = 2 }
+            ) | Add-LedgerInvoicePayment -JournalPath $JournalPath -Date '2025-04-10'
+            (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).PaidAmount | Should -Be 12500
+            (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 2).PaidAmount | Should -Be 2000
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2025-01_2025-12') | Should -HaveCount 3
+        }
+
         It 'Should default the payment amount to the remaining amount' {
             Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-04-10'
             (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).Status | Should -Be 'Paid'

@@ -15,6 +15,12 @@
   identity and input/content hashes before posting. A matching saved verification
   can complete the invoice status even after year closure; recovery never creates
   a new verification in a closed year. Archive packages retain the posting plans.
+- **Recoverable customer-invoice payments with optional `-PaymentId`.** Reuse
+  a saved GUID to resume an interrupted payment or return the current invoice
+  without recording a completed payment again. Different IDs permit identical
+  real partial payments. Unkeyed payments retain normal registration semantics;
+  an unfinished payment blocks another payment and reports the ID to resume.
+  Payment plans and number reservations are retained and included in archives.
 
 ### Fixed
 - **Verification filename conflicts no longer overwrite existing entries.**
@@ -24,11 +30,17 @@
   saved file and warns against repeating the posting.
 - **Pipelined invoice posting resolves each invoice's fiscal year independently**
   when no explicit year is supplied.
+- **Customer-invoice updates share the payment lock.** Charges, interest
+  calculation, reminders and credit notes cannot overwrite a concurrent payment
+  update or change an invoice with an unfinished payment. Automatic and manual
+  bank matching hold the same lock and refuse to bypass an unfinished payment
+  by merely linking its saved verification.
 
-Recovery currently covers customer-invoice posting only. Changed inputs,
+Recovery currently covers customer-invoice posting and payments. Changed inputs,
 conflicting verifications and damaged integrity chains stop recovery explicitly.
-Other register, payment, payroll and import workflows still need operation-wide
-locking and recovery; this is not general multi-user support.
+Supplier payments, charges, credit notes, payroll, imports and the complete bank
+matching workflow still need recovery. Locking is not a multi-file transaction
+or general multi-user support.
 
 ## [1.1.0] - 2026-10-30
 

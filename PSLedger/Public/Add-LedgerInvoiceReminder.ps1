@@ -107,57 +107,63 @@ function Add-LedgerInvoiceReminder {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
+            $invoiceDir = Get-LedgerInvoiceDirectory -JournalPath $JournalPath
+            $filePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber)
+            if (-not (Test-Path $filePath)) {
+                throw "Invoice $InvoiceNumber does not exist."
+            }
 
-        $invoiceDir = Get-LedgerInvoiceDirectory -JournalPath $JournalPath
-        $filePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber)
-        if (-not (Test-Path $filePath)) {
-            throw "Invoice $InvoiceNumber does not exist."
-        }
+            if ($PSBoundParameters.ContainsKey('Path') -and (Test-Path $Path) -and -not $Force) {
+                throw "Destination file already exists: $Path. Use -Force to overwrite."
+            }
 
-        if ($PSBoundParameters.ContainsKey('Path') -and (Test-Path $Path) -and -not $Force) {
-            throw "Destination file already exists: $Path. Use -Force to overwrite."
-        }
+            $invoice = Read-LedgerInvoiceFile -Path $filePath
+            Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath -Invoice $invoice
 
-        $invoice = Read-LedgerInvoiceFile -Path $filePath
+            if ($invoice.Status -notin @('Booked', 'Partial')) {
+                throw "Invoice $InvoiceNumber is not an open receivable (status '$($invoice.Status)'). Only posted, unpaid invoices can be reminded."
+            }
 
-        if ($invoice.Status -notin @('Booked', 'Partial')) {
-            throw "Invoice $InvoiceNumber is not an open receivable (status '$($invoice.Status)'). Only posted, unpaid invoices can be reminded."
-        }
+            if ($BookFee -and $Fee -le 0) {
+                throw "-BookFee requires -Fee to be greater than zero."
+            }
 
-        if ($BookFee -and $Fee -le 0) {
-            throw "-BookFee requires -Fee to be greater than zero."
-        }
+            if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", 'Record payment reminder')) {
+                return
+            }
 
-        if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", 'Record payment reminder')) {
-            return
-        }
+            $invoice.ReminderCount = [int]$invoice.ReminderCount + 1
+            $invoice.LastReminderDate = $Date
+            Save-LedgerInvoiceFile -Invoice $invoice
 
-        $invoice.ReminderCount = [int]$invoice.ReminderCount + 1
-        $invoice.LastReminderDate = $Date
-        Save-LedgerInvoiceFile -Invoice $invoice
+            if ($BookFee) {
+                Add-LedgerInvoiceChargeInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
+                    -Type 'Fee' -Amount $Fee -Account $FeeAccount -Date $Date
+            }
 
-        if ($BookFee) {
-            Add-LedgerInvoiceChargeInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
-                -Type 'Fee' -Amount $Fee -Account $FeeAccount -Date $Date
-        }
+            if ($PSBoundParameters.ContainsKey('Path')) {
+                $journal = Get-LedgerJournal -Path $JournalPath
+                $customer = Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $invoice.CustomerNumber
+                $reloaded = Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+                $blocks = @(Build-LedgerReminderBlock -Invoice $reloaded -Journal $journal -Customer $customer -AsOf $Date -Fee $Fee -FeeBooked:$BookFee)
 
-        if ($PSBoundParameters.ContainsKey('Path')) {
-            $journal = Get-LedgerJournal -Path $JournalPath
-            $customer = Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $invoice.CustomerNumber
-            $reloaded = Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
-            $blocks = @(Build-LedgerReminderBlock -Invoice $reloaded -Journal $journal -Customer $customer -AsOf $Date -Fee $Fee -FeeBooked:$BookFee)
+                switch ($Format) {
+                    'Word' { ConvertTo-LedgerReportDocx -Block $blocks -Path $Path }
+                    'Pdf' { ConvertTo-LedgerReportPdf -Block $blocks -Path $Path }
+                    'Markdown' { ConvertTo-LedgerReportMarkdown -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
+                    default { ConvertTo-LedgerReportText -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
+                }
+            }
 
-            switch ($Format) {
-                'Word' { ConvertTo-LedgerReportDocx -Block $blocks -Path $Path }
-                'Pdf' { ConvertTo-LedgerReportPdf -Block $blocks -Path $Path }
-                'Markdown' { ConvertTo-LedgerReportMarkdown -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
-                default { ConvertTo-LedgerReportText -Block $blocks | Set-Content -Path $Path -Encoding UTF8 }
+            if ($PassThru) {
+                Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
             }
         }
-
-        if ($PassThru) {
-            Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
-        }
+        finally { Exit-LedgerJournalLock -Lock $journalLock }
     }
 }
 

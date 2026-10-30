@@ -9,7 +9,10 @@ function Get-LedgerInvoicePostingPath {
 
 function Read-LedgerInvoicePosting {
     [CmdletBinding()]
-    param ([Parameter(Mandatory)] [string]$Path)
+    param (
+        [Parameter(Mandatory)] [string]$Path,
+        [switch]$Payment
+    )
 
     $fields = @{}
     foreach ($line in Get-Content -LiteralPath $Path -Encoding UTF8 -ErrorAction Stop) {
@@ -31,10 +34,11 @@ function Read-LedgerInvoicePosting {
         throw "Invalid invoice posting record '$Path': missing or invalid identity, reservation or hash."
     }
     $null = Assert-LedgerSafeLeafName -Name $fields.FiscalYear -Kind 'fiscal year'
-    if ((Split-Path $Path -Leaf) -ne (Get-LedgerInvoiceFileName -InvoiceNumber $invoiceNumber)) {
-        throw "Invalid invoice posting record '$Path': invoice number does not match its filename."
+    $fileName = if ($Payment) { "$id.txt" } else { Get-LedgerInvoiceFileName -InvoiceNumber $invoiceNumber }
+    if ((Split-Path $Path -Leaf) -ne $fileName) {
+        throw "Invalid invoice posting record '$Path': identity does not match its filename."
     }
-    [pscustomobject]@{
+    $operation = [pscustomobject]@{
         OperationId = $id
         InvoiceNumber = $invoiceNumber
         FiscalYear = $fields.FiscalYear
@@ -42,6 +46,22 @@ function Read-LedgerInvoicePosting {
         InvoiceHash = $fields.InvoiceHash
         VerificationHash = $fields.VerificationHash
     }
+    if ($Payment) {
+        $date = [datetime]::MinValue
+        $amount = [decimal]0
+        if (-not [datetime]::TryParseExact([string]$fields.PaymentDate, 'yyyy-MM-dd',
+                [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$date) -or
+            $fields.PaymentAmount -notmatch '^\d+(\.\d{1,2})?$' -or
+            -not [decimal]::TryParse([string]$fields.PaymentAmount, [Globalization.NumberStyles]::AllowDecimalPoint,
+                [Globalization.CultureInfo]::InvariantCulture, [ref]$amount) -or $amount -le 0 -or
+            $fields.PaymentAccount -notmatch '^\d+$') {
+            throw "Invalid invoice posting record '$Path': invalid payment date, amount or account."
+        }
+        $operation | Add-Member -NotePropertyMembers @{
+            PaymentDate = $date; PaymentAmount = $amount; PaymentAccount = $fields.PaymentAccount
+        }
+    }
+    $operation
 }
 
 function Get-LedgerInvoicePostingReservation {
@@ -51,9 +71,13 @@ function Get-LedgerInvoicePostingReservation {
         [Parameter(Mandatory)] [string]$FiscalYear
     )
     $directory = Join-Path $JournalPath 'invoices' 'posting'
-    if (-not (Test-Path -LiteralPath $directory)) { return }
-    foreach ($file in Get-ChildItem -LiteralPath $directory -Filter 'inv*.txt' -File -ErrorAction Stop) {
-        $operation = Read-LedgerInvoicePosting -Path $file.FullName
+    if (Test-Path -LiteralPath $directory) {
+        foreach ($file in Get-ChildItem -LiteralPath $directory -Filter 'inv*.txt' -File -ErrorAction Stop) {
+            $operation = Read-LedgerInvoicePosting -Path $file.FullName
+            if ($operation.FiscalYear -eq $FiscalYear) { $operation.VerificationNumber }
+        }
+    }
+    foreach ($operation in Get-LedgerInvoicePaymentOperation -JournalPath $JournalPath) {
         if ($operation.FiscalYear -eq $FiscalYear) { $operation.VerificationNumber }
     }
 }
@@ -62,10 +86,11 @@ function Save-LedgerInvoicePosting {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)] [string]$Path,
-        [Parameter(Mandatory)] [psobject]$Operation
+        [Parameter(Mandatory)] [psobject]$Operation,
+        [switch]$Payment
     )
     $null = New-Item -ItemType Directory -Path (Split-Path $Path -Parent) -Force -ErrorAction Stop
-    Set-LedgerFileContent -Path $Path -NoClobber -Value @(
+    $lines = @(
         '; PSLedger customer invoice posting'
         "FormatVersion:`t1"
         "OperationId:`t$($Operation.OperationId)"
@@ -75,6 +100,14 @@ function Save-LedgerInvoicePosting {
         "InvoiceHash:`t$($Operation.InvoiceHash)"
         "VerificationHash:`t$($Operation.VerificationHash)"
     )
+    if ($Payment) {
+        $lines += @(
+            "PaymentDate:`t$($Operation.PaymentDate.ToString('yyyy-MM-dd'))"
+            "PaymentAmount:`t$(Format-LedgerInvoiceAmount -Value $Operation.PaymentAmount)"
+            "PaymentAccount:`t$($Operation.PaymentAccount)"
+        )
+    }
+    Set-LedgerFileContent -Path $Path -NoClobber -Value $lines
 }
 
 function Assert-LedgerInvoicePostingIntegrity {

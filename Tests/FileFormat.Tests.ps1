@@ -312,8 +312,11 @@ Describe 'File format contract' {
     }
 
     Context 'Writing' {
-        It 'Should link a posting plan to an existing draft and a readable verification' {
-            $journal = Join-Path $TestDrive 'Posting.ledger'
+        It 'Should link a <Kind> plan to its invoice and a readable verification' -ForEach @(
+            @{ Kind = 'posting' }
+            @{ Kind = 'payment' }
+        ) {
+            $journal = Join-Path $TestDrive "$Kind.ledger"
             Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse
             $hashText = {
                 param([string]$Text)
@@ -323,23 +326,37 @@ Describe 'File format contract' {
             $draftHash = & $hashText (Get-Content -LiteralPath (Join-Path $journal 'invoices' 'inv0002.txt') -Raw -Encoding UTF8)
 
             $invoice = Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 2 -PassThru
+            $operationPath = Join-Path $journal 'invoices' 'posting' 'inv0002.txt'
+            $verificationNumber = $invoice.BookedVerification
+            if ($Kind -eq 'payment') {
+                $draftHash = & $hashText (Get-Content -LiteralPath (Join-Path $journal 'invoices' 'inv0002.txt') -Raw -Encoding UTF8)
+                $id = New-Guid
+                $invoice = Add-LedgerInvoicePayment -JournalPath $journal -InvoiceNumber 2 -Date '2024-05-01' -Amount 112.50 -PaymentId $id -PassThru
+                $verificationNumber = $invoice.Payments[0].VerificationNumber
+                $operationPath = Join-Path $journal 'invoices' 'payments' "$id.txt"
+            }
 
             $fields = @{}
-            foreach ($line in Get-Content -LiteralPath (Join-Path $journal 'invoices' 'posting' 'inv0002.txt') -Encoding UTF8) {
+            foreach ($line in Get-Content -LiteralPath $operationPath -Encoding UTF8) {
                 if ($line -match '^([A-Za-z]+):\t(.+)$') { $fields[$Matches[1]] = $Matches[2] }
             }
             $fields.FormatVersion | Should -Be '1'
             $fields.InvoiceNumber | Should -Be '2'
             $fields.FiscalYear | Should -Be $invoice.BookedFiscalYear
-            $fields.VerificationNumber | Should -Be "$($invoice.BookedVerification)"
+            $fields.VerificationNumber | Should -Be "$verificationNumber"
             $fields.InvoiceHash | Should -Be $draftHash
             [guid]::ParseExact($fields.OperationId, 'D') | Should -Not -Be ([guid]::Empty)
 
-            $path = Join-Path $journal $Y ('ver{0:D4}.txt' -f $invoice.BookedVerification)
+            $path = Join-Path $journal $Y ('ver{0:D4}.txt' -f $verificationNumber)
             $text = Get-Content -LiteralPath $path -Raw -Encoding UTF8
             $fields.VerificationHash | Should -Be (& $hashText $text)
             $text | Should -Match "(?m)^OperationId: $([regex]::Escape($fields.OperationId))\r?$"
-            $entry = Get-LedgerEntry -JournalPath $journal -FiscalYear $Y -VerificationNumber $invoice.BookedVerification
+            $entry = Get-LedgerEntry -JournalPath $journal -FiscalYear $Y -VerificationNumber $verificationNumber
+            if ($Kind -eq 'payment') {
+                $fields.PaymentDate | Should -Be $entry.Date
+                $fields.PaymentAccount | Should -Be $entry.Rows[0].Account
+                [decimal]$fields.PaymentAmount | Should -Be $entry.Rows[0].Amount
+            }
             ($entry.Rows | Measure-Object -Property Amount -Sum).Sum | Should -Be 0
             (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
         }
