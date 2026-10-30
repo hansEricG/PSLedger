@@ -197,3 +197,98 @@ Describe 'Export-LedgerVatDeclaration' {
         }
     }
 }
+
+Describe 'VAT declaration reference examples' {
+    # Expected values are hand-calculated, not derived from PSLedger mappings.
+    # Skatteverket: fields 05/07, 37/38, 48/49 and 50/60-62:
+    # https://www.skatteverket.se/foretag/moms/deklareramoms/fyllaimomsdeklarationen.4.3a2a542410ab40a421c80004214.html
+    # eSKD names and order:
+    # https://www.skatteverket.se/foretag/moms/deklareramoms/lamnamomsdeklarationviafilietjansten.4.2fb39afe18dabf1e4d223cc.html
+    It 'Should report and export <Case>' -ForEach @(
+        @{
+            Case = 'import VAT at three rates with full input deduction'
+            Rows = @(
+                # Taxable value 11,000 = customs value 10,000 + duty 500 + freight 500.
+                @{ Account = '4545'; Amount = 11000 }; @{ Account = '4598'; Amount = -11000 }
+                @{ Account = '2615'; Amount = -2750 }; @{ Account = '2645'; Amount = 2750 }
+                @{ Account = '4546'; Amount = 2000 }; @{ Account = '4598'; Amount = -2000 }
+                @{ Account = '2625'; Amount = -240 }; @{ Account = '2645'; Amount = 240 }
+                @{ Account = '4547'; Amount = 1000 }; @{ Account = '4598'; Amount = -1000 }
+                @{ Account = '2635'; Amount = -60 }; @{ Account = '2645'; Amount = 60 }
+            )
+            Rules = @()
+            Expected = @{ 5 = 0; 10 = 0; 11 = 0; 12 = 0; 48 = 3050; 49 = 0; 50 = 14000; 60 = 2750; 61 = 240; 62 = 60 }
+            XmlAmounts = [ordered]@{
+                ForsMomsEjAnnan = 0; MomsUlagImport = 14000
+                MomsUtgHog = 0; MomsUtgMedel = 0; MomsUtgLag = 0
+                MomsImportUtgHog = 2750; MomsImportUtgMedel = 240; MomsImportUtgLag = 60
+                MomsIngAvdr = 3050; MomsBetala = 0
+            }
+        }
+        @{
+            Case = 'a period containing sales and purchase credit notes'
+            Rows = @(
+                @{ Account = '1510'; Amount = -1250 }; @{ Account = '3010'; Amount = 1000 }; @{ Account = '2610'; Amount = 250 }
+                @{ Account = '2440'; Amount = 500 }; @{ Account = '5010'; Amount = -400 }; @{ Account = '2640'; Amount = -100 }
+            )
+            Rules = @()
+            Expected = @{ 5 = -1000; 10 = -250; 11 = 0; 12 = 0; 48 = -100; 49 = -150 }
+            XmlAmounts = [ordered]@{
+                ForsMomsEjAnnan = -1000; MomsUtgHog = -250; MomsUtgMedel = 0; MomsUtgLag = 0
+                MomsIngAvdr = -100; MomsBetala = -150
+            }
+        }
+        @{
+            Case = 'triangular trade as the intermediary without acquisition VAT'
+            Rows = @(
+                @{ Account = '4512'; Amount = 10000 }; @{ Account = '2440'; Amount = -10000 }
+                @{ Account = '1510'; Amount = 12500 }; @{ Account = '3107'; Amount = -12500 }
+            )
+            Rules = @()
+            Expected = @{ 5 = 0; 10 = 0; 11 = 0; 12 = 0; 37 = 10000; 38 = 12500; 48 = 0; 49 = 0 }
+            XmlAmounts = [ordered]@{
+                ForsMomsEjAnnan = 0; InkopVaruMellan3p = 10000; ForsVaruMellan3p = 12500
+                MomsUtgHog = 0; MomsUtgMedel = 0; MomsUtgLag = 0; MomsIngAvdr = 0; MomsBetala = 0
+            }
+        }
+        @{
+            Case = 'separately booked positive VMB alongside a loss-making sale'
+            # Purchase 100, sale 500 => margin 400, taxable base 320, VAT 80.
+            # The purchase-price component on 3223 is explicitly excluded.
+            # Booking convention: https://www.bokio.se/hjalp/bokforing/bokforingshjalp/hur-bokfor-jag-vinstmarginalbeskattning/
+            Rows = @(
+                @{ Account = '4211'; Amount = 100 }; @{ Account = '1930'; Amount = -100 }
+                @{ Account = '1930'; Amount = 500 }; @{ Account = '3211'; Amount = -320 }
+                @{ Account = '3223'; Amount = -100 }; @{ Account = '2616'; Amount = -80 }
+                @{ Account = '4212'; Amount = 600 }; @{ Account = '1930'; Amount = -600 }
+                @{ Account = '1930'; Amount = 500 }; @{ Account = '3212'; Amount = -500 }
+            )
+            Rules = @("3223`t-")
+            Expected = @{ 5 = 0; 7 = 320; 10 = 80; 11 = 0; 12 = 0; 48 = 0; 49 = 80 }
+            XmlAmounts = [ordered]@{
+                ForsMomsEjAnnan = 0; UlagMargbesk = 320; MomsUtgHog = 80
+                MomsUtgMedel = 0; MomsUtgLag = 0; MomsIngAvdr = 0; MomsBetala = 80
+            }
+        }
+    ) {
+        $journal = Join-Path $TestDrive "$([guid]::NewGuid().ToString('N')).ledger"
+        New-LedgerJournal -Path $journal -Name 'Momsreferens AB' -OrgNumber '556677-8899'
+        New-LedgerFiscalYear -JournalPath $journal -StartDate '2024-01-01' -EndDate '2024-12-31'
+        foreach ($account in $Rows.Account | Sort-Object -Unique) {
+            Add-LedgerAccount -JournalPath $journal -AccountNumber $account -AccountName "Konto $account"
+        }
+        if ($Rules.Count -gt 0) { Set-Content -LiteralPath (Join-Path $journal 'vat.txt') -Value $Rules }
+        Add-LedgerEntry -JournalPath $journal -FiscalYear '2024-01_2024-12' -Date '2024-01-15' -Description $Case -Rows $Rows
+        $period = @{ JournalPath = $journal; FiscalYear = '2024-01_2024-12'; FromDate = '2024-01-01'; ToDate = '2024-01-31' }
+        $report = @(Get-LedgerVatReport @period)
+        @($report.Box | Sort-Object) | Should -Be @($Expected.Keys | Sort-Object)
+        foreach ($box in $report) { $box.Amount | Should -Be $Expected[$box.Box] }
+
+        $path = Join-Path $TestDrive "$([guid]::NewGuid().ToString('N')).xml"
+        Export-LedgerVatDeclaration @period -Path $path | Out-Null
+        [xml]$xml = Get-Content -LiteralPath $path -Raw
+        $moms = $xml.eSKDUpload.Moms
+        @($moms.ChildNodes.Name) | Should -Be (@('Period') + @($XmlAmounts.Keys))
+        foreach ($tag in $XmlAmounts.Keys) { [long]$moms.$tag | Should -Be $XmlAmounts[$tag] }
+    }
+}

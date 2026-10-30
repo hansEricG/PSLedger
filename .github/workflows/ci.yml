@@ -24,7 +24,8 @@ jobs:
       - name: Analyze
         shell: pwsh
         run: |
-          $results = Invoke-ScriptAnalyzer -Path ./PSLedger -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
+          $results = @(Invoke-ScriptAnalyzer -Path ./PSLedger -Recurse -Settings ./PSScriptAnalyzerSettings.psd1)
+          $results += @(Invoke-ScriptAnalyzer -Path ./scripts -Recurse -Settings ./PSScriptAnalyzerSettings.psd1)
           $results | Format-Table -AutoSize -Property Severity, RuleName, ScriptName, Line, Message | Out-String -Width 250
           if ($results) { throw "PSScriptAnalyzer found $(@($results).Count) issue(s)." }
 
@@ -34,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -44,6 +45,7 @@ jobs:
           $PSVersionTable.PSVersion
           Install-Module Pester -MinimumVersion 6.0.0 -Scope CurrentUser -Force -SkipPublisherCheck
           Install-Module TDDUtils -MinimumVersion 1.0.6 -Scope CurrentUser -Force
+          Install-Module Microsoft.PowerShell.PSResourceGet -MinimumVersion 1.1.0 -Scope CurrentUser -Force
 
       - name: Run tests
         shell: pwsh
@@ -56,6 +58,18 @@ jobs:
           $config.TestResult.Enabled = $true
           $config.TestResult.OutputPath = 'pester-results.xml'
           Invoke-Pester -Configuration $config
+
+      - name: Verify module package
+        shell: pwsh
+        run: ./scripts/Test-ModulePackage.ps1 -DestinationPath ./artifacts
+
+      - name: Upload verified module package
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: PSLedger-package
+          path: artifacts/*.nupkg
+          if-no-files-found: error
 
       - name: Upload test results
         if: always()
@@ -90,13 +104,23 @@ jobs:
           $notes = if ($end) { $lines[$start..($start + $end - 2)] } else { $lines[$start..($lines.Count - 1)] }
           $notes | Set-Content release-notes.md -Encoding utf8
 
+      - name: Download verified module package
+        uses: actions/download-artifact@v4
+        with:
+          name: PSLedger-package
+          path: artifacts
+
       - name: Publish module
         shell: pwsh
         env:
           PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
         run: |
           if (-not $env:PSGALLERY_API_KEY) { throw 'The PSGALLERY_API_KEY secret is not set.' }
-          Publish-PSResource -Path ./PSLedger -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY -Verbose
+          Install-Module Microsoft.PowerShell.PSResourceGet -MinimumVersion 1.1.0 -Scope CurrentUser -Force
+          Import-Module Microsoft.PowerShell.PSResourceGet -MinimumVersion 1.1.0
+          $packages = @(Get-ChildItem ./artifacts -Filter '*.nupkg' -File)
+          if ($packages.Count -ne 1) { throw "Expected one verified package, found $($packages.Count)." }
+          Publish-PSResource -NupkgPath $packages[0].FullName -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY -Verbose
 
       - name: Create GitHub release
         env:

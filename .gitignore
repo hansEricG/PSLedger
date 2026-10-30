@@ -1,5 +1,6 @@
 # Build/output
 output/
+artifacts/
 testResults.xml
 pester-results.xml
 

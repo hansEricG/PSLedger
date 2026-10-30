@@ -189,6 +189,32 @@ Describe 'Test-LedgerIntegrity' {
                 Should -Be @('Chain line 4 Malformed')
         }
 
+        It 'Rejects a duplicate verification with a valid chain hash and changed item hash=<ChangedHash>' -ForEach @(
+            @{ ChangedHash = $false }
+            @{ ChangedHash = $true }
+        ) {
+            Add-TestEntry -JournalPath $JournalPath
+            Add-TestEntry -JournalPath $JournalPath
+            $chainFile = Join-Path $JournalPath $FiscalYear 'integrity.txt'
+            $records = @(Get-Content -LiteralPath $chainFile | Where-Object { $_ -notmatch '^;' })
+            $duplicate = $records[0] -split "`t"
+            if ($ChangedHash) { $duplicate[3] = 'f' * 64 }
+            $previous = ($records[-1] -split "`t")[4]
+            $payload = "$previous`t$($duplicate[0..3] -join "`t")"
+            $duplicate[4] = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
+                    [Text.Encoding]::UTF8.GetBytes($payload))).ToLowerInvariant()
+            Add-Content -LiteralPath $chainFile -Value ($duplicate -join "`t")
+            $before = (Get-FileHash -LiteralPath $chainFile).Hash
+
+            $result = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
+
+            $result.Status | Should -Be 'Invalid'
+            $result.IsValid | Should -BeFalse
+            $result.Verifications | Should -Be 2
+            Get-Problem $result | Should -Be @('Verification 1 Duplicate')
+            (Get-FileHash -LiteralPath $chainFile).Hash | Should -Be $before
+        }
+
         It 'Detects a rebuilt chain with ExpectedHash' {
             Add-TestEntry -JournalPath $JournalPath
             $saved = (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear).ChainHash

@@ -12,7 +12,7 @@
 RootModule = 'PSLedger.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.0'
+ModuleVersion = '1.1.0'
 
 # Supported PSEditions
 CompatiblePSEditions = @('Core')
@@ -162,6 +162,7 @@ FunctionsToExport = @(
     'Get-LedgerTimeReport',
     'Get-LedgerTimeResource',
     'Get-LedgerVatReport',
+    'Get-LedgerVatReportDetail',
     'Import-LedgerBankStatement',
     'Import-LedgerChart',
     'Convert-LedgerChart',
@@ -265,4 +266,3 @@ PrivateData = @{
 # DefaultCommandPrefix = ''
 
 }
-

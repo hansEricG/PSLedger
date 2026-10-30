@@ -101,6 +101,27 @@ a later cleanup phase. Refactoring in 14–16 and documentation work in 20 shoul
 support these outcomes. Currency, payment integrations, expanded payroll,
 K10, ROT/RUT and new business types remain demand-driven backlog items.
 
+### 1.1.0 release preparation
+
+This is an additive feature release, not a 1.0.1 patch. Keep it bounded to
+milestone A and the following directly related improvements:
+
+- [x] Complete the reviewed correctness fixes in 8–10.
+- [x] Account-level VAT explanations (`Get-LedgerVatReportDetail`): amounts,
+      matched rules and sources, explicit exclusions versus unmapped accounts.
+- [x] Regression coverage for duplicate verification seals with valid chain
+      hashes. Detection already existed; no integrity-format change is needed.
+- [x] Independent VAT report/export examples for import, credit notes,
+      triangular trade and separately calculated VMB.
+- [x] Configure macOS CI and restore/import checks on the actual module
+      package; publish the verified artifact, not a second build.
+- [ ] Require successful Windows, Linux and macOS CI runs before release.
+- [x] Set `ModuleVersion` to 1.1.0 and prepare the changelog.
+- [ ] Tag and publish the release after the cross-platform checks pass.
+
+Locking, interrupted-operation recovery and period locks remain subsequent
+milestones, not prerequisites silently added to this release.
+
 ### Correctness
 
 #### 8. VAT declaration mapping
@@ -158,8 +179,10 @@ Implement the locking part together with step 12, not as a separate append lock.
 - [ ] `Write-LedgerIntegrityRecord` appends with `File.AppendAllText` outside
       the atomic write helper; protect the read-head-and-append step within
       the same operation lock as the content being sealed.
-- [ ] Report a duplicate `Verification` record for the same key as a chain
-      error instead of silently keeping the first one.
+- [x] Confirm that duplicate `Verification` records are reported even with
+      valid chain hashes, including a repeated key with a different content
+      hash. The earlier review mistook the state reader keeping the first seal
+      for missing detection; `Test-LedgerIntegrity` already reports duplicates.
 - [ ] Seal opening balances and relevant fiscal-year metadata, with an explicit
       lifecycle for legitimate updates and a compatibility plan for old chains.
       A changed opening balance changes every balance in the year.
@@ -232,8 +255,11 @@ values (SRU mapping, tax rates) live in code.
 ### Testing, CI and documentation
 
 #### 18. Tests
-- [ ] Independent reference examples for VAT boxes and tax exports, including
-      negative VMB, credit notes and effective mapping overrides. Internal
+- [x] Independent VAT report/export examples for import VAT, credit notes,
+      triangular trade and positive/negative VMB with an explicit mapping
+      override. Expected amounts and eSKD order are not derived from the mapping
+      implementation; sources are recorded beside the examples.
+- [ ] Extend independent reference examples to other tax exports. Internal
       export/import round-trips alone cannot establish accounting correctness.
 - [ ] Fault-injection and retry tests for multi-file writes, imports, posting
       and closing, plus concurrent-writer tests for steps 11–12 and 30.
@@ -250,11 +276,13 @@ values (SRU mapping, tax rates) live in code.
       from step 2).
 
 #### 19. CI and release
-- [ ] Add macOS to the test matrix (the README promises macOS support).
+- [x] Add macOS to the test matrix (the README promises macOS support).
 - [ ] Run PSScriptAnalyzer on `Tests/` as well.
 - [ ] Code coverage report from Pester.
 - [ ] Dependabot for GitHub Actions; consider pinning actions by SHA.
-- [ ] Run `Test-ModuleManifest` on the package before publishing.
+- [x] Restore the actual package, run `Test-ModuleManifest`, import in a fresh
+      process and check exports plus a bookkeeping flow on all three platforms.
+      Gate publication on these checks and publish the verified artifact.
 - [ ] Review the broad rule exclusions in `PSScriptAnalyzerSettings.psd1`
       (for example `PSUseShouldProcessForStateChangingFunctions`) and use
       targeted suppressions instead.

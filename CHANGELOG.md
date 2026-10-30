@@ -2,7 +2,23 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-30
+
 ### Added
+- **`Get-LedgerVatReportDetail`** explains each active account's signed balance,
+  contribution, VAT box, matched rule and mapping source. Explicit exclusions
+  and accounts without a matching rule are distinguished from mapped accounts;
+  the summary aggregates the same detail.
+- **Independent VAT reference cases** cover import VAT at all three rates,
+  sales and purchase credit notes, triangular trade and separately booked VMB,
+  including report amounts and eSKD tag order.
+- **Integrity regression cases** confirm the existing duplicate-verification
+  detection even when every chain hash is valid and the repeated seal has the
+  same or a different content hash. The integrity format is unchanged.
+- **macOS and packaged-module checks in CI.** The actual `.nupkg` is restored
+  locally and its manifest, exports and a bookkeeping flow are checked in a
+  fresh PowerShell process on Windows, Linux and macOS. Release publication uses
+  the verified Ubuntu artifact rather than rebuilding the module.
 - **All boxes of the VAT return.** `Get-LedgerVatReport` and
   `Export-LedgerVatDeclaration` now map BAS accounts to every box of the eSKD 6.0
   format: taxable withdrawals, margin scheme and rental income (06–08), purchases
@@ -26,6 +42,8 @@
   rounding rule.
 
 ### Changed
+- **VAT reports reject reversed date intervals** instead of silently returning
+  an empty summary.
 - **The BAS-Komplett and BAS-Smaforetag templates use standard BAS accounts**
   for VAT-relevant sales and purchases: 3004, 3105, 3108, 3305 and 3308 (and in
   BAS-Komplett 3106, 3231, 3401 and 3404) instead of 3050, 3060, 3100, 3200,

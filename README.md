@@ -129,6 +129,7 @@ Copy-LedgerOpeningBalance -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-
 | `Test-LedgerSie` | Validate a SIE file without importing |
 | `Get-LedgerGeneralLedger` | General ledger (huvudbok) per account |
 | `Get-LedgerVatReport` | VAT declaration report (momsdeklaration) |
+| `Get-LedgerVatReportDetail` | Explain each account's VAT contribution, mapping rule and source |
 | `Export-LedgerVatDeclaration` | Export a VAT declaration to a Skatteverket eSKD file |
 | `Export-LedgerIncomeTaxReturn` | Export an income tax return (INK2) to Skatteverket SRU files |
 | `Add-LedgerDimension` | Add a dimension (e.g. cost centre, project) |
@@ -299,6 +300,25 @@ for no box):
 3800-3899	-
 ```
 
+To explain the figures before exporting a declaration:
+
+```powershell
+Get-LedgerVatReportDetail -JournalPath .\Konsultbyrån.ledger -FiscalYear '2024-01_2024-12' `
+    -FromDate '2024-01-01' -ToDate '2024-03-31' |
+    Format-Table AccountNumber, AccountName, Balance, Box, Amount, Source, Rule, Status
+```
+
+`Balance` is the signed movement in the period (debit positive); `Amount` is
+the contribution to the VAT box, using the same signs as the summary.
+`Source` is `BAS`, `vat.txt` or `None`. `Status` distinguishes an explicit
+mapping (`Mapped`), the BAS catch-all to box 05 (`Implicit`), an explicit
+exclusion (`Excluded`) and no matching rule (`Unmapped`). Excluded and unmapped
+accounts have no `Box` or `Amount`, but retain their balance. Unmapped bank or
+expense accounts are normally expected, not necessarily errors. Accounts with
+zero net movement are retained if they had entries in the period; opening
+balances are excluded. Box 49 is derived by the summary, not assigned to an
+individual account.
+
 Journals created from the BAS-Komplett or BAS-Smaforetag templates of PSLedger
 1.0.0 and earlier used some non-BAS accounts (e.g. 3300 for EU services).
 `Convert-LedgerChart` adds the BAS accounts and the `vat.txt` rules for them:
@@ -319,6 +339,12 @@ support for simplified VMB. Voluntarily taxed rent (3913) goes to box 08, while
 other taxable rent (3914) goes to box 05. See the
 [BAS chart](https://www.bas.se/kontoplaner/) and
 [Skatteverket's box instructions](https://www.skatteverket.se/foretag/moms/deklareramoms/fyllaimomsdeklarationen.4.3a2a542410ab40a421c80004214.html).
+
+If the non-taxable purchase-price component of a VMB sale is booked separately
+on another sales account, exclude that account in `vat.txt` too (for example,
+`3223` followed by a tab and `-`). The reference cases in
+`Tests/Export-LedgerVatDeclaration.Tests.ps1` demonstrate this convention, import
+VAT, credit notes and triangular trade with independently calculated amounts.
 
 ## Dimensions & Objects
 
@@ -890,29 +916,40 @@ Install-Module PSLedger
 - [Pester](https://github.com/pester/Pester) 6.x (testing framework)
 - [TDDUtils](https://github.com/hansEricG/TDDUtils) 1.0.6+ (test utilities)
 - [PSScriptAnalyzer](https://github.com/PowerShell/PSScriptAnalyzer) (linting)
+- Microsoft.PowerShell.PSResourceGet 1.1.0+ (package verification)
 
 ```powershell
 Install-Module Pester -MinimumVersion 6.0.0 -Scope CurrentUser -SkipPublisherCheck
 Install-Module TDDUtils -MinimumVersion 1.0.6 -Scope CurrentUser
 Install-Module PSScriptAnalyzer -Scope CurrentUser
+Install-Module Microsoft.PowerShell.PSResourceGet -MinimumVersion 1.1.0 -Scope CurrentUser
 ```
 
 ### Running Tests
 ```powershell
 Invoke-Pester ./Tests
 Invoke-ScriptAnalyzer -Path ./PSLedger -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
+Invoke-ScriptAnalyzer -Path ./scripts -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
+./scripts/Test-ModulePackage.ps1 -DestinationPath ./artifacts
 ```
 
-The same checks run in GitHub Actions on Windows and Linux for every push and
-pull request (`.github/workflows/ci.yml`).
+GitHub Actions runs Pester and package verification on Windows, Linux and macOS,
+and linting on Linux, for every push and pull request (`.github/workflows/ci.yml`).
+The package check uses an explicitly local repository, restores the `.nupkg`
+into a temporary versioned module directory, and validates the manifest, exports
+and a journal/chart/posting/VAT/integrity flow in a fresh PowerShell process.
+It does not publish to the Gallery or install PSLedger globally. Temporary data
+and the local repository registration are removed; the verified package is
+retained in the destination directory, without overwriting an existing package.
 
 ### Releasing
 1. Set `ModuleVersion` in `PSLedger/PSLedger.psd1` and move the `[Unreleased]`
    entries in `CHANGELOG.md` to a `## [x.y.z] - yyyy-MM-dd` section.
 2. Commit, then tag and push: `git tag vx.y.z; git push origin vx.y.z`.
-3. CI runs the checks, verifies that the tag matches `ModuleVersion`, publishes
-   the module to the PowerShell Gallery and creates a GitHub release with the
-   CHANGELOG section as release notes.
+3. CI runs the checks on all three platforms, verifies that the tag matches
+   `ModuleVersion`, publishes the exact verified Ubuntu `.nupkg` artifact to the
+   PowerShell Gallery (without rebuilding it), and creates a GitHub release with
+   the CHANGELOG section as release notes.
 
 Publishing needs a PowerShell Gallery API key in the `PSGALLERY_API_KEY` secret
 of the `psgallery` environment (Settings → Environments).

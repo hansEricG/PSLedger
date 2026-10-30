@@ -48,6 +48,8 @@ rental income (3914), unlike voluntarily taxed rent, belongs in box 05.
 A warning is written for accounts in 3100–3399 (BAS sales outside Sweden, margin
 scheme and reverse charge) with activity that are not explicitly mapped and
 therefore end up in box 05. Map them in vat.txt to silence the warning.
+Use Get-LedgerVatReportDetail to see each account's contribution, matched rule,
+mapping source and any accounts excluded from the declaration.
 
 .PARAMETER JournalPath
 The path to an existing journal directory.
@@ -91,46 +93,15 @@ function Get-LedgerVatReport {
         [datetime]$ToDate
     )
     process {
-        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
-
-        $entries = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-            -FromDate $FromDate -ToDate $ToDate
-
-        $rules = @(Get-VatBoxMapping -JournalPath $JournalPath)
-
-        $accountTotals = @{}
-        if ($entries) {
-            foreach ($entry in $entries) {
-                foreach ($row in $entry.Rows) {
-                    $acct = [string]$row.Account
-                    if (-not $accountTotals.ContainsKey($acct)) {
-                        $accountTotals[$acct] = [decimal]0
-                    }
-                    $accountTotals[$acct] += [decimal]$row.Amount
-                }
-            }
-        }
-
+        $details = @(Get-LedgerVatReportDetail -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -FromDate $FromDate -ToDate $ToDate)
         $definitions = @(Get-VatBoxDefinition)
-        $boxTotals = @{}
-        foreach ($box in 5, 10, 11, 12, 48) { $boxTotals[$box] = [decimal]0 }
-
-        foreach ($acct in ($accountTotals.Keys | Sort-Object)) {
-            $rule = Resolve-VatBoxRule -Account $acct -Rules $rules
-            if ($null -eq $rule -or $null -eq $rule.Box) { continue }
-            if ($rule.Implicit -and [long]$acct -ge 3100 -and [long]$acct -le 3399) {
-                Write-Warning ("Account $acct is reported in box 05 (taxable sales), but BAS uses 3100–3399 for " +
-                    "sales outside Sweden, margin scheme and reverse charge. Map it to the right box in vat.txt.")
-            }
-            if (-not $boxTotals.ContainsKey($rule.Box)) { $boxTotals[$rule.Box] = [decimal]0 }
-            $boxTotals[$rule.Box] += $accountTotals[$acct]
-        }
-
         $amounts = @{}
-        foreach ($def in $definitions) {
-            if (-not $boxTotals.ContainsKey($def.Box)) { continue }
-            $amounts[$def.Box] = if ($def.Kind -in 'Sales', 'OutputVat') { -$boxTotals[$def.Box] } else { $boxTotals[$def.Box] }
+        foreach ($box in 5, 10, 11, 12, 48) { $amounts[$box] = [decimal]0 }
+        foreach ($detail in $details) {
+            if ($null -eq $detail.Box) { continue }
+            if (-not $amounts.ContainsKey($detail.Box)) { $amounts[$detail.Box] = [decimal]0 }
+            $amounts[$detail.Box] += $detail.Amount
         }
 
         $vatToPay = [decimal]0
