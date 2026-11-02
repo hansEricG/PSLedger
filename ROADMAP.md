@@ -403,7 +403,10 @@ invoice-status writes. Other multi-file workflows still need equivalent protecti
       Book the selected transaction once but require manual counterpart selection
       when nearest candidates tie. Include late counterpart imports, closed-year
       recovery, interruption between statement saves and archive retention.
-- [ ] Define recoverable operation boundaries for supplier invoice posting and remaining invoice/payment/payroll
+- [x] Make supplier invoice posting resumable through typed plans in
+      `supplierinvoices/posting/`, sharing the customer-invoice recovery path,
+      verification reservation, closed-year rules and archive retention.
+- [ ] Define recoverable operation boundaries for remaining invoice/payment/payroll
       posting, SIE import, chart conversion and fiscal-year closing.
 - [ ] Extend durable operation identity and progress to those workflows without
       losing or duplicating bookkeeping.

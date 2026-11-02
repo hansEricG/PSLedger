@@ -100,6 +100,59 @@ Describe 'Invoke-LedgerSupplierInvoicePosting' {
             Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
             { Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 } | Should -Throw '*already posted*'
         }
+
+        It 'Should create no posting plan for WhatIf' {
+            Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 -WhatIf
+            Test-Path -LiteralPath (Join-Path $JournalPath 'supplierinvoices' 'posting') | Should -BeFalse
+            (Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber 1).Status | Should -Be 'Draft'
+        }
+
+        It 'Should resume an interrupted posting with its reserved verification' {
+            $script:RealSupplierSave = & (Get-Module PSLedger) { (Get-Command Save-LedgerSupplierInvoiceFile).ScriptBlock }
+            Mock Save-LedgerSupplierInvoiceFile -ModuleName PSLedger { throw 'simulated invoice save failure' }
+            { Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 } |
+                Should -Throw '*Invoke-LedgerSupplierInvoicePosting*recover safely*'
+            $plan = Join-Path $JournalPath 'supplierinvoices' 'posting' 'sup0001.txt'
+            $planHash = (Get-FileHash -LiteralPath $plan).Hash
+
+            # A customer invoice with the same number must not reuse the reserved verification.
+            Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '10' -Name 'Volvo AB'
+            New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2024-03-15' -Description 'Konsult' `
+                -Rows @(@{ Account = '3010'; Amount = 1000 }) | Out-Null
+            (Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 -PassThru).BookedVerification | Should -Be 2
+
+            Mock Save-LedgerSupplierInvoiceFile -ModuleName PSLedger { & $script:RealSupplierSave -Invoice $Invoice }
+            $posted = Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 -PassThru
+            $posted.Status | Should -Be 'Booked'
+            $posted.BookedVerification | Should -Be 1
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12') | Should -HaveCount 2
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').IsValid | Should -BeTrue
+            (Get-FileHash -LiteralPath $plan).Hash | Should -Be $planHash
+        }
+
+        It 'Should stop recovery without writing when <Change> differs from the plan' -ForEach @(
+            @{ Change = 'invoice'; ExpectedError = '*has changed since its posting plan*' }
+            @{ Change = 'verification'; ExpectedError = '*differs from the invoice posting plan*' }
+            @{ Change = 'invoice type'; ExpectedError = '*invoice type does not match*' }
+        ) {
+            Mock -ModuleName PSLedger Save-LedgerSupplierInvoiceFile { throw 'simulated invoice save failure' }
+            { Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 } | Should -Throw '*recover safely*'
+            $plan = Join-Path $JournalPath 'supplierinvoices' 'posting' 'sup0001.txt'
+            switch ($Change) {
+                'invoice' { Add-Content -LiteralPath (Join-Path $JournalPath 'supplierinvoices' 'sup0001.txt') -Value '; changed' }
+                'verification' { Add-Content -LiteralPath (Join-Path $JournalPath '2024-01_2024-12' 'ver0001.txt') -Value '; changed' }
+                'invoice type' {
+                    $text = (Get-Content -LiteralPath $plan -Raw) -replace "InvoiceType:`tSupplier", "InvoiceType:`tCustomer"
+                    Set-Content -LiteralPath $plan -Value $text -NoNewline
+                }
+            }
+            $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File -Force | Sort-Object FullName |
+                    ForEach-Object { "$($_.FullName):$((Get-FileHash -LiteralPath $_.FullName).Hash)" })
+            { Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 } | Should -Throw $ExpectedError
+            $after = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File -Force | Sort-Object FullName |
+                    ForEach-Object { "$($_.FullName):$((Get-FileHash -LiteralPath $_.FullName).Hash)" })
+            $after | Should -Be $before
+        }
     }
 }
 

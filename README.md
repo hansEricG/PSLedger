@@ -693,8 +693,17 @@ an existing verification's payment, but never create a new verification.
 
 Bank Reset retains ownership: only the same supplier payment can be relinked,
 not a customer invoice with the same number or another supplier invoice.
-**Supplier invoice posting itself is not yet resumable**; its journal lock
-prevents concurrent stale updates but does not make its multi-file writes atomic.
+
+**Supplier invoice posting is resumable** in the same way as customer invoice
+posting. If `Invoke-LedgerSupplierInvoicePosting` is interrupted, run the same
+command again. It resumes the immutable plan in
+`supplierinvoices/posting/sup0001.txt` with its reserved verification number,
+operation identity and hashes. The plan is marked `InvoiceType: Supplier`, so
+customer and supplier invoices with the same number never share a plan.
+Changed invoice data, a conflicting verification or integrity errors stop
+recovery without writing. In a closed year only an already-saved verification
+can be completed. Keep these plans after success and in backups; archives
+include them.
 
 For a full walkthrough see [docs/Leverantorsreskontra.md](docs/Leverantorsreskontra.md).
 
@@ -876,9 +885,10 @@ This is not a transaction across files: an interrupted process can still leave
 a saved verification without its integrity record or all attachments. If a
 posting reports such a partial failure, inspect the saved verification and run
 `Test-LedgerIntegrity` before taking recovery action; do not simply post it
-again. `Invoke-LedgerInvoicePosting`, `Add-LedgerInvoicePayment -PaymentId` and
-`Add-LedgerSupplierPayment -PaymentId` can resume their saved plans as described
-above, as can customer/supplier bank matches. Supplier invoice posting, imports
+again. `Invoke-LedgerInvoicePosting`, `Invoke-LedgerSupplierInvoicePosting`,
+`Add-LedgerInvoicePayment -PaymentId` and `Add-LedgerSupplierPayment -PaymentId`
+can resume their saved plans as described above, as can customer/supplier bank
+matches and bank rule/account postings. Charges, credit notes, payroll, imports
 and other multi-file workflows do not yet have this protection.
 
 Other register and metadata writers, older PSLedger versions and external

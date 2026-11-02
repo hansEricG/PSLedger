@@ -437,6 +437,33 @@ Describe 'File format contract' {
             (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
         }
 
+        It 'Should write a typed supplier invoice posting plan' {
+            $journal = Join-Path $TestDrive 'supplier-posting.ledger'
+            Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse
+            $hashText = {
+                param([string]$Text)
+                $bytes = [Text.Encoding]::UTF8.GetBytes($Text.Replace("`r`n", "`n"))
+                [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+            }
+            New-LedgerSupplierInvoice -JournalPath $journal -SupplierNumber '100' -Date '2024-05-01' -Description 'Telefoni' `
+                -Rows @(@{ Account = '6210'; Amount = 400; VatRate = 0.25; VatAccount = '2640' })
+            $invoiceHash = & $hashText (Get-Content -LiteralPath (Join-Path $journal 'supplierinvoices' 'sup0002.txt') -Raw -Encoding UTF8)
+            $invoice = Invoke-LedgerSupplierInvoicePosting -JournalPath $journal -InvoiceNumber 2 -PassThru
+            $fields = @{}
+            foreach ($line in Get-Content -LiteralPath (Join-Path $journal 'supplierinvoices' 'posting' 'sup0002.txt') -Encoding UTF8) {
+                if ($line -match '^([A-Za-z]+):\t(.+)$') { $fields[$Matches[1]] = $Matches[2] }
+            }
+            $verification = Get-Content -LiteralPath (Join-Path $journal $Y ('ver{0:D4}.txt' -f $invoice.BookedVerification)) -Raw -Encoding UTF8
+            $fields.FormatVersion | Should -Be '1'
+            $fields.InvoiceType | Should -Be 'Supplier'
+            $fields.InvoiceNumber | Should -Be '2'
+            $fields.FiscalYear | Should -Be $invoice.BookedFiscalYear
+            $fields.VerificationNumber | Should -Be "$($invoice.BookedVerification)"
+            $fields.InvoiceHash | Should -Be $invoiceHash
+            $fields.VerificationHash | Should -Be (& $hashText $verification)
+            $verification | Should -Match "(?m)^OperationId: $([regex]::Escape($fields.OperationId))\r?$"
+        }
+
         It 'Should bind a bank posting plan to its source, verification and counterpart' {
             $journal = Join-Path $TestDrive 'bank-posting.ledger'
             Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse

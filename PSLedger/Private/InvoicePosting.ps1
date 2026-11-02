@@ -2,8 +2,12 @@ function Get-LedgerInvoicePostingPath {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)] [string]$JournalPath,
-        [Parameter(Mandatory)] [int]$InvoiceNumber
+        [Parameter(Mandatory)] [int]$InvoiceNumber,
+        [switch]$Supplier
     )
+    if ($Supplier) {
+        return Join-Path $JournalPath 'supplierinvoices' 'posting' (Get-LedgerSupplierInvoiceFileName -InvoiceNumber $InvoiceNumber)
+    }
     Join-Path $JournalPath 'invoices' 'posting' (Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber)
 }
 
@@ -35,7 +39,13 @@ function Read-LedgerInvoicePosting {
         throw "Invalid invoice posting record '$Path': missing or invalid identity, reservation or hash."
     }
     $null = Assert-LedgerSafeLeafName -Name $fields.FiscalYear -Kind 'fiscal year'
-    $fileName = if ($Payment) { "$id.txt" } else { Get-LedgerInvoiceFileName -InvoiceNumber $invoiceNumber }
+    $fileName = if ($Payment) { "$id.txt" }
+    elseif ($Supplier) { Get-LedgerSupplierInvoiceFileName -InvoiceNumber $invoiceNumber }
+    else { Get-LedgerInvoiceFileName -InvoiceNumber $invoiceNumber }
+    if (-not $Payment -and (($Supplier -and $fields.InvoiceType -ne 'Supplier') -or
+            (-not $Supplier -and $fields.ContainsKey('InvoiceType') -and $fields.InvoiceType -ne 'Customer'))) {
+        throw "Invalid invoice posting record '$Path': invoice type does not match its posting directory."
+    }
     if ((Split-Path $Path -Leaf) -ne $fileName) {
         throw "Invalid invoice posting record '$Path': identity does not match its filename."
     }
@@ -88,10 +98,14 @@ function Get-LedgerInvoicePostingReservation {
         [Parameter(Mandatory)] [string]$JournalPath,
         [Parameter(Mandatory)] [string]$FiscalYear
     )
-    $directory = Join-Path $JournalPath 'invoices' 'posting'
-    if (Test-Path -LiteralPath $directory) {
-        foreach ($file in Get-ChildItem -LiteralPath $directory -Filter 'inv*.txt' -File -ErrorAction Stop) {
-            $operation = Read-LedgerInvoicePosting -Path $file.FullName
+    foreach ($store in @(
+            @{ Directory = 'invoices'; Filter = 'inv*.txt'; Supplier = $false }
+            @{ Directory = 'supplierinvoices'; Filter = 'sup*.txt'; Supplier = $true }
+        )) {
+        $directory = Join-Path $JournalPath $store.Directory 'posting'
+        if (-not (Test-Path -LiteralPath $directory)) { continue }
+        foreach ($file in Get-ChildItem -LiteralPath $directory -Filter $store.Filter -File -ErrorAction Stop) {
+            $operation = Read-LedgerInvoicePosting -Path $file.FullName -Supplier:$store.Supplier
             if ($operation.FiscalYear -eq $FiscalYear) { $operation.VerificationNumber }
         }
     }
@@ -105,11 +119,15 @@ function Save-LedgerInvoicePosting {
     param (
         [Parameter(Mandatory)] [string]$Path,
         [Parameter(Mandatory)] [psobject]$Operation,
-        [switch]$Payment
+        [switch]$Payment,
+        [switch]$Supplier
     )
     $null = New-Item -ItemType Directory -Path (Split-Path $Path -Parent) -Force -ErrorAction Stop
+    $header = if ($Payment -and $Operation.InvoiceType -eq 'Supplier') { '; PSLedger supplier invoice payment' }
+    elseif ($Supplier) { '; PSLedger supplier invoice posting' }
+    else { '; PSLedger customer invoice posting' }
     $lines = @(
-        $(if ($Payment -and $Operation.InvoiceType -eq 'Supplier') { '; PSLedger supplier invoice payment' } else { '; PSLedger customer invoice posting' })
+        $header
         "FormatVersion:`t1"
         "OperationId:`t$($Operation.OperationId)"
         "InvoiceNumber:`t$($Operation.InvoiceNumber)"
@@ -118,6 +136,7 @@ function Save-LedgerInvoicePosting {
         "InvoiceHash:`t$($Operation.InvoiceHash)"
         "VerificationHash:`t$($Operation.VerificationHash)"
     )
+    if ($Supplier -and -not $Payment) { $lines += "InvoiceType:`tSupplier" }
     if ($Payment) {
         if ($Operation.InvoiceType -eq 'Supplier') { $lines += "InvoiceType:`tSupplier" }
         $lines += @(
@@ -180,4 +199,160 @@ function Complete-LedgerInvoicePostingVerification {
     if (-not $state.Verifications.Contains("$($Operation.VerificationNumber)")) {
         Register-LedgerIntegrityItem -YearDir $yearDir -Kind Verification -Key "$($Operation.VerificationNumber)" -Path $path
     }
+}
+function Invoke-LedgerInvoicePostingOperation {
+    # Shared, resumable posting of a draft customer or supplier invoice. The caller
+    # holds the journal lock. Returns $true when the posting completed, $false on WhatIf.
+    [CmdletBinding(SupportsShouldProcess)]
+    param (
+        [Parameter(Mandatory)] [string]$JournalPath,
+        [Parameter(Mandatory)] [int]$InvoiceNumber,
+        [string]$FiscalYear,
+        [switch]$Supplier
+    )
+    if ($Supplier) {
+        $label = 'Supplier invoice'
+        $commandName = 'Invoke-LedgerSupplierInvoicePosting'
+        $filePath = Join-Path (Get-LedgerSupplierInvoiceDirectory -JournalPath $JournalPath) (Get-LedgerSupplierInvoiceFileName -InvoiceNumber $InvoiceNumber)
+    }
+    else {
+        $label = 'Invoice'
+        $commandName = 'Invoke-LedgerInvoicePosting'
+        $filePath = Join-Path (Get-LedgerInvoiceDirectory -JournalPath $JournalPath) (Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber)
+    }
+    $lowerLabel = $label.ToLowerInvariant()
+    if (-not (Test-Path $filePath)) {
+        throw "$label $InvoiceNumber does not exist."
+    }
+
+    $invoice = if ($Supplier) { Read-LedgerSupplierInvoiceFile -Path $filePath } else { Read-LedgerInvoiceFile -Path $filePath }
+
+    if ($invoice.Status -ne 'Draft') {
+        throw "$label $InvoiceNumber is already posted (status '$($invoice.Status)', verification $($invoice.BookedVerification))."
+    }
+    if ($invoice.InvoiceNumber -ne $InvoiceNumber -or $invoice.BookedVerification -or $invoice.BookedFiscalYear) {
+        throw "Draft $lowerLabel $InvoiceNumber has inconsistent identity or posting references. Inspect it before posting."
+    }
+
+    $operationPath = Get-LedgerInvoicePostingPath -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber -Supplier:$Supplier
+    $operation = if (Test-Path -LiteralPath $operationPath) { Read-LedgerInvoicePosting -Path $operationPath -Supplier:$Supplier } else { $null }
+    $invoiceHash = Get-LedgerContentHash -Path $filePath
+    $postingYear = $FiscalYear
+    if ($operation) {
+        if ($invoiceHash -ne $operation.InvoiceHash) {
+            throw "$label $InvoiceNumber has changed since its posting plan was saved. Recovery stopped without modifying the invoice or verification."
+        }
+        if ($postingYear -and $postingYear -ne $operation.FiscalYear) {
+            throw "$label $InvoiceNumber has a posting plan for $($operation.FiscalYear), not $postingYear."
+        }
+        $postingYear = $operation.FiscalYear
+    }
+
+    # Resolve the fiscal year from the invoice date unless one was supplied.
+    if (-not $postingYear) {
+        $postingYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $invoice.InvoiceDate
+        if (-not $postingYear) {
+            throw "No fiscal year covers the invoice date $($invoice.InvoiceDate.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+        }
+    }
+
+    # Aggregate amounts per account so the verification is compact.
+    $accountSums = [ordered]@{}
+    $addAmount = {
+        param($account, $amount)
+        if ($accountSums.Contains($account)) {
+            $accountSums[$account] += $amount
+        }
+        else {
+            $accountSums[$account] = $amount
+        }
+    }
+
+    if ($Supplier) {
+        # Debit cost accounts (net) and input VAT, then credit the payable with the gross total.
+        foreach ($row in $invoice.Rows) {
+            & $addAmount $row.Account $row.Amount
+            if ($row.VatAmount -ne 0) {
+                & $addAmount $row.VatAccount $row.VatAmount
+            }
+        }
+        & $addAmount $invoice.PayableAccount (-$invoice.Total)
+        $description = "Leverantörsfaktura $InvoiceNumber - $($invoice.Description)"
+    }
+    else {
+        # Debit the receivable with the gross total, then credit revenue (net) and VAT.
+        & $addAmount $invoice.ReceivableAccount $invoice.Total
+        foreach ($row in $invoice.Rows) {
+            & $addAmount $row.Account (-$row.Amount)
+            if ($row.VatAmount -ne 0) {
+                & $addAmount $row.VatAccount (-$row.VatAmount)
+            }
+        }
+        $description = "Kundfaktura $InvoiceNumber - $($invoice.Description)"
+    }
+
+    $entryRows = foreach ($account in $accountSums.Keys) {
+        @{ Account = $account; Amount = [Math]::Round([decimal]$accountSums[$account], 2) }
+    }
+
+    $operationId = if ($operation) { $operation.OperationId } else { [guid]::NewGuid() }
+    $entryParameters = @{
+        JournalPath = $JournalPath; FiscalYear = $postingYear; Date = $invoice.InvoiceDate
+        Description = $description; Rows = @($entryRows); OperationId = $operationId
+    }
+    $existingVerification = $false
+    if ($operation) {
+        $verificationPath = Join-Path $JournalPath $postingYear ('ver' + $operation.VerificationNumber.ToString('0000') + '.txt')
+        $existingVerification = Test-Path -LiteralPath $verificationPath
+        if ($existingVerification) {
+            Assert-LedgerInvoicePostingVerification -Path $verificationPath -Operation $operation
+        }
+    }
+    $unsealedNumber = if ($existingVerification) { $operation.VerificationNumber } else { 0 }
+    Assert-LedgerInvoicePostingIntegrity -JournalPath $JournalPath -FiscalYear $postingYear -UnsealedVerification $unsealedNumber
+    if (-not $existingVerification) {
+        $lines = @(Get-LedgerVerificationLines @entryParameters)
+        $verificationHash = Get-LedgerSha256Hex -Bytes ([Text.Encoding]::UTF8.GetBytes(($lines -join "`n") + "`n"))
+        if ($operation -and $verificationHash -ne $operation.VerificationHash) {
+            throw "$label $InvoiceNumber no longer produces the saved verification plan. Recovery stopped."
+        }
+        if (-not $operation) {
+            $operation = [pscustomobject]@{
+                OperationId = $operationId
+                InvoiceNumber = $InvoiceNumber
+                FiscalYear = $postingYear
+                VerificationNumber = Get-LedgerNextVerificationNumber -JournalPath $JournalPath -FiscalYear $postingYear
+                InvoiceHash = $invoiceHash
+                VerificationHash = $verificationHash
+            }
+        }
+    }
+
+    if (-not $PSCmdlet.ShouldProcess("$label $InvoiceNumber", "Post to fiscal year $postingYear")) {
+        return $false
+    }
+
+    if (-not (Test-Path -LiteralPath $operationPath)) {
+        Save-LedgerInvoicePosting -Path $operationPath -Operation $operation -Supplier:$Supplier
+    }
+    try {
+        if (-not $existingVerification) {
+            Write-LedgerVerification @entryParameters -ReservedNumber $operation.VerificationNumber -Confirm:$false
+        }
+        Complete-LedgerInvoicePostingVerification -JournalPath $JournalPath -Operation $operation
+        if ((Get-LedgerContentHash -Path $filePath) -ne $operation.InvoiceHash) {
+            throw "$label $InvoiceNumber changed during posting. Its saved verification was not removed."
+        }
+
+        $invoice.Status = 'Booked'
+        $invoice.BookedVerification = $operation.VerificationNumber
+        $invoice.BookedFiscalYear = $postingYear
+        if ($Supplier) { Save-LedgerSupplierInvoiceFile -Invoice $invoice } else { Save-LedgerInvoiceFile -Invoice $invoice }
+    }
+    catch {
+        throw [System.InvalidOperationException]::new(
+            "Could not confirm completion of $lowerLabel $InvoiceNumber posting. Keep '$operationPath' and its reserved verification; rerun $commandName for this invoice to recover safely. $($_.Exception.Message)",
+            $_.Exception)
+    }
+    $true
 }

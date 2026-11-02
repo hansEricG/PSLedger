@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- **Resumable supplier-invoice posting.** Repeat `Invoke-LedgerSupplierInvoicePosting`
+  after an interruption to finish the same posting with its reserved verification.
+  Plans in `supplierinvoices/posting/` are typed `InvoiceType: Supplier`, share
+  the customer-invoice recovery rules (hash checks, closed-year completion only
+  of saved verifications) and are retained in archives.
 - **Recoverable rule/manual bank postings and own-account transfer links.**
   Immutable plans retain validated inputs, bank hashes and verification reservations.
   Retries reuse the original posting even if its rule changes or disappears.
@@ -58,15 +63,14 @@
   statement files without overwriting existing ones. Matching rejects duplicate
   transaction identities rather than selecting the first occurrence.
 - **Supplier invoice posting holds the payment lock** across reading and saving
-  invoice status, preventing stale concurrent updates. Posting itself is not yet
-  resumable after interruption.
+  invoice status, preventing stale concurrent updates.
 - **Archives retain invoices with pending payments in the selected year**, even
   when the invoice belongs to an earlier year and its payment row is not saved yet.
 
-Recovery currently covers customer-invoice posting, customer/supplier payments
+Recovery currently covers customer/supplier-invoice posting, customer/supplier payments
 and bank-created invoice, rule/account and own-account transfer postings. Changed inputs,
 conflicting verifications and damaged integrity chains stop recovery explicitly.
-Supplier invoice posting, charges, credit notes, payroll
+Charges, credit notes, payroll
 and multi-statement imports still need recovery. Locking is not a multi-file
 transaction or general multi-user support.
 

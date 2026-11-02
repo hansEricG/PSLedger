@@ -185,6 +185,10 @@ function Export-LedgerArchive {
                 if ((& $inYear $inv.InvoiceDate) -or $inv.BookedFiscalYear -eq $FiscalYear -or
                     @($inv.Payments | Where-Object { $_.FiscalYear -eq $FiscalYear }).Count -gt 0 -or $FiscalYear -in $invoicePayments.FiscalYear) {
                     & $copyDocument $inv.FilePath 'supplierinvoices'
+                    $postingPath = Get-LedgerInvoicePostingPath -JournalPath $journalDir -InvoiceNumber $inv.InvoiceNumber -Supplier
+                    if (Test-Path -LiteralPath $postingPath -PathType Leaf) {
+                        & $copyDocument $postingPath (Join-Path 'supplierinvoices' 'posting')
+                    }
                     foreach ($operation in $invoicePayments) {
                         $paymentPath = Join-Path $journalDir 'supplierinvoices' 'payments' "$($operation.OperationId).txt"
                         & $copyDocument $paymentPath (Join-Path 'supplierinvoices' 'payments')

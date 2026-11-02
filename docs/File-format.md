@@ -112,7 +112,9 @@ are named by a prefix and a number zero-padded to at least four digits.
 - Number 10000 is written `ver10000.txt`; nothing is truncated.
 - A new document gets the highest existing number plus one, or 1 if there is
   none. For verifications, the maximum also includes numbers reserved by
-  `invoices/posting/invNNNN.txt` and `invoices/payments/<guid>.txt`.
+  `invoices/posting/invNNNN.txt`, `supplierinvoices/posting/supNNNN.txt`,
+  `invoices/payments/<guid>.txt`, `supplierinvoices/payments/<guid>.txt` and
+  `bank/posting/txnN.txt`.
   Recovery uses its already reserved number,
   even if later numbers have since been written. Gaps are allowed.
 - Verifications are numbered per fiscal year. Every other kind of document is
@@ -865,8 +867,24 @@ integrity, closed-year and completed-payment checks apply. Reset preserves suppl
 payment ownership, even if a customer invoice has the same number.
 Payment plans MUST remain after completion and in backups; archive packages copy
 them with their invoices. These additive files do not change the schema version
-or existing supplier payment rows. Supplier invoice posting has a journal lock
-but does not yet retain a recoverable posting plan.
+or existing supplier payment rows.
+
+### `supplierinvoices/posting/supNNNN.txt` — supplier-invoice posting plans
+
+`Invoke-LedgerSupplierInvoicePosting` saves this immutable record before writing
+its verification. It uses exactly the fields and rules of
+`invoices/posting/invNNNN.txt`, with the additional required field
+`InvoiceType:<TAB>Supplier`. The filename number and `InvoiceNumber` identify
+`supNNNN.txt`, never a customer invoice. A customer posting plan MAY omit
+`InvoiceType`, but if present it MUST be `Customer`; a plan whose type does not
+match its directory is rejected.
+
+Repeating the posting command for a draft supplier invoice resumes the plan with
+the same hash, reservation, integrity, closed-year and "already posted" rules as
+customer-invoice posting. The planned verification debits the cost and input-VAT
+accounts and credits the payable account with the gross total. Plans MUST remain
+after completion and in backups; archive packages copy them with their invoices.
+They are additive and do not change the schema version.
 
 ## Payroll
 

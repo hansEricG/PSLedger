@@ -140,6 +140,11 @@ Describe 'Export-LedgerArchive' {
             $originalSupplier = Join-Path $journal 'supplierinvoices' 'payments' "$supplierId.txt"
             $archivedSupplier = Join-Path $package.FullName 'journal' 'supplierinvoices' 'payments' "$supplierId.txt"
             (Get-FileHash -LiteralPath $archivedSupplier).Hash | Should -Be (Get-FileHash -LiteralPath $originalSupplier).Hash
+            $originalSupplierPosting = Join-Path $journal 'supplierinvoices' 'posting' 'sup0001.txt'
+            $archivedSupplierPosting = Join-Path $package.FullName 'journal' 'supplierinvoices' 'posting' 'sup0001.txt'
+            (Get-FileHash -LiteralPath $archivedSupplierPosting).Hash | Should -Be (Get-FileHash -LiteralPath $originalSupplierPosting).Hash
+            Get-Content -LiteralPath (Join-Path $package.FullName 'checksums.txt') -Raw |
+                Should -BeLike '*journal/supplierinvoices/posting/sup0001.txt*'
             Get-Content -LiteralPath (Join-Path $package.FullName 'checksums.txt') -Raw |
                 Should -BeLike "*journal/supplierinvoices/payments/$supplierId.txt*"
             $archivedJournal = Join-Path $package.FullName 'journal'

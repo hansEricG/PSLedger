@@ -93,6 +93,14 @@ Räkenskapsåret hämtas från fakturadatumet (ange `-FiscalYear` för att styra
 det). Fakturan får status `Booked`. Att bokföra en redan bokförd faktura ger ett
 fel.
 
+Avbryts bokföringen kör du samma kommando igen. Innan verifikationen skrivs
+sparas en plan i `supplierinvoices/posting/sup0001.txt` med ett reserverat
+verifikationsnummer. Vid nytt försök används samma plan och nummer, så fakturan
+bokförs aldrig två gånger. Har fakturan eller den sparade verifikationen ändrats
+stoppas återupptagningen utan att något skrivs. I ett stängt år kan bara en
+redan sparad verifikation slutföras. Behåll katalogen `posting/` även efter
+lyckad bokföring och i säkerhetskopior.
+
 ### 4. Registrera betalning
 
 Betalningen skapar en verifikation som debiterar leverantörsskulden och

@@ -15,6 +15,14 @@ reconciled against the ledger.
 The operation refuses to run twice for the same invoice (an already-posted
 invoice throws).
 
+Before writing, the command saves an immutable posting plan under
+supplierinvoices/posting/ with a reserved verification number and content
+hashes. If interrupted, run the same command again: it reuses and, if needed,
+seals the matching saved verification before completing the invoice status.
+Changed inputs, a conflicting verification or integrity errors stop recovery.
+A matching existing verification may be completed after its fiscal year has
+closed; a new verification is never created in a closed year.
+
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal
 set via Set-LedgerCurrentJournal.
@@ -44,6 +52,7 @@ Get-LedgerSupplierInvoice -Status Draft | ForEach-Object { Invoke-LedgerSupplier
 Posts every draft supplier invoice in the current journal.
 #>
 function Invoke-LedgerSupplierInvoicePosting {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '', Justification = 'The shared invoice posting writer performs ShouldProcess; WhatIf and Confirm are forwarded.')]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
@@ -64,68 +73,13 @@ function Invoke-LedgerSupplierInvoicePosting {
         try {
             $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
             Assert-LedgerJournalSchema -Path $JournalPath -Write
-            $invoiceDir = Get-LedgerSupplierInvoiceDirectory -JournalPath $JournalPath
-            $filePath = Join-Path $invoiceDir (Get-LedgerSupplierInvoiceFileName -InvoiceNumber $InvoiceNumber)
-            if (-not (Test-Path $filePath)) {
-                throw "Supplier invoice $InvoiceNumber does not exist."
+            $shouldProcess = @{}
+            foreach ($name in 'WhatIf', 'Confirm') {
+                if ($PSBoundParameters.ContainsKey($name)) { $shouldProcess[$name] = $PSBoundParameters[$name] }
             }
-
-            $invoice = Read-LedgerSupplierInvoiceFile -Path $filePath
-
-            if ($invoice.Status -ne 'Draft') {
-                throw "Supplier invoice $InvoiceNumber is already posted (status '$($invoice.Status)', verification $($invoice.BookedVerification))."
-            }
-
-            # Resolve the fiscal year from the invoice date unless one was supplied.
-            if (-not $FiscalYear) {
-                $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $invoice.InvoiceDate
-                if (-not $FiscalYear) {
-                    throw "No fiscal year covers the invoice date $($invoice.InvoiceDate.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
-                }
-            }
-
-            # Aggregate amounts per account so the verification is compact.
-            $accountSums = [ordered]@{}
-            $addAmount = {
-                param($account, $amount)
-                if ($accountSums.Contains($account)) {
-                    $accountSums[$account] += $amount
-                }
-                else {
-                    $accountSums[$account] = $amount
-                }
-            }
-
-            # Debit cost accounts (net) and input VAT.
-            foreach ($row in $invoice.Rows) {
-                & $addAmount $row.Account $row.Amount
-                if ($row.VatAmount -ne 0) {
-                    & $addAmount $row.VatAccount $row.VatAmount
-                }
-            }
-
-            # Credit the payable with the gross total.
-            & $addAmount $invoice.PayableAccount (-$invoice.Total)
-
-            $entryRows = foreach ($account in $accountSums.Keys) {
-                @{ Account = $account; Amount = [Math]::Round([decimal]$accountSums[$account], 2) }
-            }
-
-            $description = "Leverantörsfaktura $InvoiceNumber - $($invoice.Description)"
-
-            if (-not $PSCmdlet.ShouldProcess("Supplier invoice $InvoiceNumber", "Post to fiscal year $FiscalYear")) {
-                return
-            }
-
-            $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-                -Date $invoice.InvoiceDate -Description $description -Rows @($entryRows) -PassThru
-
-            $invoice.Status = 'Booked'
-            $invoice.BookedVerification = $verification.VerificationNumber
-            $invoice.BookedFiscalYear = $FiscalYear
-            Save-LedgerSupplierInvoiceFile -Invoice $invoice
-
-            if ($PassThru) {
+            $posted = Invoke-LedgerInvoicePostingOperation -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
+                -FiscalYear $FiscalYear @shouldProcess -Supplier
+            if ($posted -and $PassThru) {
                 Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
             }
         }

@@ -11,7 +11,7 @@ BeforeAll {
         $env:PSLEDGER_USER_EXTENSIONS = Join-Path (Split-Path $Ready -Parent) 'extensions'
         Import-Module $ModulePath -Force
         $paymentId = '11111111-1111-1111-1111-111111111111'
-        if ($Mode -match '^(Invoice|Payment|Bank|SupplierPayment|SupplierBank|Account)After') {
+        if ($Mode -match '^(Invoice|Payment|Bank|SupplierInvoice|SupplierPayment|SupplierBank|Account)After') {
             & (Get-Module PSLedger) {
                 param ($Ready, $Mode)
                 $script:PostingReady = $Ready
@@ -75,6 +75,9 @@ BeforeAll {
             if ($Mode -like 'Account*') {
                 Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -Account '1940'
             }
+            elseif ($Mode -like 'SupplierInvoice*') {
+                Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
+            }
             elseif ($Mode -like 'SupplierBank*') {
                 Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -SupplierInvoiceNumber 1
             }
@@ -120,6 +123,9 @@ BeforeAll {
         }
         if ($Mode -eq 'Invoice') {
             Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
+        }
+        elseif ($Mode -eq 'SupplierInvoice') {
+            Invoke-LedgerSupplierInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
         }
         elseif ($Mode -eq 'BankImport') {
             Import-LedgerBankStatement -JournalPath $JournalPath -Path (Join-Path (Split-Path $JournalPath -Parent) 'bank.csv') `
@@ -207,6 +213,7 @@ BeforeAll {
     }
 
     function New-LockTestSupplierInvoice {
+        param ([switch]$Draft)
         foreach ($number in '2440', '5010', '2640') {
             Add-LedgerAccount -JournalPath $journal -AccountNumber $number -AccountName "Konto $number"
         }
@@ -214,7 +221,7 @@ BeforeAll {
         Add-LedgerSupplier -JournalPath $journal -SupplierNumber '100' -Name 'Kontorsbolaget AB'
         New-LedgerSupplierInvoice -JournalPath $journal -SupplierNumber '100' -Date '2024-01-15' -Description 'Hyra' `
             -Reference 'SUP-1' -Rows @(@{ Account = '5010'; Amount = 1000; VatRate = 0.25; VatAccount = '2640' })
-        Invoke-LedgerSupplierInvoicePosting -JournalPath $journal -InvoiceNumber 1
+        if (-not $Draft) { Invoke-LedgerSupplierInvoicePosting -JournalPath $journal -InvoiceNumber 1 }
     }
 
     function New-LockTestTransfer {
@@ -397,6 +404,65 @@ Describe 'Journal write locking' {
         (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
         (Get-FileHash -LiteralPath $operationPath).Hash | Should -Be $planHash
         if ($savedHash) { (Get-FileHash -LiteralPath $savedPath).Hash | Should -Be $savedHash }
+    }
+
+    It 'Recovers supplier invoice posting after process termination at <Checkpoint>' -ForEach @(
+        @{ Checkpoint = 'SupplierInvoiceAfterPlan' }
+        @{ Checkpoint = 'SupplierInvoiceAfterSave' }
+        @{ Checkpoint = 'SupplierInvoiceAfterSeal' }
+        @{ Checkpoint = 'SupplierInvoiceAfterStatus' }
+    ) {
+        New-LockTestSupplierInvoice -Draft
+        Add-LedgerEntry @entry
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        $operationPath = Join-Path $journal 'supplierinvoices' 'posting' 'sup0001.txt'
+        $planHash = (Get-FileHash -LiteralPath $operationPath).Hash
+
+        (Add-LedgerEntry @entry -PassThru).VerificationNumber | Should -Be 3
+        Set-Content -LiteralPath $gate -Value 'go'
+        $retry = Start-LockTestWorker SupplierInvoice
+        if ($Checkpoint -eq 'SupplierInvoiceAfterStatus') {
+            $retry.Process.WaitForExit(30000) | Should -BeTrue
+            $retry.Process.ExitCode | Should -Not -Be 0
+            $retry.Error.Result | Should -BeLike '*already posted*'
+        }
+        else { Complete-LockTestWorker $retry }
+
+        $invoice = Get-LedgerSupplierInvoice -JournalPath $journal -InvoiceNumber 1
+        $invoice.Status | Should -Be 'Booked'
+        $invoice.BookedVerification | Should -Be 2
+        @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year).VerificationNumber | Should -Be @(1, 2, 3)
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
+        (Get-FileHash -LiteralPath $operationPath).Hash | Should -Be $planHash
+    }
+
+    It 'Handles supplier invoice recovery in a closed year with saved verification=<Saved>' -ForEach @(
+        @{ Saved = $true; Checkpoint = 'SupplierInvoiceAfterSave' }
+        @{ Saved = $false; Checkpoint = 'SupplierInvoiceAfterPlan' }
+    ) {
+        New-LockTestSupplierInvoice -Draft
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $year -SkipResultEntry | Out-Null
+        Set-Content -LiteralPath $gate -Value 'go'
+        $retry = Start-LockTestWorker SupplierInvoice
+        if ($Saved) {
+            Complete-LockTestWorker $retry
+            (Get-LedgerSupplierInvoice -JournalPath $journal -InvoiceNumber 1).Status | Should -Be 'Booked'
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 1
+        }
+        else {
+            $retry.Process.WaitForExit(30000) | Should -BeTrue
+            $retry.Process.ExitCode | Should -Not -Be 0
+            $retry.Error.Result | Should -BeLike '*closed*'
+            (Get-LedgerSupplierInvoice -JournalPath $journal -InvoiceNumber 1).Status | Should -Be 'Draft'
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 0
+        }
     }
 
     It 'Handles recovery in a closed year with saved verification=<Saved>' -ForEach @(
