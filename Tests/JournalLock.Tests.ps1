@@ -11,7 +11,7 @@ BeforeAll {
         $env:PSLEDGER_USER_EXTENSIONS = Join-Path (Split-Path $Ready -Parent) 'extensions'
         Import-Module $ModulePath -Force
         $paymentId = '11111111-1111-1111-1111-111111111111'
-        if ($Mode -match '^(Invoice|Payment|Bank|SupplierPayment|SupplierBank)After') {
+        if ($Mode -match '^(Invoice|Payment|Bank|SupplierPayment|SupplierBank|Account)After') {
             & (Get-Module PSLedger) {
                 param ($Ready, $Mode)
                 $script:PostingReady = $Ready
@@ -28,7 +28,10 @@ BeforeAll {
                         function script:Register-LedgerIntegrityItem { & $script:PostingPause }
                     }
                     'AfterSeal$' {
-                        if ($Mode -like 'Supplier*') {
+                        if ($Mode -like 'Account*') {
+                            function script:Set-LedgerBankTransactionState { & $script:PostingPause }
+                        }
+                        elseif ($Mode -like 'Supplier*') {
                             function script:Save-LedgerSupplierInvoiceFile { & $script:PostingPause }
                         }
                         else { function script:Save-LedgerInvoiceFile { & $script:PostingPause } }
@@ -59,9 +62,20 @@ BeforeAll {
                             & $script:PostingPause
                         }
                     }
+                    'AfterCounterpart$' {
+                        $script:OriginalBankSave = (Get-Command Save-LedgerBankStatementFile).ScriptBlock
+                        function script:Save-LedgerBankStatementFile {
+                            param ($Statement)
+                            & $script:OriginalBankSave -Statement $Statement
+                            if ($Statement.BankAccount -eq '1940') { & $script:PostingPause }
+                        }
+                    }
                 }
             } $Ready $Mode
-            if ($Mode -like 'SupplierBank*') {
+            if ($Mode -like 'Account*') {
+                Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -Account '1940'
+            }
+            elseif ($Mode -like 'SupplierBank*') {
                 Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -SupplierInvoiceNumber 1
             }
             elseif ($Mode -like 'SupplierPayment*') {
@@ -113,6 +127,9 @@ BeforeAll {
         }
         elseif ($Mode -eq 'BankManual') {
             Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -InvoiceNumber 1
+        }
+        elseif ($Mode -eq 'Account') {
+            Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -Account '1940'
         }
         elseif ($Mode -eq 'SupplierBankManual') {
             Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -SupplierInvoiceNumber 1
@@ -193,10 +210,21 @@ BeforeAll {
         foreach ($number in '2440', '5010', '2640') {
             Add-LedgerAccount -JournalPath $journal -AccountNumber $number -AccountName "Konto $number"
         }
+
         Add-LedgerSupplier -JournalPath $journal -SupplierNumber '100' -Name 'Kontorsbolaget AB'
         New-LedgerSupplierInvoice -JournalPath $journal -SupplierNumber '100' -Date '2024-01-15' -Description 'Hyra' `
             -Reference 'SUP-1' -Rows @(@{ Account = '5010'; Amount = 1000; VatRate = 0.25; VatAccount = '2640' })
         Invoke-LedgerSupplierInvoicePosting -JournalPath $journal -InvoiceNumber 1
+    }
+
+    function New-LockTestTransfer {
+        Add-LedgerAccount -JournalPath $journal -AccountNumber '1940' -AccountName 'Sparkonto'
+        Import-LedgerBankStatement -JournalPath $journal -Path (New-LockTestBankSource -Supplier) -Format Csv `
+            -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text -ReferenceColumn Reference | Out-Null
+        $source = Join-Path (Split-Path $journal -Parent) 'counterpart.csv'
+        Set-Content -LiteralPath $source -Value @('Date;Amount;Text', '2024-01-21;500;Transfer')
+        Import-LedgerBankStatement -JournalPath $journal -Path $source -Account '1940' -Format Csv `
+            -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text | Out-Null
     }
 
     function New-LockTestBankSource {
@@ -696,6 +724,68 @@ Describe 'Journal write locking' {
         if ($FirstMode -eq 'Bank') {
             (Get-LedgerBankTransaction -JournalPath $journal -TransactionId 1).MatchType | Should -Be 'SupplierInvoice'
         }
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
+    }
+
+    It 'Resumes a bank account posting and both transfer links after <Checkpoint>' -ForEach @(
+        @{ Checkpoint = 'AccountAfterPlan' }
+        @{ Checkpoint = 'AccountAfterSave' }
+        @{ Checkpoint = 'AccountAfterSeal' }
+        @{ Checkpoint = 'AccountAfterLink' }
+        @{ Checkpoint = 'AccountAfterCounterpart' }
+    ) {
+        New-LockTestTransfer
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        $plan = Join-Path $journal 'bank' 'posting' 'txn1.txt'
+        $hash = (Get-FileHash -LiteralPath $plan).Hash
+        $savedPath = Join-Path $journal $year 'ver0001.txt'
+        $savedHash = if (Test-Path -LiteralPath $savedPath) { (Get-FileHash -LiteralPath $savedPath).Hash }
+        (Add-LedgerEntry @entry -PassThru).VerificationNumber | Should -Be 2
+        Set-Content -LiteralPath $gate -Value 'go'
+        Complete-LockTestWorker (Start-LockTestWorker Bank)
+        $transactions = @(Get-LedgerBankTransaction -JournalPath $journal)
+        $transactions.Status | Should -Be @('Matched', 'Matched')
+        $transactions.VerificationNumber | Should -Be @(1, 1)
+        (Get-FileHash -LiteralPath $plan).Hash | Should -Be $hash
+        if ($savedHash) { (Get-FileHash -LiteralPath $savedPath).Hash | Should -Be $savedHash }
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
+    }
+
+    It 'Resumes a bank posting in a closed year only if its verification exists: <Saved>' -ForEach @(
+        @{ Saved = $true; Checkpoint = 'AccountAfterSave' }
+        @{ Saved = $false; Checkpoint = 'AccountAfterPlan' }
+    ) {
+        New-LockTestTransfer
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $year -SkipResultEntry | Out-Null
+        if ($Saved) {
+            Invoke-LedgerBankMatching -JournalPath $journal | Out-Null
+            @(Get-LedgerBankTransaction -JournalPath $journal).Status | Should -Be @('Matched', 'Matched')
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 1
+        }
+        else {
+            { Invoke-LedgerBankMatching -JournalPath $journal } | Should -Throw '*closed*'
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 0
+        }
+    }
+
+    It 'Serializes competing manual postings of the same bank transfer' {
+        New-LockTestTransfer
+        $first = Start-LockTestWorker Account
+        $second = Start-LockTestWorker Account
+        Wait-LockTestReady $first
+        Wait-LockTestReady $second
+        Set-Content -LiteralPath $gate -Value 'go'
+        Complete-LockTestWorker $first
+        Complete-LockTestWorker $second
+        @(Get-LedgerBankTransaction -JournalPath $journal).VerificationNumber | Should -Be @(1, 1)
+        @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 1
         (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
     }
 

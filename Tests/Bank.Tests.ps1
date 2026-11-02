@@ -398,6 +398,7 @@ Describe 'Invoke-LedgerBankMatching' {
         @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FY).Count | Should -Be $count
         @(Get-LedgerBankTransaction -JournalPath $JournalPath -Status Unmatched).Count | Should -Be 5
         Test-Path -LiteralPath (Join-Path $JournalPath 'invoices' 'payments') | Should -BeFalse
+        Test-Path -LiteralPath (Join-Path $JournalPath 'bank' 'posting') | Should -BeFalse
     }
 
     It 'Skips rules with -NoRules' {
@@ -472,6 +473,84 @@ Describe 'Invoke-LedgerBankMatching (transfers between own accounts)' {
         # The 1940 deposit was not part of the transfer and stays open.
         (Get-LedgerBankTransaction -JournalPath $JournalPath -Account '1940').Status | Should -Be 'Unmatched'
     }
+
+    It 'Retains both transfer identities after interruption between statement saves' {
+        Add-LedgerBankRule -JournalPath $JournalPath -Pattern 'Överföring' -Account '1940'
+        $script:RealTransferSave = & (Get-Module PSLedger) { (Get-Command Save-LedgerBankStatementFile).ScriptBlock }
+        Mock Save-LedgerBankStatementFile -ModuleName PSLedger {
+            if ($Statement.BankAccount -eq '1940') { throw 'Injected counterpart save failure' }
+            & $script:RealTransferSave -Statement $Statement
+        }
+        { Invoke-LedgerBankMatching -JournalPath $JournalPath } | Should -Throw '*Bank posting*could not complete*'
+        (Get-LedgerBankTransaction -JournalPath $JournalPath -Account '1930').Status | Should -Be 'Matched'
+        (Get-LedgerBankTransaction -JournalPath $JournalPath -Account '1940').Status | Should -Be 'Unmatched'
+        Mock Save-LedgerBankStatementFile -ModuleName PSLedger { & $script:RealTransferSave -Statement $Statement }
+        Remove-LedgerBankRule -JournalPath $JournalPath -Pattern 'Överföring'
+        Invoke-LedgerBankMatching -JournalPath $JournalPath -Account '1940' | Out-Null
+        $transactions = @(Get-LedgerBankTransaction -JournalPath $JournalPath)
+        $transactions.Status | Should -Be @('Matched', 'Matched')
+        @($transactions.VerificationNumber | Select-Object -Unique) | Should -HaveCount 1
+        @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FY) | Should -HaveCount 1
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -Reset
+        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -Ignore } | Should -Throw '*only relinking the same posting*'
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -VerificationNumber 1 -FiscalYear $FY
+        (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1).Status | Should -Be 'Matched'
+    }
+
+    It 'Books the primary transfer but requires an explicit counterpart when nearest candidates tie' {
+        $extra = New-CamtFile -Path (Join-Path $TestDrive 'ambiguous.xml') -Opening 0 -Id 'OTHER' -Iban 'SE1100000000000000001940' -Entries @(
+            @{ Date = '2024-03-11'; Amount = 5000; Ref = 'OTHER'; Ustrd = 'Överföring' }
+        )
+        Import-LedgerBankStatement -JournalPath $JournalPath -Path $extra -Account '1940' | Out-Null
+        Add-LedgerBankRule -JournalPath $JournalPath -Pattern 'Överföring' -Account '1940'
+        Invoke-LedgerBankMatching -JournalPath $JournalPath -WarningVariable notices -WarningAction SilentlyContinue | Out-Null
+        "$notices" | Should -BeLike '*ambiguous counterparts*'
+        (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 2).Status | Should -Be 'Matched'
+        @(Get-LedgerBankTransaction -JournalPath $JournalPath -Account '1940').Status | Should -Be @('Unmatched', 'Unmatched')
+        Invoke-LedgerBankMatching -JournalPath $JournalPath -WarningAction SilentlyContinue | Out-Null
+        @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FY) | Should -HaveCount 1
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3 -VerificationNumber 1 -FiscalYear $FY
+        (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3).Status | Should -Be 'Matched'
+        (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1).Status | Should -Be 'Unmatched'
+        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -VerificationNumber 1 -FiscalYear $FY } |
+            Should -Throw '*reserved for another bank transaction*'
+    }
+
+    It 'Claims a counterpart imported after the primary posting without a second verification' {
+        $JournalPath = New-BankTestJournal -Root $TestDrive
+        $from = New-CamtFile -Path (Join-Path $TestDrive 'late-from.xml') -Opening 0 -Entries @(
+            @{ Date = '2024-03-10'; Amount = -5000; Ref = 'LATE1'; Ustrd = 'Överföring' }
+        )
+        Import-LedgerBankStatement -JournalPath $JournalPath -Path $from | Out-Null
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -Account '1940'
+        $to = New-CamtFile -Path (Join-Path $TestDrive 'late-to.xml') -Opening 0 -Id 'LATE' -Entries @(
+            @{ Date = '2024-03-11'; Amount = 5000; Ref = 'LATE2'; Ustrd = 'Överföring' }
+        )
+        Import-LedgerBankStatement -JournalPath $JournalPath -Path $to -Account '1940' | Out-Null
+        Invoke-LedgerBankMatching -JournalPath $JournalPath -Account '1940' | Out-Null
+        (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 2).VerificationNumber | Should -Be 1
+        @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FY) | Should -HaveCount 1
+    }
+
+    It 'Does not give a late counterpart to the first of two equally eligible saved postings' {
+        $JournalPath = New-BankTestJournal -Root $TestDrive
+        $from = New-CamtFile -Path (Join-Path $TestDrive 'competing-from.xml') -Opening 0 -Entries @(
+            @{ Date = '2024-03-10'; Amount = -5000; Ref = 'FIRST'; Ustrd = 'Transfer' }
+            @{ Date = '2024-03-10'; Amount = -5000; Ref = 'SECOND'; Ustrd = 'Transfer' }
+        )
+        Import-LedgerBankStatement -JournalPath $JournalPath -Path $from | Out-Null
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -Account '1940'
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 2 -Account '1940'
+        $to = New-CamtFile -Path (Join-Path $TestDrive 'competing-to.xml') -Opening 0 -Id 'LATE' -Entries @(
+            @{ Date = '2024-03-11'; Amount = 5000; Ref = 'LATE'; Ustrd = 'Transfer' }
+        )
+        Import-LedgerBankStatement -JournalPath $JournalPath -Path $to -Account '1940' | Out-Null
+        Invoke-LedgerBankMatching -JournalPath $JournalPath -WarningAction SilentlyContinue | Out-Null
+        (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3).Status | Should -Be 'Unmatched'
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3 -VerificationNumber 2 -FiscalYear $FY
+        (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3).VerificationNumber | Should -Be 2
+        @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FY) | Should -HaveCount 2
+    }
 }
 
 Describe 'Set-LedgerBankTransaction' {
@@ -492,6 +571,64 @@ Describe 'Set-LedgerBankTransaction' {
         Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -InvoiceNumber 1
         (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).Status | Should -Be 'Paid'
         (Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1).MatchType | Should -Be 'CustomerInvoice'
+    }
+
+    It 'Resumes a saved rule plan even after the rule changes and prevents rerouting after Reset' {
+        Add-LedgerBankRule -JournalPath $JournalPath -Pattern 'Kontorsmaterial' -Account '5410' -VatRate 0.25 -VatAccount '2640'
+        $script:RealPostingWrite = & (Get-Module PSLedger) { (Get-Command Write-LedgerVerification).ScriptBlock }
+        Mock Write-LedgerVerification -ModuleName PSLedger { throw 'Injected plan interruption' }
+        { Invoke-LedgerBankMatching -JournalPath $JournalPath -TransactionId 3 } | Should -Throw '*Bank posting*could not complete*'
+        $plan = Join-Path $JournalPath 'bank' 'posting' 'txn3.txt'
+        $hash = (Get-FileHash -LiteralPath $plan).Hash
+        $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash
+        Invoke-LedgerBankMatching -JournalPath $JournalPath -TransactionId 3 -WhatIf | Out-Null
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3 -Account '5410' -WhatIf
+        @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash | Should -Be $before
+        Remove-LedgerBankRule -JournalPath $JournalPath -Pattern 'Kontorsmaterial'
+        Add-LedgerBankRule -JournalPath $JournalPath -Pattern 'Kontorsmaterial' -Account '6570'
+        Mock Write-LedgerVerification -ModuleName PSLedger {
+            & $script:RealPostingWrite -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description `
+                -Rows $Rows -OperationId $OperationId -ReservedNumber $ReservedNumber -Confirm:$false
+        }
+        Invoke-LedgerBankMatching -JournalPath $JournalPath -TransactionId 3 -NoRules | Out-Null
+        $t = Get-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3
+        $entry = Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FY -VerificationNumber $t.VerificationNumber
+        ($entry.Rows | Where-Object Account -eq '5410').Amount | Should -Be 100
+        (Get-FileHash -LiteralPath $plan).Hash | Should -Be $hash
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3 -Reset
+        $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash
+        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3 -Account '6570' } | Should -Throw '*original inputs*'
+        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3 -Ignore } | Should -Throw '*original inputs*'
+        @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash | Should -Be $before
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3 -Account '5410'
+        @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FY) | Should -HaveCount 3
+    }
+
+    It 'Rejects changed <Change> on a saved account posting without additional writes' -ForEach @(
+        @{ Change = 'source' }
+        @{ Change = 'verification' }
+        @{ Change = 'plan' }
+    ) {
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3 -Account '5410'
+        switch ($Change) {
+            'source' {
+                & (Get-Module PSLedger) {
+                    param ($JournalPath)
+                    $found = Find-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3
+                    $found.Transaction.Text = 'External change'
+                    Save-LedgerBankStatementFile -Statement $found.Statement
+                } $JournalPath
+            }
+            'verification' { Add-Content -LiteralPath (Join-Path $JournalPath $FY 'ver0003.txt') -Value '; External change' }
+            'plan' {
+                $plan = Join-Path $JournalPath 'bank' 'posting' 'txn3.txt'
+                Set-Content -LiteralPath $plan -Value ((Get-Content -LiteralPath $plan -Raw) -replace 'VerificationHash:\t[^\r\n]+', 'VerificationHash:') -NoNewline
+            }
+        }
+        $before = @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash
+        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 3 -Account '5410' } | Should -Throw
+        { Invoke-LedgerBankMatching -JournalPath $JournalPath -TransactionId 3 } | Should -Throw
+        @(Get-ChildItem -LiteralPath $JournalPath -Recurse -File | Get-FileHash).Hash | Should -Be $before
     }
 
     It 'Resumes a paid <Type> invoice link without reverting changes to other statement transactions' -ForEach @(
@@ -646,6 +783,17 @@ Describe 'Set-LedgerBankTransaction' {
         $t = Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 2 -SupplierInvoiceNumber 1 -PassThru
         $t.Status | Should -Be 'Matched'
         (Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber 1).Status | Should -Be 'Paid'
+    }
+
+    It 'Resumes an unfinished invoice payment before replaying an older completed account posting' {
+        Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 1 -Account '3010'
+        $script:RealSupplierSave = & (Get-Module PSLedger) { (Get-Command Save-LedgerSupplierInvoiceFile).ScriptBlock }
+        Mock Save-LedgerSupplierInvoiceFile -ModuleName PSLedger { throw 'Injected payment status failure' }
+        { Set-LedgerBankTransaction -JournalPath $JournalPath -TransactionId 2 -SupplierInvoiceNumber 1 } | Should -Throw '*could not complete*'
+        Mock Save-LedgerSupplierInvoiceFile -ModuleName PSLedger { & $script:RealSupplierSave -Invoice $Invoice }
+        Invoke-LedgerBankMatching -JournalPath $JournalPath | Out-Null
+        (Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber 1).Status | Should -Be 'Paid'
+        @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FY) | Should -HaveCount 4
     }
 
     It 'Refuses to pay a customer invoice with an outgoing transaction' {

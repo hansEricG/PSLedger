@@ -437,6 +437,51 @@ Describe 'File format contract' {
             (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
         }
 
+        It 'Should bind a bank posting plan to its source, verification and counterpart' {
+            $journal = Join-Path $TestDrive 'bank-posting.ledger'
+            Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse
+            $csv = Join-Path $TestDrive 'contract-bank-posting.csv'
+            Set-Content -LiteralPath $csv -Value @('Date;Amount;Text', '2024-05-10;-112.50;Transfer')
+            $statement = Import-LedgerBankStatement -JournalPath $journal -Path $csv -Format Csv `
+                -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text
+            $t = Get-LedgerBankTransaction -JournalPath $journal | Where-Object StatementNumber -eq $statement.StatementNumber
+            $counterFile = Join-Path $TestDrive 'contract-bank-counterpart.csv'
+            Set-Content -LiteralPath $counterFile -Value @('Date;Amount;Text', '2024-05-11;112.50;Transfer')
+            $counterStatement = Import-LedgerBankStatement -JournalPath $journal -Path $counterFile -Account '1910' -Format Csv `
+                -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text
+            $counter = Get-LedgerBankTransaction -JournalPath $journal | Where-Object StatementNumber -eq $counterStatement.StatementNumber
+            Set-LedgerBankTransaction -JournalPath $journal -TransactionId $t.TransactionId -Account '1910'
+            $path = Join-Path $journal 'bank' 'posting' "txn$($t.TransactionId).txt"
+            $fields = @{}
+            foreach ($line in Get-Content -LiteralPath $path) {
+                if ($line -match '^([A-Za-z]+):\t(.*)$') { $fields[$Matches[1]] = $Matches[2] }
+            }
+            $hashText = {
+                param([string]$Text)
+                [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
+                    [Text.Encoding]::UTF8.GetBytes($Text.Replace("`r`n", "`n")))).ToLowerInvariant()
+            }
+            $fields.FormatVersion | Should -Be '1'
+            $fields.TransactionId | Should -Be "$($t.TransactionId)"
+            $fields.StatementNumber | Should -Be "$($statement.StatementNumber)"
+            $fields.BankHash | Should -Be (& $hashText "$($statement.StatementNumber)`t$($t.TransactionId)`t1930`t2024-05-10`t-112.5`t`t`t`tTransfer`n")
+            $fields.Account | Should -Be '1910'
+            $fields.MatchType | Should -Be 'Manual'
+            $fields.MatchRef | Should -Be '1910'
+            $fields.FiscalYear | Should -Be $Y
+            $entry = Get-Content -LiteralPath (Join-Path $journal $Y ('ver{0:D4}.txt' -f [int]$fields.VerificationNumber)) -Raw
+            $fields.VerificationHash | Should -Be (& $hashText $entry)
+            $entry | Should -Match "(?m)^OperationId: $([regex]::Escape($fields.OperationId))\r?$"
+            $claim = @{}
+            foreach ($line in Get-Content -LiteralPath (Join-Path $journal 'bank' 'posting' "counterpart$($t.TransactionId).txt")) {
+                if ($line -match '^([A-Za-z]+):\t(.*)$') { $claim[$Matches[1]] = $Matches[2] }
+            }
+            $claim.OperationId | Should -Be $fields.OperationId
+            $claim.TransactionId | Should -Be "$($counter.TransactionId)"
+            $claim.StatementNumber | Should -Be "$($counterStatement.StatementNumber)"
+            $claim.BankHash | Should -Be (& $hashText "$($counterStatement.StatementNumber)`t$($counter.TransactionId)`t1910`t2024-05-11`t112.5`t`t`t`tTransfer`n")
+        }
+
         It 'Should write a verification in the documented format' {
             $rows = @(
                 New-LedgerEntryRow -Debit 6110 -Amount 120.5 -Objects @{ 1 = 10 } -Comment 'Papper'

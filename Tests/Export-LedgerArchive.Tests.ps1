@@ -180,6 +180,32 @@ Describe 'Export-LedgerArchive' {
             $files | Where-Object { $_ -match "^journal/$OpenYear/" } | Should -BeNullOrEmpty
         }
 
+        It 'Retains bank posting plans and a transfer counterpart statement outside the archived year' {
+            $journal = New-TestLedger -Root $TestDrive
+            Set-LedgerJournal -JournalPath $journal -OrgNumber '556677-8899'
+            $csv = Join-Path $TestDrive 'archive-transfer.csv'
+            Set-Content -LiteralPath $csv -Value @('Date;Amount;Text', '2024-12-31;-500;Transfer')
+            Import-LedgerBankStatement -JournalPath $journal -Path $csv -Format Csv `
+                -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text | Out-Null
+            $other = Join-Path $TestDrive 'archive-counterpart.csv'
+            Set-Content -LiteralPath $other -Value @('Date;Amount;Text', '2025-01-01;500;Transfer')
+            Import-LedgerBankStatement -JournalPath $journal -Path $other -Account '1940' -Format Csv `
+                -Delimiter ';' -DateColumn Date -AmountColumn Amount -TextColumn Text | Out-Null
+            Set-LedgerBankTransaction -JournalPath $journal -TransactionId 1 -Account '1940'
+            Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $OpenYear -SkipResultEntry | Out-Null
+            $package = Export-LedgerArchive -JournalPath $journal -FiscalYear $OpenYear -AsDirectory
+            $archived = Join-Path $package.FullName 'journal'
+            foreach ($name in 'txn1.txt', 'counterpart1.txt') {
+                (Get-FileHash -LiteralPath (Join-Path $archived 'bank' 'posting' $name)).Hash |
+                    Should -Be (Get-FileHash -LiteralPath (Join-Path $journal 'bank' 'posting' $name)).Hash
+            }
+            @(Get-LedgerBankStatement -JournalPath $archived) | Should -HaveCount 2
+            Set-LedgerBankTransaction -JournalPath $archived -TransactionId 2 -Reset
+            Invoke-LedgerBankMatching -JournalPath $archived -TransactionId 2 | Out-Null
+            (Get-LedgerBankTransaction -JournalPath $archived -TransactionId 2).Status | Should -Be 'Matched'
+            @(Get-LedgerEntry -JournalPath $archived -FiscalYear $OpenYear) | Should -HaveCount 1
+        }
+
         It 'Copies the journal files unchanged so the archived chain still verifies' {
             $dir = Export-LedgerArchive -JournalPath $J -FiscalYear $OpenYear -AsDirectory -Force -WarningAction SilentlyContinue
 

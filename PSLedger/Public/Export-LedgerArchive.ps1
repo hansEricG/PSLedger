@@ -200,13 +200,22 @@ function Export-LedgerArchive {
                 }
             }
             $statements = 0
+            $bankPostings = @(Get-LedgerBankPostingOperation -JournalPath $journalDir | Where-Object FiscalYear -eq $FiscalYear)
             foreach ($stmt in @(Get-LedgerBankStatement -JournalPath $journalDir)) {
                 $from = if ($stmt.FromDate) { [datetime]$stmt.FromDate } else { [datetime]$stmt.ImportedDate }
                 $to = if ($stmt.ToDate) { [datetime]$stmt.ToDate } else { $from }
                 $file = Join-Path $journalDir 'bank' ('stmt{0:D4}.txt' -f [int]$stmt.StatementNumber)
-                if ($from -le $end -and $to -ge $start -and (Test-Path -LiteralPath $file -PathType Leaf)) {
+                if ((($from -le $end -and $to -ge $start) -or $stmt.StatementNumber -in $bankPostings.StatementNumber -or
+                    $stmt.StatementNumber -in $bankPostings.Counterpart.StatementNumber) -and (Test-Path -LiteralPath $file -PathType Leaf)) {
                     & $copyDocument $file 'bank'
                     $statements++
+                }
+            }
+            foreach ($posting in $bankPostings) {
+                & $copyDocument $posting.Path (Join-Path 'bank' 'posting')
+                foreach ($prefix in 'counterpart', 'ambiguous') {
+                    $sidecar = Join-Path (Split-Path $posting.Path -Parent) "$prefix$($posting.TransactionId).txt"
+                    if (Test-Path -LiteralPath $sidecar) { & $copyDocument $sidecar (Join-Path 'bank' 'posting') }
                 }
             }
 

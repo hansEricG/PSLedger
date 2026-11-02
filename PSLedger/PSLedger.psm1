@@ -37,6 +37,7 @@
 . $PSScriptRoot\Private\BankImport.ps1
 . $PSScriptRoot\Private\BankMatching.ps1
 . $PSScriptRoot\Private\BankPayment.ps1
+. $PSScriptRoot\Private\BankPosting.ps1
 . $PSScriptRoot\Private\TimeStore.ps1
 . $PSScriptRoot\Private\Migrations.ps1
 

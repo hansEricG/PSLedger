@@ -340,7 +340,7 @@ Description: Kontorsmaterial
 |-----|----------|-------|
 | `Date` | yes | Transaction date. MUST fall within the fiscal year. |
 | `Description` | yes | Text of the verification. |
-| `OperationId` | no | Non-empty GUID in `D` form identifying the customer-invoice posting or customer/supplier payment plan. Included in the verification content hash; ordinary entries omit it. |
+| `OperationId` | no | Non-empty GUID in `D` form identifying the customer-invoice posting, customer/supplier payment or bank posting plan. Included in the verification content hash; ordinary entries omit it. |
 
 A blank line follows the header.
 
@@ -693,8 +693,8 @@ Reset clears only the bank link, never the plan: only the same payment may be
 relinked. Duplicate transaction IDs or conflicting plans are rejected.
 
 Existing payment plans without bank fields remain supported and are not
-automatically associated with a bank transaction. Supplier invoice posting,
-rule/account postings and own-account transfers do not yet have end-to-end recovery.
+automatically associated with a bank transaction. Supplier invoice posting
+does not yet have end-to-end recovery. Rule/account bank plans are described below.
 
 ### `invoices/invNNNN.txt` — customer invoices
 
@@ -1015,6 +1015,54 @@ Telia*<TAB>6210<TAB>Telefoni<TAB>0.25<TAB>2640
 | 3 | Description | no | Description of the verification. |
 | 4 | VAT rate | no | Empty means 0. If set, VAT is split out of the amount. |
 | 5 | VAT account | if VAT rate > 0 | |
+
+### `bank/posting/` — rule/account posting plans and transfer claims
+
+`txn<id>.txt` is an immutable plan for one originating bank transaction.
+Its filename uses the positive transaction ID without zero padding. Files are
+UTF-8 lines of `Key:<TAB>Value`, with optional `;` comments. Duplicate keys,
+malformed records and conflicting transaction ownership are rejected.
+
+| Key | Value |
+|-----|-------|
+| `FormatVersion` | `1`; additive, no journal schema bump. |
+| `OperationId` | Non-empty GUID in `D` form, also recorded in the verification. |
+| `TransactionId`, `StatementNumber` | Positive source bank identities. |
+| `BankHash` | Lowercase SHA-256 using the same stable bank-input hash as invoice payment plans. |
+| `BankAccount`, `Account` | Bank and counter account numbers, digits only. |
+| `Date`, `Amount` | ISO booking date and signed invariant decimal, at most two fraction digits. |
+| `VatRate`, `VatAccount` | Nonnegative invariant VAT fraction and VAT account; the account may be empty when VAT is unused. |
+| `Description` | Sanitised single-line verification description. |
+| `MatchType`, `MatchRef` | `Manual` with counter account, or `Rule` with the original rule pattern. |
+| `FiscalYear`, `VerificationNumber` | Fiscal-year directory and positive reserved verification number. |
+| `VerificationHash` | Lowercase SHA-256 of the planned verification, including its operation ID and final LF. |
+| `DateTolerance` | Saved counterpart date tolerance in days, 0–365. |
+
+The plan is validated and published create-if-absent before posting; its
+reservation participates in all verification allocation. Current rules are not
+reapplied on retry. Saved verification hashes, dates, descriptions and rows MUST
+agree with the plan. Recovery seals an existing matching verification once and
+finishes bank links; it never replaces the verification or creates one in a
+closed year.
+
+For transfers without VAT, `counterpart<id>.txt` immutably claims one transaction
+on the counter account. `<id>` is the originating transaction ID, while fields
+`OperationId`, `TransactionId`, `StatementNumber` and `BankHash` identify the
+operation and the selected counterpart. Its amount MUST be the opposite of the
+source amount, within the saved date tolerance. Claims are published before
+bank-state updates and retained after completion. A counterpart imported later
+can be claimed without changing the original plan.
+
+`ambiguous<id>.txt`, containing `OperationId`, records that nearest eligible
+counterparts tied. The original transaction is still booked, but automatic
+selection stops permanently for that plan. The user can explicitly select a
+counterpart using `Set-LedgerBankTransaction -VerificationNumber -FiscalYear`;
+that writes the same immutable counterpart claim. Neither marker nor claim is
+removed on Reset. Reset permits only relinking the same posting on either side.
+
+Retain all three record types in backups. Archives copy records for the selected
+fiscal year and the referenced source/counterpart statements, including a
+counterpart dated outside that year. SIE exports omit these recovery records.
 
 ## Time reporting
 

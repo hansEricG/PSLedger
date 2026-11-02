@@ -30,6 +30,14 @@ Reset preserves a saved payment plan. Only relinking that same payment (with
 Reset does not permit paying another invoice, reposting or ignoring the
 transaction. Corrections to the bookkeeping are a separate operation.
 
+Account postings also retain a saved plan. Repeat the original -Account command
+after interruption; omitted optional inputs use the plan, while explicit changes
+are rejected. The same posting can be relinked with -VerificationNumber.
+Reset does not allow rerouting, ignoring or paying an invoice with that transaction.
+Transfers without VAT can link a counterpart to the same verification. When
+automatic selection is ambiguous, choose the counterpart transaction explicitly
+with -VerificationNumber and -FiscalYear. The selection is retained across retries.
+
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal
 set via Set-LedgerCurrentJournal.
@@ -69,7 +77,7 @@ The fiscal year of -VerificationNumber, or the fiscal year to post into with
 Marks the transaction as ignored.
 
 .PARAMETER Reset
-Returns the transaction to 'Unmatched' without clearing saved payment ownership.
+Returns the transaction to 'Unmatched' without clearing saved payment or posting ownership.
 
 .PARAMETER PassThru
 If specified, returns the updated transaction. By default the command produces
@@ -145,6 +153,7 @@ function Set-LedgerBankTransaction {
             $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
             Assert-LedgerJournalSchema -Path $JournalPath -Write
             $operations = @(Get-LedgerInvoicePaymentOperation -JournalPath $JournalPath)
+            $postings = @(Get-LedgerBankPostingOperation -JournalPath $JournalPath)
             $owned = @($operations | Where-Object { $_.PSObject.Properties['BankTransactionId'] -and $_.BankTransactionId -eq $TransactionId })
             $exceptId = if ($owned.Count -eq 1) { $owned[0].OperationId } else { [guid]::Empty }
             if ($PSCmdlet.ParameterSetName -notin 'Ignore', 'Reset') {
@@ -154,6 +163,9 @@ function Set-LedgerBankTransaction {
             $statement = $found.Statement
             $t = $found.Transaction
             $operation = Get-LedgerBankInvoicePaymentOperation -Transaction $t -Operations $operations
+            $posting = Get-LedgerBankPostingOwner -Operations $postings -TransactionId $TransactionId
+            if ($posting -and $operation) { throw "Bank transaction $TransactionId has conflicting payment and posting plans." }
+            if ($posting) { Assert-LedgerBankPostingSource -Transaction $t -Operation $posting -Counterpart:($posting.TransactionId -ne $TransactionId) }
             if ($operation) { Assert-LedgerBankPaymentLink -Transaction $t -Operation $operation }
             $target = "Bank transaction $TransactionId ($($t.Date.ToString('yyyy-MM-dd')), $($t.Amount))"
 
@@ -165,12 +177,29 @@ function Set-LedgerBankTransaction {
                 return
             }
 
+            if ($posting) {
+                $sameVerification = $PSCmdlet.ParameterSetName -eq 'Verification' -and $VerificationNumber -eq $posting.VerificationNumber -and
+                (-not $FiscalYear -or $FiscalYear -eq $posting.FiscalYear)
+                $sameAccount = $PSCmdlet.ParameterSetName -eq 'Account' -and $posting.TransactionId -eq $TransactionId -and $Account -eq $posting.Account -and
+                (-not $PSBoundParameters.ContainsKey('Description') -or (ConvertTo-LedgerTextField $Description) -eq $posting.Description) -and
+                (-not $PSBoundParameters.ContainsKey('VatRate') -or $VatRate -eq $posting.VatRate) -and
+                (-not $PSBoundParameters.ContainsKey('VatAccount') -or $VatAccount -eq $posting.VatAccount) -and
+                (-not $FiscalYear -or $FiscalYear -eq $posting.FiscalYear)
+                if (-not ($sameVerification -or $sameAccount)) { throw "Bank transaction $TransactionId has a saved posting plan; only relinking the same posting with its original inputs is allowed." }
+                if (-not $PSCmdlet.ShouldProcess($target, 'Resume saved bank posting')) { return }
+                $null = Complete-LedgerBankPosting -JournalPath $JournalPath -Operation $posting
+                if ($PassThru) {
+                    ConvertTo-LedgerBankTransactionOutput -Transaction (Find-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $TransactionId).Transaction
+                }
+                return
+            }
+
             if ($operation) {
                 $sameInvoice = ($operation.InvoiceType -eq 'Customer' -and $PSCmdlet.ParameterSetName -eq 'Invoice' -and $InvoiceNumber -eq $operation.InvoiceNumber) -or
-                    ($operation.InvoiceType -eq 'Supplier' -and $PSCmdlet.ParameterSetName -eq 'SupplierInvoice' -and $SupplierInvoiceNumber -eq $operation.InvoiceNumber)
+                ($operation.InvoiceType -eq 'Supplier' -and $PSCmdlet.ParameterSetName -eq 'SupplierInvoice' -and $SupplierInvoiceNumber -eq $operation.InvoiceNumber)
                 $sameVerification = $PSCmdlet.ParameterSetName -eq 'Verification' -and
-                    $VerificationNumber -eq $operation.VerificationNumber -and
-                    (-not $FiscalYear -or $FiscalYear -eq $operation.FiscalYear)
+                $VerificationNumber -eq $operation.VerificationNumber -and
+                (-not $FiscalYear -or $FiscalYear -eq $operation.FiscalYear)
                 if (-not ($sameInvoice -or $sameVerification)) {
                     throw "Bank transaction $TransactionId belongs to the saved payment of $($operation.InvoiceType) invoice $($operation.InvoiceNumber). Reset does not undo that payment; only relinking the same payment is allowed."
                 }
@@ -197,11 +226,24 @@ function Set-LedgerBankTransaction {
                             throw "No fiscal year covers the transaction date $($t.Date.ToString('yyyy-MM-dd')). Specify -FiscalYear."
                         }
                     }
+                    $reserved = @($postings | Where-Object { $_.FiscalYear -eq $FiscalYear -and $_.VerificationNumber -eq $VerificationNumber })
+                    if ($reserved.Count) {
+                        if ($reserved.Count -ne 1 -or $reserved[0].Counterpart -or $reserved[0].Account -ne $t.BankAccount -or $reserved[0].VatRate -ne 0) {
+                            throw 'Verification is reserved for another bank transaction.'
+                        }
+                        if (-not $PSCmdlet.ShouldProcess($target, 'Select counterpart of saved bank posting')) { return }
+                        Save-LedgerBankPostingCounterpart -JournalPath $JournalPath -Operation $reserved[0] -Transaction $t
+                        $null = Complete-LedgerBankPosting -JournalPath $JournalPath -Operation $reserved[0]
+                        if ($PassThru) {
+                            ConvertTo-LedgerBankTransactionOutput -Transaction (Find-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $TransactionId).Transaction
+                        }
+                        return
+                    }
                     if (@($operations | Where-Object {
-                            $_.PSObject.Properties['BankTransactionId'] -and $_.BankTransactionId -ne $TransactionId -and
-                            $_.PaymentAccount -eq $t.BankAccount -and $_.FiscalYear -eq $FiscalYear -and
-                            $_.VerificationNumber -eq $VerificationNumber
-                        }).Count) {
+                                $_.PSObject.Properties['BankTransactionId'] -and $_.BankTransactionId -ne $TransactionId -and
+                                $_.PaymentAccount -eq $t.BankAccount -and $_.FiscalYear -eq $FiscalYear -and
+                                $_.VerificationNumber -eq $VerificationNumber
+                            }).Count) {
                         throw "Verification $VerificationNumber in $FiscalYear is reserved for another bank transaction's payment."
                     }
                     $movement = Get-LedgerBankAccountMovements -JournalPath $JournalPath -FiscalYear $FiscalYear -BankAccount $t.BankAccount |
@@ -239,9 +281,8 @@ function Set-LedgerBankTransaction {
                         VatAccount  = $VatAccount
                         FiscalYear  = $FiscalYear
                     }
-                    $result = Invoke-LedgerBankAccountEntry @entryParams
-                    Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched -MatchType 'Manual' `
-                        -MatchRef $Account -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
+                    $null = Invoke-LedgerBankAccountEntry @entryParams
+                    $t = (Find-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $TransactionId).Transaction
                 }
             }
 

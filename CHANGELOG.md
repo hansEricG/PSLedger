@@ -3,6 +3,13 @@
 ## [Unreleased]
 
 ### Added
+- **Recoverable rule/manual bank postings and own-account transfer links.**
+  Immutable plans retain validated inputs, bank hashes and verification reservations.
+  Retries reuse the original posting even if its rule changes or disappears.
+  Counterpart claims survive interruption between statement saves and Reset.
+  Equally close transfer candidates require an explicit manual choice, while the
+  selected transaction is booked once. Later-imported unambiguous counterparts
+  can join the same posting. Plans and source statements are retained in archives.
 - **Journal write locking for verification and integrity operations.** Posting,
   reversals, attachment changes, sealing, year closing and credit-note rollback
   share a reentrant journal lock. A competing process waits up to 30 seconds,
@@ -57,9 +64,9 @@
   when the invoice belongs to an earlier year and its payment row is not saved yet.
 
 Recovery currently covers customer-invoice posting, customer/supplier payments
-and their bank matches. Changed inputs,
+and bank-created invoice, rule/account and own-account transfer postings. Changed inputs,
 conflicting verifications and damaged integrity chains stop recovery explicitly.
-Supplier invoice posting, rule/account bank postings, charges, credit notes, payroll
+Supplier invoice posting, charges, credit notes, payroll
 and multi-statement imports still need recovery. Locking is not a multi-file
 transaction or general multi-user support.
 

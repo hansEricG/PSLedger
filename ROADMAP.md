@@ -396,8 +396,13 @@ invoice-status writes. Other multi-file workflows still need equivalent protecti
       plans in archives, including pending payments of earlier invoices.
       Cover process termination, concurrent retries, remaining-balance validation,
       closed years, bank-input conflicts and identical real payments.
-- [ ] Extend bank-matching recovery to rule/account postings,
-      including both sides of own-account transfers.
+- [x] Extend bank-matching recovery to rule/account postings,
+      including both sides of own-account transfers. Retain immutable plans and
+      counterpart claims; keep original inputs when rules change, reserve
+      verification numbers, and allow only same-posting relinking after Reset.
+      Book the selected transaction once but require manual counterpart selection
+      when nearest candidates tie. Include late counterpart imports, closed-year
+      recovery, interruption between statement saves and archive retention.
 - [ ] Define recoverable operation boundaries for supplier invoice posting and remaining invoice/payment/payroll
       posting, SIE import, chart conversion and fiscal-year closing.
 - [ ] Extend durable operation identity and progress to those workflows without

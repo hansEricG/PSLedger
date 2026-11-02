@@ -341,8 +341,18 @@ function Invoke-LedgerBankAccountEntry {
 
         [string]$VatAccount,
 
-        [string]$FiscalYear
+        [string]$FiscalYear,
+
+        [ValidateSet('Manual', 'Rule')] [string]$MatchType = 'Manual',
+        [string]$MatchRef,
+        [int]$DateTolerance = 3
     )
+    $existing = Get-LedgerBankPostingOwner -Operations @(Get-LedgerBankPostingOperation -JournalPath $JournalPath) -TransactionId $Transaction.TransactionId
+    if ($existing) { return Complete-LedgerBankPosting -JournalPath $JournalPath -Operation $existing }
+    if ($Account -notmatch '^\d+$' -or $Transaction.BankAccount -notmatch '^\d+$' -or
+        ($VatAccount -and $VatAccount -notmatch '^\d+$') -or $DateTolerance -lt 0 -or $DateTolerance -gt 365) {
+        throw 'Invalid bank posting account, VAT account or date tolerance.'
+    }
     if (-not $FiscalYear) {
         $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $Transaction.Date
         if (-not $FiscalYear) {
@@ -352,9 +362,28 @@ function Invoke-LedgerBankAccountEntry {
     if (-not $Description) {
         $Description = Get-LedgerBankTransactionDescription -Transaction $Transaction
     }
-    $rows = Get-LedgerBankEntryRows -BankAccount $Transaction.BankAccount -Amount $Transaction.Amount `
-        -Account $Account -VatRate $VatRate -VatAccount $VatAccount
-    $ver = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Transaction.Date `
-        -Description $Description -Rows $rows -PassThru -WhatIf:$false -Confirm:$false
-    [PSCustomObject]@{ FiscalYear = $ver.FiscalYear; VerificationNumber = $ver.VerificationNumber }
+    $Description = ConvertTo-LedgerTextField $Description
+    $amount = [decimal]::Parse($Transaction.Amount.ToString('0.############################', [Globalization.CultureInfo]::InvariantCulture),
+        [Globalization.CultureInfo]::InvariantCulture)
+    $rows = @(Get-LedgerBankEntryRows -BankAccount $Transaction.BankAccount -Amount $amount `
+        -Account $Account -VatRate $VatRate -VatAccount $VatAccount)
+    $id = [guid]::NewGuid()
+    Assert-LedgerInvoicePostingIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
+    $lines = @(Get-LedgerVerificationLines -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Transaction.Date `
+        -Description $Description -Rows $rows -OperationId $id)
+    $fields = [ordered]@{
+        FormatVersion = 1; OperationId = $id; TransactionId = $Transaction.TransactionId; StatementNumber = $Transaction.StatementNumber
+        BankHash = Get-LedgerBankTransactionHash -Transaction $Transaction; BankAccount = $Transaction.BankAccount
+        Date = $Transaction.Date.ToString('yyyy-MM-dd'); Amount = $amount.ToString([Globalization.CultureInfo]::InvariantCulture)
+        Account = $Account; VatRate = $VatRate.ToString('0.############################', [Globalization.CultureInfo]::InvariantCulture)
+        VatAccount = $VatAccount; Description = $Description; MatchType = $MatchType
+        MatchRef = $(if ($MatchType -eq 'Manual') { $Account } else { ConvertTo-LedgerTextField $MatchRef })
+        FiscalYear = $FiscalYear; VerificationNumber = Get-LedgerNextVerificationNumber -JournalPath $JournalPath -FiscalYear $FiscalYear
+        VerificationHash = Get-LedgerSha256Hex -Bytes ([Text.Encoding]::UTF8.GetBytes(($lines -join "`n") + "`n"))
+        DateTolerance = $DateTolerance
+    }
+    $path = Join-Path $JournalPath 'bank' 'posting' "txn$($Transaction.TransactionId).txt"
+    Save-LedgerBankPostingFields -Path $path -Fields $fields
+    $operation = Get-LedgerBankPostingOwner -Operations @(Get-LedgerBankPostingOperation -JournalPath $JournalPath) -TransactionId $Transaction.TransactionId
+    Complete-LedgerBankPosting -JournalPath $JournalPath -Operation $operation
 }

@@ -159,6 +159,7 @@ function Get-LedgerNextVerificationNumber {
     $numbers = @(Get-ChildItem -LiteralPath (Join-Path $JournalPath $FiscalYear) -Filter 'ver*.txt' -File -ErrorAction Stop |
             ForEach-Object { if ($_.BaseName -match '^ver(\d+)$') { [int]$Matches[1] } })
     $numbers += @(Get-LedgerInvoicePostingReservation -JournalPath $JournalPath -FiscalYear $FiscalYear)
+    $numbers += @(Get-LedgerBankPostingOperation -JournalPath $JournalPath | Where-Object FiscalYear -eq $FiscalYear | ForEach-Object VerificationNumber)
     if ($numbers.Count) { [int]($numbers | Measure-Object -Maximum).Maximum + 1 } else { 1 }
 }
 

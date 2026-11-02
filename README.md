@@ -621,8 +621,8 @@ for another invoice. Bookkeeping corrections require separate handling.
 
 An unfinished payment started outside bank matching still needs to be resumed
 with its `PaymentId` first, then linked with `-VerificationNumber` and
-`-FiscalYear`; do not register another payment. Rule/account bank matching,
-own-account transfers, charges and credit notes do not yet have end-to-end recovery.
+`-FiscalYear`; do not register another payment. Charges and credit notes do not
+yet have end-to-end recovery.
 
 `Export-LedgerInvoice` produces the PDF with a built-in, dependency-free writer.
 Add payment details (bankgiro, plusgiro, IBAN/BIC) to the document by storing them
@@ -775,6 +775,33 @@ Get-LedgerBankReconciliation -AsOf '2024-12-31'
 ```
 
 For a full walkthrough see [docs/Bankavstamning.md](docs/Bankavstamning.md).
+
+**Rule and manual account postings are also recoverable.** After interruption,
+rerun `Invoke-LedgerBankMatching` or repeat the original
+`Set-LedgerBankTransaction -TransactionId <id> -Account <account>`.
+Saved plans take precedence over current rules, including with `-NoRules`;
+changing or deleting a rule never changes an already-planned posting. Explicitly
+conflicting retry inputs, changed bank data or damaged verifications stop recovery.
+In a closed year, only an already-saved verification can be completed.
+
+Plans in `bank/posting/` retain the verification reservation and bank identity.
+Keep this directory after success and in backups; archive packages include the
+plans and their source statements. `-Reset` permits only relinking the same
+posting, not changing its account, ignoring it or paying an invoice with it.
+
+Transfers without VAT can link both bank sides to one verification, including
+a counterpart imported later. The selected counterpart's identity and input hash
+are saved before either bank link is updated. If several candidates are equally
+close in date, **the selected transaction is booked once, but no counterpart is
+guessed**. A warning requests an explicit choice:
+
+```powershell
+Set-LedgerBankTransaction -TransactionId 27 -VerificationNumber 42 -FiscalYear '2024-01_2024-12'
+```
+
+An ambiguity marker prevents a later automatic run from silently choosing instead.
+Both sides retain ownership through Reset and retries. Recovery does not undo
+bookkeeping; corrections remain separate operations.
 
 ## Time Reporting (Tidrapportering)
 

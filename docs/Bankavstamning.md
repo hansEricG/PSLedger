@@ -180,6 +180,11 @@ En överföring mellan egna konton syns på båda utdragen men bokförs bara en 
   utbetalningen från 1930 och kopplar insättningen på skattekontot (motsatt
   belopp inom `-DateTolerance` dagar) till samma verifikation.
 - En regel som pekar på transaktionens eget konto används inte.
+- Finns flera motpartskandidater som ligger lika nära i datum bokförs den valda
+  transaktionen en gång, men ingen motpart gissas. En varning ber dig välja
+  motpart själv, t.ex.
+  `Set-LedgerBankTransaction -TransactionId 27 -VerificationNumber 42 -FiscalYear '2024-01_2024-12'`.
+  Efter det väljer en senare automatisk körning aldrig motpart på egen hand.
 
 Stäm sedan av varje konto för sig med `Get-LedgerBankReconciliation -Account`.
 
@@ -216,6 +221,20 @@ Flera transaktioner kan hanteras via pipelinen:
 Get-LedgerBankTransaction -Status Unmatched | Where-Object Text -like '*Ränta*' |
     Set-LedgerBankTransaction -Account 8310
 ```
+
+### Om något avbryts
+
+Bokföringar via regel, motkonto och överföringar sparas först som en plan i
+`bank/posting/`. Avbryts körningen kör du `Invoke-LedgerBankMatching` igen
+eller upprepar samma `Set-LedgerBankTransaction`-kommando. Då slutförs den
+sparade planen, även om regeln har ändrats eller tagits bort. Ändrade bankdata,
+motstridiga indata och skadade verifikationer stoppar återupptagningen. I ett
+stängt år kan bara en redan sparad verifikation slutföras.
+
+Behåll `bank/posting/` även efter lyckade körningar och i säkerhetskopior.
+`-Reset` tar bort kopplingen men transaktionen tillhör fortfarande samma
+bokföring. Den kan sedan bara kopplas om till samma bokföring, inte bokas mot
+ett annat konto, ignoreras eller användas för att betala en faktura.
 
 ## 4. Bankavstämning
 

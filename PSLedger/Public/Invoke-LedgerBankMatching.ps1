@@ -42,9 +42,13 @@ Customer and supplier payments retain the bank transaction's identity and input 
 their immutable payment plan. Rerun this command after interruption to finish
 both payment and bank link, even when the invoice has already become Paid.
 Conflicting inputs or links stop recovery. Resetting a bank link retains its
-payment ownership. Rule/account postings and own-account transfers do not yet
-have this end-to-end recovery. An unassociated unfinished invoice payment must still
-be resumed separately before bank matching.
+payment ownership. Rule/manual account postings also retain immutable plans;
+retries use the original plan even if a rule changes or is removed. Transfers
+without VAT retain a counterpart claim before updating their bank links.
+Equally close candidates require manual -VerificationNumber selection; the
+selected transaction is still booked once. A counterpart imported later can
+join the same posting. Reset never frees either side for another posting.
+An unassociated unfinished invoice payment must still be resumed separately.
 
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal
@@ -104,11 +108,16 @@ function Invoke-LedgerBankMatching {
         $duplicates = @($statements.Transactions | Group-Object TransactionId | Where-Object Count -gt 1)
         if ($duplicates.Count) { throw "Bank transaction identities are duplicated: $($duplicates.Name -join ', '). Matching stopped." }
         $operations = @(Get-LedgerInvoicePaymentOperation -JournalPath $JournalPath)
+        $postings = @(Get-LedgerBankPostingOperation -JournalPath $JournalPath)
         $bankOperations = @($operations | Where-Object { $_.PSObject.Properties['BankTransactionId'] })
         if (-not $bankOperations.Count) { Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath }
         $linked = Get-LedgerBankLinkedVerifications -Statements $statements
         foreach ($operation in $bankOperations) {
             [void]$linked.Add("$($operation.PaymentAccount)|$($operation.FiscalYear)|$($operation.VerificationNumber)")
+        }
+        foreach ($posting in $postings) {
+            [void]$linked.Add("$($posting.BankAccount)|$($posting.FiscalYear)|$($posting.VerificationNumber)")
+            if ($posting.VatRate -eq 0) { [void]$linked.Add("$($posting.Account)|$($posting.FiscalYear)|$($posting.VerificationNumber)") }
         }
         $invoices = @(Get-LedgerInvoice -JournalPath $JournalPath)
         $supplierInvoices = @(Get-LedgerSupplierInvoice -JournalPath $JournalPath)
@@ -125,14 +134,45 @@ function Invoke-LedgerBankMatching {
                 [pscustomobject]@{ Statement = $statement; Transaction = $t }
             }
         }
-        foreach ($item in @($work | Sort-Object @{ Expression = { if ($_.Transaction.TransactionId -in $bankOperations.BankTransactionId) { 0 } else { 1 } } },
+        foreach ($item in @($work | Sort-Object @{ Expression = {
+                    if ($_.Transaction.TransactionId -in $bankOperations.BankTransactionId) { 0 }
+                    elseif ($_.Transaction.TransactionId -in $postings.TransactionId) { 1 }
+                    else { 2 }
+                } },
                 @{ Expression = { $_.Transaction.TransactionId } })) {
-            $statement = $item.Statement
-            $t = $item.Transaction
+            $fresh = Find-LedgerBankTransaction -JournalPath $JournalPath -TransactionId $item.Transaction.TransactionId
+            $statement = $fresh.Statement
+            $t = $fresh.Transaction
+            $postings = @(Get-LedgerBankPostingOperation -JournalPath $JournalPath)
+            $posting = Get-LedgerBankPostingOwner -Operations $postings -TransactionId $t.TransactionId
+            if ($posting) {
+                Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath
+                if (Get-LedgerBankInvoicePaymentOperation -Transaction $t -Operations $operations) { throw "Bank transaction $($t.TransactionId) has conflicting payment and posting plans." }
+                Assert-LedgerBankPostingSource -Transaction $t -Operation $posting -Counterpart:($posting.TransactionId -ne $t.TransactionId)
+                if ($PSCmdlet.ShouldProcess("Bank transaction $($t.TransactionId)", 'Resume saved bank posting')) {
+                    (Complete-LedgerBankPosting -JournalPath $JournalPath -Operation $posting).Changed
+                    $movementCache.Clear()
+                }
+                continue
+            }
             if ($t.Status -ne 'Unmatched') { continue }
             $operation = Get-LedgerBankInvoicePaymentOperation -Transaction $t -Operations $operations
             $exceptId = if ($operation) { $operation.OperationId } else { [guid]::Empty }
             Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath -ExceptPaymentId $exceptId
+            $possibleTransfers = @($postings | Where-Object {
+                $_.VatRate -eq 0 -and -not $_.Counterpart -and $_.Account -eq $t.BankAccount -and $_.Amount -eq -$t.Amount -and
+                    [Math]::Abs(($_.Date - $t.Date).TotalDays) -le $_.DateTolerance
+            })
+            if (-not $operation -and $possibleTransfers.Count) {
+                if ($possibleTransfers.Count -ne 1 -or $possibleTransfers[0].ManualCounterpart) {
+                    Write-Warning "Bank transaction $($t.TransactionId) requires manual counterpart selection with -VerificationNumber and -FiscalYear."
+                }
+                elseif ($PSCmdlet.ShouldProcess("Bank transaction $($t.TransactionId)", 'Complete saved transfer')) {
+                    (Complete-LedgerBankPosting -JournalPath $JournalPath -Operation $possibleTransfers[0]).Changed
+                    $movementCache.Clear()
+                }
+                continue
+            }
 
             $year = $fiscalYears | Where-Object { $t.Date -ge $_.StartDate -and $t.Date -le $_.EndDate } | Select-Object -First 1
             if (-not $year) {
@@ -179,17 +219,18 @@ function Invoke-LedgerBankMatching {
                     'SupplierInvoice' { Invoke-LedgerBankSupplierPayment -JournalPath $JournalPath -Transaction $t -Statement $statement -InvoiceNumber ([int]$match.Ref) }
                     'Rule' {
                         Invoke-LedgerBankAccountEntry -JournalPath $JournalPath -Transaction $t -Account $rule.Account `
-                            -Description $rule.Description -VatRate $rule.VatRate -VatAccount $rule.VatAccount -FiscalYear $year.Name
+                            -Description $rule.Description -VatRate $rule.VatRate -VatAccount $rule.VatAccount -FiscalYear $year.Name `
+                            -MatchType Rule -MatchRef $rule.Pattern -DateTolerance $DateTolerance
                     }
                 }
             }
             catch {
-                if ($match.Type -in 'CustomerInvoice', 'SupplierInvoice') { throw }
+                if ($match.Type -in 'CustomerInvoice', 'SupplierInvoice', 'Rule') { throw }
                 Write-Warning "Bank transaction $($t.TransactionId): $($_.Exception.Message)"
                 continue
             }
 
-            if ($match.Type -notin 'CustomerInvoice', 'SupplierInvoice') {
+            if ($match.Type -eq 'Entry') {
                 Set-LedgerBankTransactionState -Statement $statement -Transaction $t -Status Matched `
                     -MatchType $match.Type -MatchRef $match.Ref -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
             }
@@ -207,34 +248,11 @@ function Invoke-LedgerBankMatching {
                 $supplierInvoices = @(Get-LedgerSupplierInvoice -JournalPath $JournalPath)
             }
 
-            ConvertTo-LedgerBankTransactionOutput -Transaction $t
-
-            # A transfer to another own bank account (or the tax account) shows up
-            # on that account's statement too; link it to the same verification
-            # instead of posting the transfer twice.
-            if ($match.Type -eq 'Rule' -and -not $rule.VatRate) {
-                $counterpart = $null
-                $counterStatement = $null
-                foreach ($s in $statements) {
-                    if ($s.BankAccount -ne $rule.Account) { continue }
-                    foreach ($c in @($s.Transactions)) {
-                        if ($c.Status -ne 'Unmatched' -or $c.Amount -ne -$t.Amount) { continue }
-                        if ($c.TransactionId -in $bankOperations.BankTransactionId) { continue }
-                        $days = [Math]::Abs(($c.Date - $t.Date).TotalDays)
-                        if ($days -gt $DateTolerance) { continue }
-                        if (-not $counterpart -or $days -lt [Math]::Abs(($counterpart.Date - $t.Date).TotalDays)) {
-                            $counterpart = $c; $counterStatement = $s
-                        }
-                    }
-                }
-                if ($counterpart) {
-                    Set-LedgerBankTransactionState -Statement $counterStatement -Transaction $counterpart -Status Matched `
-                        -MatchType 'Entry' -MatchRef "$($result.FiscalYear)/$($result.VerificationNumber)" `
-                        -FiscalYear $result.FiscalYear -VerificationNumber $result.VerificationNumber
-                    [void]$linked.Add("$($counterpart.BankAccount)|$($result.FiscalYear)|$($result.VerificationNumber)")
-                    ConvertTo-LedgerBankTransactionOutput -Transaction $counterpart
-                }
+            if ($match.Type -eq 'Rule') {
+                $result.Changed
+                if (-not $rule.VatRate) { [void]$linked.Add("$($rule.Account)|$($result.FiscalYear)|$($result.VerificationNumber)") }
             }
+            else { ConvertTo-LedgerBankTransactionOutput -Transaction $t }
         }
     }
     finally { Exit-LedgerJournalLock -Lock $journalLock }
