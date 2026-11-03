@@ -435,7 +435,7 @@ Describe 'Journal write locking' {
     }
 
     It 'Does not create a coordination file or verification for WhatIf' {
-        Remove-Item -LiteralPath (Join-Path $journal '.write.lock') -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath (Join-Path $journal '.write.lock') -Force
         Add-LedgerEntry @entry -WhatIf
         Test-Path -LiteralPath (Join-Path $journal '.write.lock') | Should -BeFalse
         @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 0
