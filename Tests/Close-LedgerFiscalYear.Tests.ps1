@@ -253,5 +253,107 @@ Describe 'Close-LedgerFiscalYear' {
             $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
             ($Balance | Where-Object AccountNumber -eq '8999') | Should -BeNullOrEmpty
         }
+
+        Context 'Recovery' {
+            BeforeEach {
+                New-ProfitJournal -Path $JournalPath -CompanyType 'AB' -EquityAccount '2099'
+                Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1930' -AccountName 'Bank'
+                $planPath = Join-Path $JournalPath $FiscalYear 'closing.txt'
+                $script:realWrite = & (Get-Module PSLedger) { (Get-Command Write-LedgerVerification).ScriptBlock }
+                $script:realProtect = & (Get-Module PSLedger) { (Get-Command Protect-LedgerYearContent).ScriptBlock }
+                $script:realSet = & (Get-Module PSLedger) { (Get-Command Set-LedgerFileContent).ScriptBlock }
+                $script:failWrite = $false
+                $script:failProtect = $false
+                $script:failStatus = $false
+                Mock -ModuleName PSLedger Write-LedgerVerification {
+                    & $script:realWrite -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description -Rows $Rows `
+                        -Attachment $Attachment -PassThru:$PassThru -LegacyReversal:$LegacyReversal `
+                        -OperationId $(if ($OperationId) { $OperationId } else { [guid]::Empty }) -ReservedNumber ([int]$ReservedNumber) -Confirm:$false
+                }
+                Mock -ModuleName PSLedger Write-LedgerVerification { throw 'simulated interruption' } -ParameterFilter { $script:failWrite }
+                Mock -ModuleName PSLedger Protect-LedgerYearContent { & $script:realProtect -YearDir $YearDir }
+                Mock -ModuleName PSLedger Protect-LedgerYearContent { throw 'simulated interruption' } -ParameterFilter { $script:failProtect }
+                Mock -ModuleName PSLedger Set-LedgerFileContent { & $script:realSet -Path $Path -Value $Value -NoClobber:$NoClobber }
+                Mock -ModuleName PSLedger Set-LedgerFileContent { throw 'simulated interruption' } -ParameterFilter { $script:failStatus -and $Path -like '*year.txt' }
+                $sale = @{ JournalPath = $JournalPath; FiscalYear = $FiscalYear; Date = '2024-07-01'; Description = 'Försäljning'; Rows = @(
+                        @{ Account = '1910'; Amount = 100 }, @{ Account = '3010'; Amount = -100 }) }
+            }
+
+            It 'Should keep a closing plan with the reserved result verification while the close is unfinished' {
+                $script:failProtect = $true
+                { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear } | Should -Throw '*rerun Close-LedgerFiscalYear*'
+                $plan = Get-Content -LiteralPath $planPath
+                $plan | Should -Contain "ResultVerification:`t2"
+                $plan | Should -Contain "ResultAmount:`t-5000"
+            }
+
+            It 'Should remove the closing plan once the year is closed' {
+                Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear | Out-Null
+                Test-Path -LiteralPath $planPath | Should -BeFalse
+            }
+
+            It 'Should not save a closing plan with -WhatIf' {
+                Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear -WhatIf
+                Test-Path -LiteralPath $planPath | Should -BeFalse
+            }
+
+            It 'Should reserve the planned number and book it on rerun after an interrupted write' {
+                $script:failWrite = $true
+                { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear } | Should -Throw '*rerun Close-LedgerFiscalYear*'
+                $script:failWrite = $false
+                (Get-LedgerFiscalYear -JournalPath $JournalPath).Status | Should -Be 'Open'
+                $entry = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-07-01' -Description 'Insättning' -PassThru -Rows @(
+                    @{ Account = '1930'; Amount = 100 }, @{ Account = '1910'; Amount = -100 })
+                $entry.VerificationNumber | Should -Be 3
+
+                $result = Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+                $result.ResultVerification | Should -Be 2
+                @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear | Where-Object Description -eq 'Årets resultat (bokslut)').Count | Should -Be 1
+                (Get-LedgerFiscalYear -JournalPath $JournalPath).Status | Should -Be 'Closed'
+                (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear).Status | Should -Be 'Valid'
+            }
+
+            It 'Should complete without a second result entry when the status write was interrupted' {
+                $script:failStatus = $true
+                { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear } | Should -Throw '*rerun Close-LedgerFiscalYear*'
+                $script:failStatus = $false
+                (Get-LedgerFiscalYear -JournalPath $JournalPath).Status | Should -Be 'Open'
+
+                (Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear).ResultVerification | Should -Be 2
+                @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear).Count | Should -Be 2
+                $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+                ($Balance | Where-Object AccountNumber -eq '2099').Balance | Should -Be -5000
+                (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear).Status | Should -Be 'Valid'
+            }
+
+            It 'Should seal a closed year whose final seal was interrupted' {
+                $script:failProtect = $true
+                { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear } | Should -Throw '*rerun Close-LedgerFiscalYear*'
+                $script:failProtect = $false
+                (Get-LedgerFiscalYear -JournalPath $JournalPath).Status | Should -Be 'Closed'
+
+                (Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear).ResultVerification | Should -Be 2
+                @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear).Count | Should -Be 2
+                (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear).Status | Should -Be 'Valid'
+                { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear } | Should -Throw '*already closed*'
+            }
+
+            It 'Should stop recovery when the result changed after the interruption' {
+                $script:failWrite = $true
+                { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear } | Should -Throw '*rerun Close-LedgerFiscalYear*'
+                $script:failWrite = $false
+                Add-LedgerEntry @sale
+                { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear } | Should -Throw '*has changed since its closing plan*'
+                (Get-LedgerFiscalYear -JournalPath $JournalPath).Status | Should -Be 'Open'
+            }
+
+            It 'Should reject options that differ from the saved plan' {
+                $script:failWrite = $true
+                { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear } | Should -Throw '*rerun Close-LedgerFiscalYear*'
+                $script:failWrite = $false
+                { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear -SkipResultEntry } | Should -Throw '*closing plan with a result entry*'
+                { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear -EquityAccount '2091' } | Should -Throw '*closing plan booking*'
+            }
+        }
     }
 }

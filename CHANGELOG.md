@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- **Resumable fiscal-year closing.** Repeat `Close-LedgerFiscalYear` after an
+  interruption to finish the same close: `<year>/closing.txt` records the result
+  amount and accounts and reserves the result verification, so the result is never
+  booked twice. A changed result, different options or damaged integrity stop
+  recovery. A year that was closed but not sealed is sealed on rerun. The plan is
+  removed once the close completes.
 - **Resumable payroll posting.** Repeat `Invoke-LedgerPayrollPosting` after an
   interruption to finish the same posting with its reserved verification. Plans
   in `payslips/posting/` follow the invoice-posting rules (hash checks, closed-year
@@ -94,8 +100,8 @@
 
 Recovery currently covers customer/supplier-invoice posting, customer/supplier payments
 and bank-created invoice, rule/account and own-account transfer postings, invoice charges
-credit notes and payroll posting. Changed inputs, conflicting verifications and damaged integrity chains
-stop recovery explicitly. Imports, chart conversion and year closing still need recovery. Locking is not a multi-file
+credit notes, payroll posting and fiscal-year closing. Changed inputs, conflicting verifications and damaged integrity chains
+stop recovery explicitly. Imports and chart conversion still need recovery. Locking is not a multi-file
 transaction or general multi-user support.
 
 ## [1.1.0] - 2026-10-30

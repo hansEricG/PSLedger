@@ -910,8 +910,8 @@ again. `Invoke-LedgerInvoicePosting`, `Invoke-LedgerSupplierInvoicePosting`,
 `Add-LedgerInvoicePayment -PaymentId` and `Add-LedgerSupplierPayment -PaymentId`
 can resume their saved plans as described above, as can customer/supplier bank
 matches, bank rule/account postings, invoice charges (`-ChargeId`), credit
-notes and `Invoke-LedgerPayrollPosting`. Imports, chart conversion, year
-closing and other multi-file workflows do not yet have this protection.
+notes, `Invoke-LedgerPayrollPosting` and `Close-LedgerFiscalYear`. Imports,
+chart conversion and other multi-file workflows do not yet have this protection.
 
 Other register and metadata writers, older PSLedger versions and external
 editors do not all participate in the lock. Readers and backups do not acquire

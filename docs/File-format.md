@@ -19,8 +19,8 @@ when it reads a file; they are not an invitation to write files that way.
 - [Directory layout](#directory-layout)
 - [Journal-level files](#journal-level-files): `journal.txt`, `accounts.txt`,
   `dimensions.txt`, `objects.txt`, `vat.txt`
-- [Fiscal years](#fiscal-years): `year.txt`, `verNNNN.txt`, `verNNNN/`, `ib.txt`,
-  `holdings.txt`, `report.txt`, `documents/`, `integrity.txt`
+- [Fiscal years](#fiscal-years): `year.txt`, `closing.txt`, `verNNNN.txt`,
+  `verNNNN/`, `ib.txt`, `holdings.txt`, `report.txt`, `documents/`, `integrity.txt`
 - [Recurring entries](#recurring-entries): `recurring/`
 - [Customers and invoices](#customers-and-invoices): `customers.txt`, `invoices/`
 - [Suppliers and supplier invoices](#suppliers-and-supplier-invoices):
@@ -115,7 +115,7 @@ are named by a prefix and a number zero-padded to at least four digits.
   `invoices/posting/invNNNN.txt`, `supplierinvoices/posting/supNNNN.txt`,
   `invoices/payments/<guid>.txt`, `supplierinvoices/payments/<guid>.txt`,
   `invoices/charges/<guid>.txt`, `invoices/credits/invNNNN.txt`,
-  `payslips/posting/payNNNN.txt` and `bank/posting/txnN.txt`. For customer invoices, the maximum also includes the
+  `payslips/posting/payNNNN.txt`, `bank/posting/txnN.txt` and `<year>/closing.txt`. For customer invoices, the maximum also includes the
   credit-note numbers reserved by `invoices/credits/invNNNN.txt`.
   Recovery uses its already reserved number,
   even if later numbers have since been written. Gaps are allowed.
@@ -181,6 +181,7 @@ to store their own data SHOULD use their own files.
 ├── employees.txt               employee register
 ├── <yyyy-MM>_<yyyy-MM>/        one directory per fiscal year
 │   ├── year.txt                required: dates and status
+│   ├── closing.txt             unfinished fiscal-year closing plan
 │   ├── ib.txt                  opening balance
 │   ├── holdings.txt            securities holdings at the balance date
 │   ├── report.txt              annual report input
@@ -326,6 +327,28 @@ Style: `Key: value`. All three keys are required.
 | `StartDate` | First day of the fiscal year. |
 | `EndDate` | Last day of the fiscal year. |
 | `Status` | `Open` or `Closed`. No verification can be added to a closed year. |
+
+### `closing.txt` — fiscal-year closing plan
+
+`Close-LedgerFiscalYear` saves this immutable record before booking the result
+or changing `Status`. The first line is `; PSLedger fiscal year closing`.
+
+| Key | Value |
+|-----|-------|
+| `FormatVersion` | `1`. |
+| `OperationId` | GUID (`D` form) written as `OperationId:` in the result verification. |
+| `FiscalYear` | MUST match the directory name. |
+| `ResultVerification` | Reserved result verification number, or `0` when no result is booked. |
+| `ResultAmount` | Net result of classes 3–8 (negative for a profit). Absent with `-SkipResultEntry`; `0` when the result is zero. |
+| `ResultAccount` | Debited for a profit. Only when `ResultVerification` > 0. |
+| `EquityAccount` | Credited for a profit. Only when `ResultVerification` > 0. |
+| `VerificationHash` | Lowercase SHA-256 of the planned verification (LF-normalised). Only when `ResultVerification` > 0. |
+
+The file exists only while a close is unfinished. Repeating the command
+resumes it: different options, a changed result, a differing saved verification
+or other integrity issues stop recovery. A year whose `Status` is `Closed` but
+that still has the plan is only sealed. The plan is deleted once the year is
+closed and sealed. It is additive and does not change the schema version.
 
 ### `verNNNN.txt` — verifications
 

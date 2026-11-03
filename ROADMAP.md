@@ -414,7 +414,10 @@ invoice-status writes. Other multi-file workflows still need equivalent protecti
 - [x] Make payroll posting resumable through plans in `payslips/posting/`
       that reserve the verification, with payslip numbering under the journal
       lock. Cover process termination, closed years and archive retention.
-- [ ] Define recoverable operation boundaries for remaining SIE import, chart conversion and fiscal-year closing.
+- [x] Make fiscal-year closing resumable through `<year>/closing.txt`, which
+      reserves the result verification until the year is closed and sealed.
+      Cover process termination, changed results and interrupted seals.
+- [ ] Define recoverable operation boundaries for remaining SIE import and chart conversion.
 - [ ] Extend durable operation identity and progress to those workflows without
       losing or duplicating bookkeeping.
 - [ ] Validate their complete plans before the first write; report partial failures

@@ -12,7 +12,7 @@ BeforeAll {
         Import-Module $ModulePath -Force
         $paymentId = '11111111-1111-1111-1111-111111111111'
         $chargeId = '22222222-2222-2222-2222-222222222222'
-        if ($Mode -match '^(Invoice|Payment|Bank|SupplierInvoice|SupplierPayment|SupplierBank|Account|Charge|Credit|Payroll)After') {
+        if ($Mode -match '^(Invoice|Payment|Bank|SupplierInvoice|SupplierPayment|SupplierBank|Account|Charge|Credit|Payroll|Close)After') {
             & (Get-Module PSLedger) {
                 param ($Ready, $Mode)
                 $script:PostingReady = $Ready
@@ -41,7 +41,10 @@ BeforeAll {
                         else { function script:Save-LedgerInvoiceFile { & $script:PostingPause } }
                     }
                     'AfterStatus$' {
-                        if ($Mode -like 'Payroll*') {
+                        if ($Mode -like 'Close*') {
+                            function script:Protect-LedgerYearContent { & $script:PostingPause }
+                        }
+                        elseif ($Mode -like 'Payroll*') {
                             $script:OriginalPayslipSave = (Get-Command Save-LedgerPayslipFile).ScriptBlock
                             function script:Save-LedgerPayslipFile {
                                 param ($Payslip)
@@ -111,6 +114,9 @@ BeforeAll {
             elseif ($Mode -like 'Payroll*') {
                 Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1
             }
+            elseif ($Mode -like 'Close*') {
+                Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -EquityAccount '2099' | Out-Null
+            }
             else { Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 }
             exit 0
         }
@@ -178,6 +184,9 @@ BeforeAll {
         }
         elseif ($Mode -eq 'Payroll') {
             Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1
+        }
+        elseif ($Mode -eq 'Close') {
+            Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -EquityAccount '2099' | Out-Null
         }
         elseif ($Mode -eq 'Seal') {
             Protect-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' | Out-Null
@@ -709,6 +718,44 @@ Describe 'Journal write locking' {
         @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 2
         (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
         (Get-FileHash -LiteralPath $operationPath).Hash | Should -Be $hash
+        if ($savedHash) { (Get-FileHash -LiteralPath $savedPath).Hash | Should -Be $savedHash }
+    }
+
+    It 'Recovers fiscal year closing after process termination at <Checkpoint>' -ForEach @(
+        @{ Checkpoint = 'CloseAfterPlan' }
+        @{ Checkpoint = 'CloseAfterSave' }
+        @{ Checkpoint = 'CloseAfterStatus' }
+    ) {
+        foreach ($number in '1910', '2099', '8999') {
+            Add-LedgerAccount -JournalPath $journal -AccountNumber $number -AccountName "Konto $number"
+        }
+        Add-LedgerEntry @entry
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        $operationPath = Join-Path $journal $year 'closing.txt'
+        Test-Path -LiteralPath $operationPath | Should -BeTrue
+        $savedPath = Join-Path $journal $year 'ver0002.txt'
+        $savedHash = if (Test-Path -LiteralPath $savedPath) { (Get-FileHash -LiteralPath $savedPath).Hash }
+        $expected = 2
+        if ($Checkpoint -ne 'CloseAfterStatus') {
+            # A balance sheet entry leaves the planned result unchanged but must skip the reserved number.
+            $transfer = Add-LedgerEntry -JournalPath $journal -FiscalYear $year -Date '2024-02-01' -Description 'Kassa' -PassThru -Rows @(
+                @{ Account = '1910'; Amount = 50 }; @{ Account = '1930'; Amount = -50 })
+            $transfer.VerificationNumber | Should -Be 3
+            $expected = 3
+        }
+        Set-Content -LiteralPath $gate -Value 'go'
+        Complete-LockTestWorker (Start-LockTestWorker Close)
+
+        (Get-LedgerFiscalYear -JournalPath $journal).Status | Should -Be 'Closed'
+        $entries = @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year)
+        $entries | Should -HaveCount $expected
+        @($entries | Where-Object Description -eq 'Årets resultat (bokslut)').VerificationNumber | Should -Be 2
+        (Get-LedgerBalance -JournalPath $journal -FiscalYear $year | Where-Object AccountNumber -eq '2099').Balance | Should -Be -100
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).Status | Should -Be 'Valid'
+        Test-Path -LiteralPath $operationPath | Should -BeFalse
         if ($savedHash) { (Get-FileHash -LiteralPath $savedPath).Hash | Should -Be $savedHash }
     }
 

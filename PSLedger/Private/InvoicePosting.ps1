@@ -115,6 +115,11 @@ function Get-LedgerInvoicePostingReservation {
         @(Get-LedgerPayslipPostingOperation -JournalPath $JournalPath)) {
         if ($operation.FiscalYear -eq $FiscalYear) { $operation.VerificationNumber }
     }
+    $closingPath = Get-LedgerYearClosingPath -JournalPath $JournalPath -FiscalYear $FiscalYear
+    if (Test-Path -LiteralPath $closingPath) {
+        $closing = Read-LedgerYearClosing -Path $closingPath
+        if ($closing.VerificationNumber -gt 0) { $closing.VerificationNumber }
+    }
 }
 
 function Save-LedgerInvoicePosting {

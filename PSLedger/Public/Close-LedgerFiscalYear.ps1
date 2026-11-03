@@ -20,6 +20,13 @@ After any result entry has been written the Status field in year.txt is set to
 'Closed'. Once closed, Add-LedgerEntry refuses to create new verifications in that
 fiscal year.
 
+Closing is safely resumable. Before anything is written, an immutable plan in
+<year>/closing.txt records the result amount and accounts and reserves the
+result verification number. If the command is interrupted, run it again with the
+same options: it completes the saved closing without booking the result twice.
+Recovery stops if the year's result has changed since the plan was saved. The
+plan is removed once the year is closed and sealed.
+
 Finally every verification and attachment in the year that is not yet in the
 integrity chain is sealed (see Protect-LedgerFiscalYear), and the command returns
 an object with FiscalYear, ResultVerification (the result entry's number, or
@@ -93,6 +100,7 @@ function Close-LedgerFiscalYear {
         $journalLock = $null
         try {
             $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
             $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
             $YearDir = Join-Path $JournalPath $FiscalYear
@@ -109,13 +117,109 @@ function Close-LedgerFiscalYear {
 
             # Check current status and capture the year's end date for the result entry.
             $EndDate = $null
-            $resultEntry = $null
+            $closed = $false
             foreach ($Line in $Lines) {
                 if ($Line -match '^Status:\s*Closed') {
-                    throw "Fiscal year $FiscalYear is already closed."
+                    $closed = $true
                 }
                 elseif ($Line -match '^EndDate:\s*(.+)$') {
                     $EndDate = [datetime]$Matches[1]
+                }
+            }
+
+            $closingPath = Get-LedgerYearClosingPath -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $operation = if (Test-Path -LiteralPath $closingPath) { Read-LedgerYearClosing -Path $closingPath } else { $null }
+            $entryParameters = $null
+            $existingVerification = $false
+
+            if ($closed) {
+                # A closing interrupted after the status change only lacks its final seal.
+                $check = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
+                if (-not $operation) {
+                    throw "Fiscal year $FiscalYear is already closed."
+                }
+                if (@($check.Issues | Where-Object Problem -ne 'Unsealed').Count) {
+                    throw "Fiscal year $FiscalYear was closed but has integrity issues; recovery stopped: $(@($check.Issues | ForEach-Object Detail) -join ' ')"
+                }
+            }
+            else {
+                if ($operation) {
+                    if ([bool]$SkipResultEntry -ne $operation.SkipResultEntry) {
+                        throw "Fiscal year $FiscalYear has a closing plan $(if ($operation.SkipResultEntry) { 'without' } else { 'with' }) a result entry. Repeat Close-LedgerFiscalYear with the same options to complete it."
+                    }
+                    if ($operation.VerificationNumber -gt 0 -and
+                        (($EquityAccount -and $EquityAccount -ne $operation.EquityAccount) -or
+                        ($PSBoundParameters.ContainsKey('ResultAccount') -and $ResultAccount -ne $operation.ResultAccount))) {
+                        throw "Fiscal year $FiscalYear has a closing plan booking $($operation.ResultAccount) against $($operation.EquityAccount). Repeat Close-LedgerFiscalYear without other accounts to complete it."
+                    }
+                }
+
+                # The net result of the profit and loss accounts (classes 3-8); negative for a profit.
+                $getResult = {
+                    $resultRows = @(Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear |
+                            Where-Object { $_.AccountNumber -match '^[3-8]' })
+                    $sum = if ($resultRows) { ($resultRows | Measure-Object -Property Balance -Sum).Sum } else { 0 }
+                    [Math]::Round([decimal]$sum, 2)
+                }
+
+                if (-not $operation) {
+                    $operation = [pscustomobject]@{
+                        OperationId = [guid]::NewGuid(); FiscalYear = $FiscalYear; VerificationNumber = 0
+                        SkipResultEntry = [bool]$SkipResultEntry; ResultAmount = [decimal]0
+                        ResultAccount = $null; EquityAccount = $null; VerificationHash = $null
+                    }
+                    # Book the net result to equity unless explicitly skipped. When the profit
+                    # and loss accounts net to zero there is nothing to book, so the year is
+                    # simply flagged as closed (this also keeps legacy no-result years working).
+                    if (-not $SkipResultEntry) {
+                        $operation.ResultAmount = & $getResult
+                        if ($operation.ResultAmount -ne 0) {
+                            $operation.EquityAccount = if ($EquityAccount) { $EquityAccount } else { Resolve-LedgerEquityAccount -JournalPath $JournalPath }
+                            $operation.ResultAccount = $ResultAccount
+                            if (-not $EndDate) {
+                                throw "Cannot determine the result date - EndDate missing from year.txt in $FiscalYear."
+                            }
+                            # Debit the result account and credit equity for a profit; the raw
+                            # balance of the P&L accounts is negative for a profit, so negating
+                            # it gives the debit amount on the result account.
+                            $entryParameters = Get-LedgerYearClosingEntry -JournalPath $JournalPath -Operation $operation -Date $EndDate
+                            Assert-LedgerInvoicePostingIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear -Label 'Fiscal year closing'
+                            $verificationLines = @(Get-LedgerVerificationLines @entryParameters)
+                            $operation.VerificationHash = Get-LedgerSha256Hex -Bytes ([Text.Encoding]::UTF8.GetBytes(($verificationLines -join "`n") + "`n"))
+                            $operation.VerificationNumber = Get-LedgerNextVerificationNumber -JournalPath $JournalPath -FiscalYear $FiscalYear
+                        }
+                    }
+                }
+                elseif (-not $operation.SkipResultEntry) {
+                    $current = & $getResult
+                    if ($operation.VerificationNumber -gt 0) {
+                        if (-not $EndDate) {
+                            throw "Cannot determine the result date - EndDate missing from year.txt in $FiscalYear."
+                        }
+                        $entryParameters = Get-LedgerYearClosingEntry -JournalPath $JournalPath -Operation $operation -Date $EndDate
+                        $verificationPath = Join-Path $YearDir ('ver{0:D4}.txt' -f $operation.VerificationNumber)
+                        $existingVerification = Test-Path -LiteralPath $verificationPath
+                        if ($existingVerification) {
+                            Assert-LedgerInvoicePostingVerification -Path $verificationPath -Operation $operation -Label 'fiscal year closing'
+                            foreach ($row in $entryParameters.Rows) {
+                                if ($row.Account -match '^[3-8]') { $current -= $row.Amount }
+                            }
+                        }
+                    }
+                    if ($current -ne $operation.ResultAmount) {
+                        throw "The result of fiscal year $FiscalYear has changed since its closing plan was saved ($($operation.ResultAmount) planned, $current now). Recovery stopped; inspect the entries added after the interruption."
+                    }
+                    if ($operation.VerificationNumber -gt 0) {
+                        $unsealedNumber = if ($existingVerification) { $operation.VerificationNumber } else { 0 }
+                        Assert-LedgerInvoicePostingIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                            -UnsealedVerification $unsealedNumber -Label 'Fiscal year closing'
+                        if (-not $existingVerification) {
+                            $verificationLines = @(Get-LedgerVerificationLines @entryParameters)
+                            if ((Get-LedgerSha256Hex -Bytes ([Text.Encoding]::UTF8.GetBytes(($verificationLines -join "`n") + "`n"))) -ne $operation.VerificationHash) {
+                                throw "Fiscal year $FiscalYear no longer produces the saved result verification. Recovery stopped."
+                            }
+                        }
+                    }
                 }
             }
 
@@ -123,58 +227,39 @@ function Close-LedgerFiscalYear {
                 return
             }
 
-            # Book the net result to equity unless explicitly skipped. When the profit
-            # and loss accounts net to zero there is nothing to book, so the year is
-            # simply flagged as closed (this also keeps legacy no-result years working).
-            if (-not $SkipResultEntry) {
-                $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
-                $ResultRows = @($Balance | Where-Object { $_.AccountNumber -match '^[3-8]' })
-                $RawResult = if ($ResultRows) {
-                    ($ResultRows | Measure-Object -Property Balance -Sum).Sum
-                }
-                else {
-                    [decimal]0
-                }
-                $RawResult = [Math]::Round([decimal]$RawResult, 2)
-
-                if ($RawResult -ne 0) {
-                    $Equity = if ($EquityAccount) {
-                        $EquityAccount
-                    }
-                    else {
-                        Resolve-LedgerEquityAccount -JournalPath $JournalPath
-                    }
-
-                    if (-not $EndDate) {
-                        throw "Cannot determine the result date - EndDate missing from year.txt in $FiscalYear."
-                    }
-
-                    # Debit the result account and credit equity for a profit; the raw
-                    # balance of the P&L accounts is negative for a profit, so negating
-                    # it gives the debit amount on the result account.
-                    $Rows = @(
-                        @{ Account = $ResultAccount; Amount = -$RawResult }
-                        @{ Account = $Equity; Amount = $RawResult }
-                    )
-
-                    $resultEntry = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-                        -Date $EndDate -Description 'Årets resultat (bokslut)' -Rows $Rows -PassThru
-                }
+            if (-not (Test-Path -LiteralPath $closingPath)) {
+                Save-LedgerYearClosing -Path $closingPath -Operation $operation
             }
+            try {
+                if (-not $closed) {
+                    if ($operation.VerificationNumber -gt 0) {
+                        if (-not $existingVerification) {
+                            Write-LedgerVerification @entryParameters -ReservedNumber $operation.VerificationNumber -Confirm:$false
+                        }
+                        Complete-LedgerInvoicePostingVerification -JournalPath $JournalPath -Operation $operation -Label 'fiscal year closing'
+                    }
 
-            # Rewrite year.txt with updated status.
-            $NewLines = foreach ($Line in $Lines) {
-                if ($Line -match '^Status:\s*') {
-                    'Status: Closed'
+                    # Rewrite year.txt with updated status.
+                    $NewLines = foreach ($Line in $Lines) {
+                        if ($Line -match '^Status:\s*') {
+                            'Status: Closed'
+                        }
+                        else {
+                            $Line
+                        }
+                    }
+                    Set-LedgerFileContent -Path $YearFile -Value $NewLines
                 }
-                else {
-                    $Line
-                }
+
+                [void](Protect-LedgerYearContent -YearDir $YearDir)
+                # The plan only marks an unfinished close; a completed year needs no reservation.
+                Remove-Item -LiteralPath $closingPath -Force
             }
-
-            Set-LedgerFileContent -Path $YearFile -Value $NewLines
-
-            [void](Protect-LedgerYearContent -YearDir $YearDir)
+            catch {
+                throw [InvalidOperationException]::new(
+                    "Could not confirm completion of closing fiscal year $FiscalYear. Keep '$closingPath'; rerun Close-LedgerFiscalYear -JournalPath '$JournalPath' -FiscalYear '$FiscalYear' to recover safely. $($_.Exception.Message)",
+                    $_.Exception)
+            }
             $integrity = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
             if (-not $integrity.IsValid) {
                 Write-Warning "Fiscal year $FiscalYear has integrity issues: $(@($integrity.Issues | ForEach-Object Detail) -join ' ')"
@@ -182,7 +267,7 @@ function Close-LedgerFiscalYear {
 
             [PSCustomObject]@{
                 FiscalYear         = $FiscalYear
-                ResultVerification = if ($resultEntry) { $resultEntry.VerificationNumber } else { $null }
+                ResultVerification = if ($operation.VerificationNumber -gt 0) { $operation.VerificationNumber } else { $null }
                 ChainHash          = $integrity.ChainHash
             }
         }

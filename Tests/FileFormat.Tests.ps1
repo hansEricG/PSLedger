@@ -547,6 +547,44 @@ Describe 'File format contract' {
             (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
         }
 
+        It 'Should write a fiscal year closing plan until the close completes' {
+            $journal = Join-Path $TestDrive 'year-closing.ledger'
+            Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse
+            $hashText = {
+                param([string]$Text)
+                $bytes = [Text.Encoding]::UTF8.GetBytes($Text.Replace("`r`n", "`n"))
+                [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+            }
+            $script:realProtect = & (Get-Module PSLedger) { (Get-Command Protect-LedgerYearContent).ScriptBlock }
+            $script:failProtect = $true
+            Mock -ModuleName PSLedger Protect-LedgerYearContent { & $script:realProtect -YearDir $YearDir }
+            Mock -ModuleName PSLedger Protect-LedgerYearContent { throw 'simulated interruption' } -ParameterFilter { $script:failProtect }
+            { Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $Y } | Should -Throw '*rerun Close-LedgerFiscalYear*'
+            $script:failProtect = $false
+            $path = Join-Path $journal $Y 'closing.txt'
+            $lines = @(Get-Content -LiteralPath $path -Encoding UTF8)
+            $fields = @{}
+            foreach ($line in $lines) {
+                if ($line -match '^([A-Za-z]+):\t(.+)$') { $fields[$Matches[1]] = $Matches[2] }
+            }
+            $result = Get-LedgerEntry -JournalPath $journal -FiscalYear $Y | Where-Object Description -eq 'Årets resultat (bokslut)'
+            $verification = Get-Content -LiteralPath (Join-Path $journal $Y ('ver{0:D4}.txt' -f $result.VerificationNumber)) -Raw -Encoding UTF8
+            $lines[0] | Should -Be '; PSLedger fiscal year closing'
+            $fields.FormatVersion | Should -Be '1'
+            [guid]::Parse($fields.OperationId) | Should -Not -Be ([guid]::Empty)
+            $fields.FiscalYear | Should -Be $Y
+            $fields.ResultVerification | Should -Be "$($result.VerificationNumber)"
+            $fields.ResultAccount | Should -Be '8999'
+            $fields.EquityAccount | Should -Be '2099'
+            $fields.VerificationHash | Should -Be (& $hashText $verification)
+            $verification | Should -Match "(?m)^OperationId: $([regex]::Escape($fields.OperationId))\r?$"
+
+            (Get-LedgerFiscalYear -JournalPath $journal | Where-Object Name -eq $Y).Status | Should -Be 'Closed'
+            Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $Y | Out-Null
+            Test-Path -LiteralPath $path | Should -BeFalse
+            (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
+        }
+
         It 'Should bind a bank posting plan to its source, verification and counterpart' {
             $journal = Join-Path $TestDrive 'bank-posting.ledger'
             Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse

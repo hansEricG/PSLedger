@@ -407,6 +407,11 @@ Close-LedgerFiscalYear -JournalPath .\HEG.ledger -FiscalYear $fy
 Standardkonton kan ändras med `-ResultAccount` och `-EquityAccount`, och
 `-SkipResultEntry` hoppar över resultatbokföringen om du redan gjort den manuellt.
 
+Om stängningen avbryts (t.ex. att processen dör) finns en plan kvar i
+`<år>/closing.txt`. Kör samma kommando igen med samma parametrar så slutförs
+stängningen utan att resultatet bokförs två gånger. Planen tas bort när året är
+stängt och förseglat.
+
 ---
 
 ## Steg 8 — Öppna nästa år och rulla ingående balanser
