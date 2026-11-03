@@ -5,7 +5,9 @@ Creates a credit invoice (kreditfaktura) that reverses a posted customer invoice
 .DESCRIPTION
 Creates a new credit-note invoice with negated rows for an existing, posted
 invoice and books a reversing verification: the receivable account is credited
-with the gross total, and revenue and VAT are debited back. Both the original
+with the gross total, and revenue and VAT are debited back. Booked fees and
+interest on the invoice are reversed too: their income accounts are debited and
+the credit note carries the negated charges. Both the original
 invoice and the new credit note are marked with status 'Credited' so the
 accounts receivable reconciles to zero for the pair.
 
@@ -52,7 +54,8 @@ Credits invoice 1, creating a credit note and a reversing verification such as:
 Add-LedgerCreditInvoice -InvoiceNumber 5 -Date '2024-04-30' -PassThru
 
 Credits invoice 5 as of 30 April 2024 and returns the created credit note. If the
-call is interrupted, repeating it completes the same credit note.
+call is interrupted, repeating it completes the same credit note. Any booked
+reminder fee or interest on invoice 5 is reversed as well (e.g. debit 3590).
 #>
 function Add-LedgerCreditInvoice {
     [CmdletBinding(SupportsShouldProcess)]
@@ -150,6 +153,9 @@ function Add-LedgerCreditInvoice {
                     & $addAmount $row.VatAccount $row.VatAmount
                 }
             }
+            foreach ($charge in $original.Charges) {
+                & $addAmount $charge.Account $charge.Amount
+            }
 
             $entryRows = foreach ($account in $accountSums.Keys) {
                 @{ Account = $account; Amount = [Math]::Round([decimal]$accountSums[$account], 2) }
@@ -236,6 +242,12 @@ function Add-LedgerCreditInvoice {
                             BookedFiscalYear   = $creditYear
                             Rows               = @($creditRows)
                             Payments           = @()
+                            Charges            = @(foreach ($charge in $original.Charges) {
+                                    [PSCustomObject]@{
+                                        Date = $creditDate; Type = $charge.Type; Amount = - [decimal]$charge.Amount
+                                        Account = $charge.Account; VerificationNumber = $operation.VerificationNumber; FiscalYear = $creditYear
+                                    }
+                                })
                             FilePath           = $creditNotePath
                         })
                 }

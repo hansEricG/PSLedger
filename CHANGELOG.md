@@ -57,6 +57,9 @@
   requires an already-saved verification.
 
 ### Fixed
+- **Crediting an invoice with booked fees or interest no longer fails** with an
+  unbalanced entry. The credit verification also reverses the charge income
+  accounts, and the credit note carries the negated charges.
 - **Verification filename conflicts no longer overwrite existing entries.**
   New verifications use atomic create-if-absent publication.
 - **Partial verification writes report their state.** If the verification was

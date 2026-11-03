@@ -222,6 +222,10 @@ Ger verifikationen:
 2610 Utgående moms     +2500
 ```
 
+Har fakturan bokförda avgifter eller dröjsmålsränta (avsnitt 11–12) återförs de
+också: intäktskontot (t.ex. 3590 eller 8310) debiteras och kreditfakturan får
+negerade avgiftsrader, så att hela fordran inklusive avgifter krediteras.
+
 Både originalfakturan och kreditfakturan får status `Credited`, så att
 kundreskontran nettar till noll för paret. Bara en faktura med status `Booked`
 kan krediteras – ett utkast måste bokföras först (eller raderas), och en faktura

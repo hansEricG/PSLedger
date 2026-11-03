@@ -538,7 +538,8 @@ Get-LedgerAccountsReceivable -Summary       # one row per bucket with the total
 Export-LedgerInvoice -InvoiceNumber 1 -Path .\faktura-1.pdf
 
 # Credit (reverse) a posted, unpaid invoice — books the reversing verification and
-# marks both the original and the credit note 'Credited'. Repeat to resume.
+# marks both the original and the credit note 'Credited'. Booked fees and interest
+# are reversed too. Repeat to resume.
 Add-LedgerCreditInvoice -InvoiceNumber 1
 
 # Send a payment reminder for an overdue invoice — records the reminder (no ledger

@@ -806,7 +806,9 @@ check digit with length digit).
 - `Paid`: fully paid.
 - `Credited`: credited. Only a `Booked` invoice can be credited. The original
   and its credit note both get status `Credited`. The credit note has negated
-  rows and the description `Kreditfaktura för faktura N`.
+  rows and the description `Kreditfaktura för faktura N`. Charges on the original
+  are reversed too: the credit note has negated charge rows dated on the credit
+  date and referencing the credit verification.
 
 **`Rows:`**
 

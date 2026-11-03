@@ -109,6 +109,23 @@ Describe 'Add-LedgerCreditInvoice' {
             { Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 2 } | Should -Throw '*already been credited*'
         }
 
+        It 'Should reverse booked fees and interest together with the invoice' {
+            New-BookedInvoice -JournalPath $JournalPath | Out-Null
+            Add-LedgerInvoiceFee -JournalPath $JournalPath -InvoiceNumber 1 -Amount 60 -Date '2024-05-01'
+            Add-LedgerInvoiceInterest -JournalPath $JournalPath -InvoiceNumber 1 -Amount 25.50 -Date '2024-05-02'
+            $credit = Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-05-10' -PassThru
+            $credit.Total | Should -Be (-12585.50)
+            $credit.Charges | Should -HaveCount 2
+            $credit.Charges[0].Amount | Should -Be (-60)
+            $credit.Charges[0].VerificationNumber | Should -Be 4
+            $balances = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear '2024-01_2024-12'
+            foreach ($acct in '1510', '3010', '2610', '3590', '8310') {
+                ($balances | Where-Object AccountNumber -eq $acct).Balance | Should -Be 0 -Because $acct
+            }
+            @(Get-LedgerAccountsReceivable -JournalPath $JournalPath -AsOf '2024-05-11').Count | Should -Be 0
+            (Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -PassThru).InvoiceNumber | Should -Be 2
+        }
+
         It 'Should write nothing with -WhatIf' {
             New-BookedInvoice -JournalPath $JournalPath | Out-Null
             Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-04-30' -WhatIf
