@@ -111,90 +111,99 @@ function New-LedgerSupplierInvoice {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    if (-not (Test-Path $JournalPath -PathType Container)) {
-        throw "Journal not found: $JournalPath"
-    }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    # Validate the supplier exists.
-    $supplier = Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber
-    if (-not $supplier) {
-        throw "Supplier '$SupplierNumber' does not exist. Add it with Add-LedgerSupplier first."
-    }
-
-    # Validate and normalise rows.
-    if ($Rows.Count -eq 0) {
-        throw "A supplier invoice must have at least one row."
-    }
-    $normalizedRows = foreach ($row in $Rows) {
-        if (-not $row.ContainsKey('Account') -or [string]::IsNullOrWhiteSpace([string]$row.Account)) {
-            throw "Each supplier invoice row must have an Account."
+        if (-not (Test-Path $JournalPath -PathType Container)) {
+            throw "Journal not found: $JournalPath"
         }
-        if (-not $row.ContainsKey('Amount')) {
-            throw "Each supplier invoice row must have an Amount."
+
+        # Validate the supplier exists.
+        $supplier = Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber
+        if (-not $supplier) {
+            throw "Supplier '$SupplierNumber' does not exist. Add it with Add-LedgerSupplier first."
         }
-        $amount = [decimal]$row.Amount
-        if ($amount -le 0) {
-            throw "Supplier invoice row amount for account $($row.Account) must be greater than zero."
+
+        # Validate and normalise rows.
+        if ($Rows.Count -eq 0) {
+            throw "A supplier invoice must have at least one row."
         }
-        $vatRate = if ($row.ContainsKey('VatRate') -and $row.VatRate) { [decimal]$row.VatRate } else { [decimal]0 }
-        $vatAccount = if ($row.ContainsKey('VatAccount')) { [string]$row.VatAccount } else { '' }
-        if ($vatRate -gt 0 -and [string]::IsNullOrWhiteSpace($vatAccount)) {
-            throw "Row for account $($row.Account) has VatRate $vatRate but no VatAccount."
+        $normalizedRows = foreach ($row in $Rows) {
+            if (-not $row.ContainsKey('Account') -or [string]::IsNullOrWhiteSpace([string]$row.Account)) {
+                throw "Each supplier invoice row must have an Account."
+            }
+            if (-not $row.ContainsKey('Amount')) {
+                throw "Each supplier invoice row must have an Amount."
+            }
+            $amount = [decimal]$row.Amount
+            if ($amount -le 0) {
+                throw "Supplier invoice row amount for account $($row.Account) must be greater than zero."
+            }
+            $vatRate = if ($row.ContainsKey('VatRate') -and $row.VatRate) { [decimal]$row.VatRate } else { [decimal]0 }
+            $vatAccount = if ($row.ContainsKey('VatAccount')) { [string]$row.VatAccount } else { '' }
+            if ($vatRate -gt 0 -and [string]::IsNullOrWhiteSpace($vatAccount)) {
+                throw "Row for account $($row.Account) has VatRate $vatRate but no VatAccount."
+            }
+            [PSCustomObject]@{
+                Account    = [string]$row.Account
+                Amount     = $amount
+                VatRate    = $vatRate
+                VatAccount = $vatAccount
+                VatAmount  = [Math]::Round($amount * $vatRate, 2)
+            }
         }
-        [PSCustomObject]@{
-            Account    = [string]$row.Account
-            Amount     = $amount
-            VatRate    = $vatRate
-            VatAccount = $vatAccount
-            VatAmount  = [Math]::Round($amount * $vatRate, 2)
+        $normalizedRows = @($normalizedRows)
+
+        # Calculate the due date from supplier payment terms when not supplied.
+        if (-not $PSBoundParameters.ContainsKey('DueDate')) {
+            $DueDate = $Date.AddDays($supplier.PaymentTermsDays)
+        }
+
+        $invoiceDir = Get-LedgerSupplierInvoiceDirectory -JournalPath $JournalPath -Create
+
+        # Determine the next supplier invoice number by scanning existing files.
+        $existing = Get-ChildItem -Path $invoiceDir -Filter 'sup*.txt' -File -ErrorAction SilentlyContinue
+        if ($existing) {
+            $maxNum = $existing |
+                ForEach-Object { if ($_.BaseName -match '^sup(\d+)$') { [int]$Matches[1] } } |
+                Measure-Object -Maximum |
+                Select-Object -ExpandProperty Maximum
+            $nextNum = $maxNum + 1
+        }
+        else {
+            $nextNum = 1
+        }
+
+        $filePath = Join-Path $invoiceDir (Get-LedgerSupplierInvoiceFileName -InvoiceNumber $nextNum)
+
+        $invoice = [PSCustomObject]@{
+            InvoiceNumber      = $nextNum
+            SupplierNumber     = $SupplierNumber
+            SupplierReference  = if ($PSBoundParameters.ContainsKey('SupplierReference')) { $SupplierReference } else { '' }
+            InvoiceDate        = $Date
+            DueDate            = $DueDate
+            Description        = $Description
+            Status             = 'Draft'
+            PayableAccount     = $PayableAccount
+            Reference          = if ($PSBoundParameters.ContainsKey('Reference')) { $Reference } else { '' }
+            BookedVerification = $null
+            BookedFiscalYear   = ''
+            Rows               = $normalizedRows
+            Payments           = @()
+            FilePath           = $filePath
+        }
+
+        if ($PSCmdlet.ShouldProcess("Supplier $SupplierNumber", "Create supplier invoice $nextNum")) {
+            Save-LedgerSupplierInvoiceFile -Invoice $invoice
+
+            if ($PassThru) {
+                Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber $nextNum
+            }
         }
     }
-    $normalizedRows = @($normalizedRows)
-
-    # Calculate the due date from supplier payment terms when not supplied.
-    if (-not $PSBoundParameters.ContainsKey('DueDate')) {
-        $DueDate = $Date.AddDays($supplier.PaymentTermsDays)
-    }
-
-    $invoiceDir = Get-LedgerSupplierInvoiceDirectory -JournalPath $JournalPath -Create
-
-    # Determine the next supplier invoice number by scanning existing files.
-    $existing = Get-ChildItem -Path $invoiceDir -Filter 'sup*.txt' -File -ErrorAction SilentlyContinue
-    if ($existing) {
-        $maxNum = $existing |
-            ForEach-Object { if ($_.BaseName -match '^sup(\d+)$') { [int]$Matches[1] } } |
-            Measure-Object -Maximum |
-            Select-Object -ExpandProperty Maximum
-        $nextNum = $maxNum + 1
-    }
-    else {
-        $nextNum = 1
-    }
-
-    $filePath = Join-Path $invoiceDir (Get-LedgerSupplierInvoiceFileName -InvoiceNumber $nextNum)
-
-    $invoice = [PSCustomObject]@{
-        InvoiceNumber      = $nextNum
-        SupplierNumber     = $SupplierNumber
-        SupplierReference  = if ($PSBoundParameters.ContainsKey('SupplierReference')) { $SupplierReference } else { '' }
-        InvoiceDate        = $Date
-        DueDate            = $DueDate
-        Description        = $Description
-        Status             = 'Draft'
-        PayableAccount     = $PayableAccount
-        Reference          = if ($PSBoundParameters.ContainsKey('Reference')) { $Reference } else { '' }
-        BookedVerification = $null
-        BookedFiscalYear   = ''
-        Rows               = $normalizedRows
-        Payments           = @()
-        FilePath           = $filePath
-    }
-
-    if ($PSCmdlet.ShouldProcess("Supplier $SupplierNumber", "Create supplier invoice $nextNum")) {
-        Save-LedgerSupplierInvoiceFile -Invoice $invoice
-
-        if ($PassThru) {
-            Get-LedgerSupplierInvoice -JournalPath $JournalPath -InvoiceNumber $nextNum
-        }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

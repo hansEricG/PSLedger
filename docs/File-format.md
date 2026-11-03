@@ -141,9 +141,16 @@ The journal root MAY contain an empty `.write.lock` file. This is a runtime
 coordination file, not bookkeeping data or a new schema version. Participating
 writers hold an exclusive open handle while validating and writing a
 verification and its integrity records. New verification files are published
-without replacing an existing filename. The same journal lock covers attachment
-changes, customer-invoice posting and payments, charges, reminders, bank imports and matching,
-sealing, year closing, chart conversion, SIE import and credit-note rollback.
+without replacing an existing filename. Every PSLedger command that changes a
+journal holds the same lock for the whole operation: verification and attachment
+writes, registers (accounts, customers, suppliers, employees, projects,
+dimensions, bank rules, recurring entries, time entries and resources),
+invoices, payments, charges, reminders, credit notes, payroll, bank imports and
+matching, holdings, documents, report input, `journal.txt`, fiscal-year and
+opening-balance writes, sealing, year closing, chart conversion, SIE import and
+schema migration. A read-modify-write of a register therefore cannot lose a
+concurrent change, and duplicate keys are rejected. Backup, restore and export
+commands only read the journal and do not take the lock.
 
 The file remains after the handle is released, including after a crashed
 process. Its existence does not indicate ownership. It MUST NOT be deleted or
@@ -152,8 +159,8 @@ files at the same path. A competing writer waits up to 30 seconds before
 reporting an error. Dry runs do not acquire or create the lock.
 
 The supported storage model is a local filesystem with .NET file locking
-enabled and cooperating writers. Other register/metadata writers and readers
-are not yet covered by a journal-wide transaction or snapshot. This is not a
+enabled and cooperating writers. Readers do not take the lock and can observe
+a write in progress; there is no consistent reader or backup snapshot. This is not a
 distributed lock for synchronised or network directories. An interrupted
 operation can still leave a saved but unsealed verification; the integrity
 check diagnoses that state. Customer-invoice posting and customer/supplier payments can resume
@@ -190,7 +197,7 @@ to store their own data SHOULD use their own files.
 │   ├── report.txt              annual report input
 │   ├── ver0001.txt             verifications
 │   ├── ver0001/                attachments of verification 1
-│   ├── integrity.txt           hash chain sealing verifications and attachments
+│   ├── integrity.txt           hash chain sealing verifications, attachments and metadata
 │   └── documents/              other documents for the year
 ├── recurring/<name>.txt        recurring entry templates
 ├── invoices/inv0001.txt        customer invoices and credit notes
@@ -538,15 +545,16 @@ their original file names.
 
 ### `integrity.txt` — tamper detection
 
-An append-only hash chain that seals the year's verifications and attachments
-(varaktighet). Optional: a year without it is reported as `Unsealed` by
-`Test-LedgerIntegrity` until `Protect-LedgerFiscalYear` creates it. Year
-documents (`documents/`), `ib.txt`, `holdings.txt` and `report.txt` are not
+An append-only hash chain that seals the year's verifications, attachments,
+`year.txt` and `ib.txt` (varaktighet). Optional: a year without it is reported
+as `Unsealed` by `Test-LedgerIntegrity` until `Protect-LedgerFiscalYear` creates
+it. Year documents (`documents/`), `holdings.txt` and `report.txt` are not
 covered.
 
 ```
 ; PSLedger integrity chain
 ; Kind<TAB>Key<TAB>Sealed<TAB>Hash<TAB>ChainHash
+Metadata<TAB>year.txt<TAB>2024-02-01T09:12:44Z<TAB>5b1e09a2…<TAB>41c7d0e8…
 Verification<TAB>1<TAB>2024-02-01T09:12:44Z<TAB>f323cf28…<TAB>0dd791c3…
 Attachment<TAB>1/kvitto.pdf<TAB>2024-02-01T09:12:44Z<TAB>c0d47590…<TAB>b7844674…
 AttachmentRemoved<TAB>1/kvitto.pdf<TAB>2024-02-03T15:00:02Z<TAB>c0d47590…<TAB>9a01c2e7…
@@ -556,8 +564,8 @@ Lines starting with `;` are comments. Each record has five tab-separated fields:
 
 | Field | Description |
 |---|---|
-| Kind | `Verification`, `Attachment` or `AttachmentRemoved`. |
-| Key | The verification number without zero padding (`1`), or `<number>/<file name>` for attachments. |
+| Kind | `Metadata`, `Verification`, `Attachment` or `AttachmentRemoved`. |
+| Key | The verification number without zero padding (`1`), `<number>/<file name>` for attachments, or `year.txt`/`ib.txt` for metadata. |
 | Sealed | When the record was written, UTC, `yyyy-MM-ddTHH:mm:ssZ`. |
 | Hash | SHA-256 of the item, 64 lowercase hex digits. For `AttachmentRemoved`, the hash of the file when it was removed. |
 | ChainHash | SHA-256 of the UTF-8 text `<previous ChainHash><TAB><Kind><TAB><Key><TAB><Sealed><TAB><Hash>`, 64 lowercase hex digits. The first record uses 64 zeros as the previous ChainHash. |
@@ -570,9 +578,24 @@ on Linux therefore gives the same hashes. Binary files are hashed byte for byte.
 **Rules.**
 
 - `Add-LedgerEntry` appends a `Verification` record and `Add-LedgerAttachment`
-  an `Attachment` record. When the year has no `integrity.txt` yet, every
-  verification and attachment already in the year is sealed first, in
-  verification-number order, each verification followed by its attachments.
+  an `Attachment` record. When the year has no `integrity.txt` yet, `year.txt`
+  and `ib.txt` (if present) are sealed first as `Metadata` records, then every
+  verification and attachment already in the year, in verification-number
+  order, each verification followed by its attachments.
+- `Metadata` records are latest-wins: the last record for a key holds the
+  file's expected hash. Only commands that legitimately change the file seal it
+  again: `Close-LedgerFiscalYear` (`year.txt` with `Status: Closed`),
+  `Copy-LedgerOpeningBalance` and `Import-LedgerSie` (`ib.txt`). A hand edit is
+  reported as `Modified`, a deleted file as `Missing` and an existing file
+  without a record as `Unsealed`. `Protect-LedgerFiscalYear` seals unsealed
+  metadata but never reseals a modified file. `Close-LedgerFiscalYear` refuses
+  to close a year whose sealed `year.txt` has changed.
+- A chain without any `Metadata` record (written before metadata sealing was
+  added) is valid; its metadata is not checked. In an open year the next sealing
+  write or `Protect-LedgerFiscalYear` adds the `Metadata` records. A closed
+  year's chain is not extended, so its stored final ChainHash stays valid.
+  PSLedger versions before 1.2.0 report `Metadata` records as `Malformed`;
+  downgrading is not supported.
 - A sealed attachment cannot be replaced. `Remove-LedgerAttachment` appends an
   `AttachmentRemoved` record before deleting the file, after which the same name
   can be attached again.

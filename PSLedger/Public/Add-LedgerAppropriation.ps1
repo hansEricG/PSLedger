@@ -96,67 +96,77 @@ function Add-LedgerAppropriation {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $AppropriationAmount = [Math]::Round([decimal]$Amount, 2)
-        if ($AppropriationAmount -le 0) {
-            throw "Amount must be positive. Got: $AppropriationAmount"
-        }
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        # Resolve default accounts and description per type and direction.
-        if (-not $ReserveAccount) {
-            $ReserveAccount = if ($Type -eq 'Periodiseringsfond') { '2110' } else { '2150' }
-        }
-        if (-not $AppropriationAccount) {
-            $AppropriationAccount = if ($Type -eq 'Periodiseringsfond') {
-                if ($Reverse) { '8819' } else { '8811' }
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
+
+            $AppropriationAmount = [Math]::Round([decimal]$Amount, 2)
+            if ($AppropriationAmount -le 0) {
+                throw "Amount must be positive. Got: $AppropriationAmount"
+            }
+
+            # Resolve default accounts and description per type and direction.
+            if (-not $ReserveAccount) {
+                $ReserveAccount = if ($Type -eq 'Periodiseringsfond') { '2110' } else { '2150' }
+            }
+            if (-not $AppropriationAccount) {
+                $AppropriationAccount = if ($Type -eq 'Periodiseringsfond') {
+                    if ($Reverse) { '8819' } else { '8811' }
+                }
+                else {
+                    '8850'
+                }
+            }
+            if (-not $Description) {
+                $Description = switch ($Type) {
+                    'Periodiseringsfond' {
+                        if ($Reverse) { 'Återföring från periodiseringsfond' } else { 'Avsättning till periodiseringsfond' }
+                    }
+                    'Overavskrivning' {
+                        if ($Reverse) { 'Återföring av överavskrivningar' } else { 'Förändring av överavskrivningar' }
+                    }
+                }
+            }
+
+            if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Book $Type appropriation of $AppropriationAmount")) {
+                return
+            }
+
+            # An allocation debits the appropriation account and credits the reserve; a
+            # reversal does the opposite, increasing the year's result.
+            $Rows = if ($Reverse) {
+                @(
+                    @{ Account = $ReserveAccount; Amount = $AppropriationAmount }
+                    @{ Account = $AppropriationAccount; Amount = -$AppropriationAmount }
+                )
             }
             else {
-                '8850'
+                @(
+                    @{ Account = $AppropriationAccount; Amount = $AppropriationAmount }
+                    @{ Account = $ReserveAccount; Amount = -$AppropriationAmount }
+                )
+            }
+
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date $Date -Description $Description -Rows $Rows
+
+            [PSCustomObject]@{
+                FiscalYear           = $FiscalYear
+                Date                 = $Date
+                Type                 = $Type
+                Reverse              = [bool]$Reverse
+                Description          = $Description
+                ReserveAccount       = $ReserveAccount
+                AppropriationAccount = $AppropriationAccount
+                Amount               = $AppropriationAmount
             }
         }
-        if (-not $Description) {
-            $Description = switch ($Type) {
-                'Periodiseringsfond' {
-                    if ($Reverse) { 'Återföring från periodiseringsfond' } else { 'Avsättning till periodiseringsfond' }
-                }
-                'Overavskrivning' {
-                    if ($Reverse) { 'Återföring av överavskrivningar' } else { 'Förändring av överavskrivningar' }
-                }
-            }
-        }
-
-        if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Book $Type appropriation of $AppropriationAmount")) {
-            return
-        }
-
-        # An allocation debits the appropriation account and credits the reserve; a
-        # reversal does the opposite, increasing the year's result.
-        $Rows = if ($Reverse) {
-            @(
-                @{ Account = $ReserveAccount; Amount = $AppropriationAmount }
-                @{ Account = $AppropriationAccount; Amount = -$AppropriationAmount }
-            )
-        }
-        else {
-            @(
-                @{ Account = $AppropriationAccount; Amount = $AppropriationAmount }
-                @{ Account = $ReserveAccount; Amount = -$AppropriationAmount }
-            )
-        }
-
-        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-            -Date $Date -Description $Description -Rows $Rows
-
-        [PSCustomObject]@{
-            FiscalYear           = $FiscalYear
-            Date                 = $Date
-            Type                 = $Type
-            Reverse              = [bool]$Reverse
-            Description          = $Description
-            ReserveAccount       = $ReserveAccount
-            AppropriationAccount = $AppropriationAccount
-            Amount               = $AppropriationAmount
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

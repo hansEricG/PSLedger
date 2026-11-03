@@ -117,101 +117,110 @@ function New-LedgerTimeInvoice {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    if (-not (Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $CustomerNumber)) {
-        throw "Customer '$CustomerNumber' does not exist."
-    }
-
-    $entries = @(Read-LedgerTimeEntries -JournalPath $JournalPath)
-    $context = Get-LedgerTimeContext -JournalPath $JournalPath
-    $invoiceStatus = Get-LedgerTimeInvoiceStatusMap -JournalPath $JournalPath
-
-    $selected = @($entries | Where-Object {
-            $_.CustomerNumber -eq $CustomerNumber -and $_.Billable -and $_.Date -le $Through.Date -and
-            (-not $PSBoundParameters.ContainsKey('FromDate') -or $_.Date -ge $FromDate.Date) -and
-            (-not $ProjectNumber -or $_.ProjectNumber -in $ProjectNumber) -and
-            -not (Test-LedgerTimeEntryInvoiced -Entry $_ -InvoiceStatus $invoiceStatus)
-        })
-    if (-not $selected) {
-        Write-Warning "Customer $CustomerNumber has no open billable time up to $($Through.ToString('yyyy-MM-dd'))."
-        return
-    }
-    $missingRate = @($selected | Where-Object { $null -eq $_.Rate })
-    if ($missingRate) {
-        throw "Time entries without an hourly rate: $(($missingRate.EntryId) -join ', '). Set one with Set-LedgerTimeEntry -Rate."
-    }
-
-    $sv = [System.Globalization.CultureInfo]::GetCultureInfo('sv-SE')
-    $periodText = {
-        param($items)
-        $min = ($items | Measure-Object -Property Date -Minimum).Minimum
-        $max = ($items | Measure-Object -Property Date -Maximum).Maximum
-        if ($min.ToString('yyyy-MM') -eq $max.ToString('yyyy-MM')) { $min.ToString('MMMM yyyy', $sv) }
-        else { "$($min.ToString('yyyy-MM-dd')) – $($max.ToString('yyyy-MM-dd'))" }
-    }
-    $nameOf = {
-        param($list, $key, $value)
-        $item = $list | Where-Object $key -eq $value | Select-Object -First 1
-        if ($item -and $item.Name) { $item.Name } else { $value }
-    }
-
-    $baseRow = @{ Account = $Account; Unit = 'h' }
-    if ($VatRate -gt 0) { $baseRow.VatRate = $VatRate; $baseRow.VatAccount = $VatAccount }
-
-    $rows = [System.Collections.Generic.List[hashtable]]::new()
-    if ($PerEntry) {
-        foreach ($e in ($selected | Sort-Object Date, EntryId)) {
-            $who = & $nameOf $context.Resources 'ResourceId' $e.ResourceId
-            $label = if ($e.ProjectNumber) { "$(& $nameOf $context.Projects 'ProjectNumber' $e.ProjectNumber), $who" } else { $who }
-            $text = "$($e.Date.ToString('yyyy-MM-dd')) $label"
-            if ($e.Text) { $text += ": $($e.Text)" }
-            $row = $baseRow.Clone()
-            $row.Description = $text; $row.Quantity = $e.Hours; $row.UnitPrice = $e.Rate
-            $rows.Add($row)
-        }
-    }
-    else {
-        $groups = $selected | Group-Object ProjectNumber, ResourceId, { Format-LedgerInvoiceAmount -Value ([decimal]$_.Rate) }
-        $ordered = $groups | Sort-Object { $_.Group[0].ProjectNumber }, { & $nameOf $context.Resources 'ResourceId' $_.Group[0].ResourceId }, { [decimal]$_.Group[0].Rate }
-        foreach ($g in $ordered) {
-            $first = $g.Group[0]
-            $who = & $nameOf $context.Resources 'ResourceId' $first.ResourceId
-            $label = if ($first.ProjectNumber) { "$(& $nameOf $context.Projects 'ProjectNumber' $first.ProjectNumber) – $who" } else { $who }
-            $hours = [decimal]0
-            foreach ($e in $g.Group) { $hours += [decimal]$e.Hours }
-            $row = $baseRow.Clone()
-            $row.Description = "$label, $(& $periodText $g.Group)"
-            $row.Quantity = $hours; $row.UnitPrice = [decimal]$first.Rate
-            $rows.Add($row)
-        }
-    }
-
-    if (-not $Description) { $Description = "Konsulttjänster $(& $periodText $selected)" }
-    $totalHours = ($selected | Measure-Object -Property Hours -Sum).Sum
-    if (-not $PSCmdlet.ShouldProcess("Customer $CustomerNumber", "Invoice $totalHours h in $($selected.Count) time entries")) { return }
-
-    $invoiceParams = @{
-        JournalPath    = $JournalPath
-        CustomerNumber = $CustomerNumber
-        Date           = $Date
-        Description    = $Description
-        Rows           = $rows.ToArray()
-        PassThru       = $true
-        WhatIf         = $false
-        Confirm        = $false
-    }
-    if ($PSBoundParameters.ContainsKey('DueDate')) { $invoiceParams.DueDate = $DueDate }
-    $invoice = New-LedgerInvoice @invoiceParams
-
+    $journalLock = $null
     try {
-        foreach ($e in $selected) { $e.InvoiceNumber = [int]$invoice.InvoiceNumber }
-        $months = @($selected | ForEach-Object { $_.Date.ToString('yyyy-MM') } | Select-Object -Unique)
-        Save-LedgerTimeEntries -JournalPath $JournalPath -Entries $entries -Months $months
-    }
-    catch {
-        # Without the link the time would be invoiced twice; undo the invoice.
-        Remove-Item -LiteralPath $invoice.FilePath -Force -ErrorAction SilentlyContinue
-        throw
-    }
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    if ($PassThru) { $invoice }
+        if (-not (Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $CustomerNumber)) {
+            throw "Customer '$CustomerNumber' does not exist."
+        }
+
+        $entries = @(Read-LedgerTimeEntries -JournalPath $JournalPath)
+        $context = Get-LedgerTimeContext -JournalPath $JournalPath
+        $invoiceStatus = Get-LedgerTimeInvoiceStatusMap -JournalPath $JournalPath
+
+        $selected = @($entries | Where-Object {
+                $_.CustomerNumber -eq $CustomerNumber -and $_.Billable -and $_.Date -le $Through.Date -and
+                (-not $PSBoundParameters.ContainsKey('FromDate') -or $_.Date -ge $FromDate.Date) -and
+                (-not $ProjectNumber -or $_.ProjectNumber -in $ProjectNumber) -and
+                -not (Test-LedgerTimeEntryInvoiced -Entry $_ -InvoiceStatus $invoiceStatus)
+            })
+        if (-not $selected) {
+            Write-Warning "Customer $CustomerNumber has no open billable time up to $($Through.ToString('yyyy-MM-dd'))."
+            return
+        }
+        $missingRate = @($selected | Where-Object { $null -eq $_.Rate })
+        if ($missingRate) {
+            throw "Time entries without an hourly rate: $(($missingRate.EntryId) -join ', '). Set one with Set-LedgerTimeEntry -Rate."
+        }
+
+        $sv = [System.Globalization.CultureInfo]::GetCultureInfo('sv-SE')
+        $periodText = {
+            param($items)
+            $min = ($items | Measure-Object -Property Date -Minimum).Minimum
+            $max = ($items | Measure-Object -Property Date -Maximum).Maximum
+            if ($min.ToString('yyyy-MM') -eq $max.ToString('yyyy-MM')) { $min.ToString('MMMM yyyy', $sv) }
+            else { "$($min.ToString('yyyy-MM-dd')) – $($max.ToString('yyyy-MM-dd'))" }
+        }
+        $nameOf = {
+            param($list, $key, $value)
+            $item = $list | Where-Object $key -eq $value | Select-Object -First 1
+            if ($item -and $item.Name) { $item.Name } else { $value }
+        }
+
+        $baseRow = @{ Account = $Account; Unit = 'h' }
+        if ($VatRate -gt 0) { $baseRow.VatRate = $VatRate; $baseRow.VatAccount = $VatAccount }
+
+        $rows = [System.Collections.Generic.List[hashtable]]::new()
+        if ($PerEntry) {
+            foreach ($e in ($selected | Sort-Object Date, EntryId)) {
+                $who = & $nameOf $context.Resources 'ResourceId' $e.ResourceId
+                $label = if ($e.ProjectNumber) { "$(& $nameOf $context.Projects 'ProjectNumber' $e.ProjectNumber), $who" } else { $who }
+                $text = "$($e.Date.ToString('yyyy-MM-dd')) $label"
+                if ($e.Text) { $text += ": $($e.Text)" }
+                $row = $baseRow.Clone()
+                $row.Description = $text; $row.Quantity = $e.Hours; $row.UnitPrice = $e.Rate
+                $rows.Add($row)
+            }
+        }
+        else {
+            $groups = $selected | Group-Object ProjectNumber, ResourceId, { Format-LedgerInvoiceAmount -Value ([decimal]$_.Rate) }
+            $ordered = $groups | Sort-Object { $_.Group[0].ProjectNumber }, { & $nameOf $context.Resources 'ResourceId' $_.Group[0].ResourceId }, { [decimal]$_.Group[0].Rate }
+            foreach ($g in $ordered) {
+                $first = $g.Group[0]
+                $who = & $nameOf $context.Resources 'ResourceId' $first.ResourceId
+                $label = if ($first.ProjectNumber) { "$(& $nameOf $context.Projects 'ProjectNumber' $first.ProjectNumber) – $who" } else { $who }
+                $hours = [decimal]0
+                foreach ($e in $g.Group) { $hours += [decimal]$e.Hours }
+                $row = $baseRow.Clone()
+                $row.Description = "$label, $(& $periodText $g.Group)"
+                $row.Quantity = $hours; $row.UnitPrice = [decimal]$first.Rate
+                $rows.Add($row)
+            }
+        }
+
+        if (-not $Description) { $Description = "Konsulttjänster $(& $periodText $selected)" }
+        $totalHours = ($selected | Measure-Object -Property Hours -Sum).Sum
+        if (-not $PSCmdlet.ShouldProcess("Customer $CustomerNumber", "Invoice $totalHours h in $($selected.Count) time entries")) { return }
+
+        $invoiceParams = @{
+            JournalPath    = $JournalPath
+            CustomerNumber = $CustomerNumber
+            Date           = $Date
+            Description    = $Description
+            Rows           = $rows.ToArray()
+            PassThru       = $true
+            WhatIf         = $false
+            Confirm        = $false
+        }
+        if ($PSBoundParameters.ContainsKey('DueDate')) { $invoiceParams.DueDate = $DueDate }
+        $invoice = New-LedgerInvoice @invoiceParams
+
+        try {
+            foreach ($e in $selected) { $e.InvoiceNumber = [int]$invoice.InvoiceNumber }
+            $months = @($selected | ForEach-Object { $_.Date.ToString('yyyy-MM') } | Select-Object -Unique)
+            Save-LedgerTimeEntries -JournalPath $JournalPath -Entries $entries -Months $months
+        }
+        catch {
+            # Without the link the time would be invoiced twice; undo the invoice.
+            Remove-Item -LiteralPath $invoice.FilePath -Force -ErrorAction SilentlyContinue
+            throw
+        }
+
+        if ($PassThru) { $invoice }
+    }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
+    }
 }

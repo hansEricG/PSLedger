@@ -118,6 +118,22 @@ Describe 'Copy-LedgerOpeningBalance' {
                 Should -Throw '*already has an opening balance*'
         }
 
+        It 'Should replace and reseal an existing opening balance with -Force' {
+            $Target = '2025-01_2025-12'
+            Copy-LedgerOpeningBalance -JournalPath $JournalPath -FromFiscalYear '2024-01_2024-12' -ToFiscalYear $Target
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $Target).Metadata | Should -Be 2
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Date '2024-12-31' -Description 'Sen justering' -Rows @(
+                @{ Account = '1910'; Amount = 1000 }
+                @{ Account = '3010'; Amount = -1000 }
+            )
+
+            Copy-LedgerOpeningBalance -JournalPath $JournalPath -FromFiscalYear '2024-01_2024-12' -ToFiscalYear $Target -Force
+
+            (Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $Target | Where-Object AccountNumber -eq '1910').OpeningBalance |
+                Should -Be 51000
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $Target).Status | Should -Be 'Valid'
+        }
+
         It 'Should throw if source fiscal year does not exist' {
             { Copy-LedgerOpeningBalance -JournalPath $JournalPath -FromFiscalYear '2000-01_2000-12' -ToFiscalYear '2025-01_2025-12' } |
                 Should -Throw '*not found*'

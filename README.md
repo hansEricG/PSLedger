@@ -866,6 +866,9 @@ For a full walkthrough see [docs/Tidrapportering.md](docs/Tidrapportering.md).
 Each fiscal year has an append-only hash chain, `integrity.txt`. `Add-LedgerEntry`
 and `Add-LedgerAttachment` seal what they write; a sealed attachment can only be
 removed with `Remove-LedgerAttachment`, which records the removal in the chain.
+The chain also seals `year.txt` and the opening balance (`ib.txt`). Only
+`Close-LedgerFiscalYear`, `Copy-LedgerOpeningBalance` (`-Force` to replace) and
+`Import-LedgerSie` may change them; any other edit is reported as `Modified`.
 
 ```powershell
 # Check every fiscal year
@@ -882,14 +885,17 @@ Test-LedgerIntegrity -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12
 ```
 
 The chain detects edits made without rebuilding it. Someone who rewrites both
-the files and the chain is only caught by `-ExpectedHash`. Opening balances,
-`year.txt`, year documents and the registers are not part of the chain.
+the files and the chain is only caught by `-ExpectedHash`. Year documents,
+holdings, report input and the registers are not part of the chain.
 
 ### Concurrent writes and interrupted operations
 
-Verification posting (including reversals), customer-invoice posting and payments,
-charges, reminders, bank imports and matching, attachment changes, sealing, fiscal-year closing,
-chart conversion and credit-note rollback share a journal-level write lock.
+Every command that changes a journal shares a journal-level write lock: posting
+and reversals, registers (accounts, customers, suppliers, employees, projects and
+other master data), invoices, payments, charges, reminders, credit notes, payroll,
+bank imports and matching, holdings, documents, attachments, opening balances,
+fiscal years, `Set-LedgerJournal`, sealing, closing, chart conversion, SIE import
+and `Update-LedgerJournal`. Concurrent register updates cannot lose a line.
 The verification writer holds it across validation, number allocation, file
 creation and integrity registration. Nested calls reuse the same lock. A
 competing process waits for up to 30 seconds, then reports that the journal is
@@ -917,8 +923,8 @@ validates the whole file before writing and saves `<year>/import.txt`, which
 reserves the verification numbers; repeat the import with the same file to
 complete an interrupted one without duplicates.
 
-Other register and metadata writers, older PSLedger versions and external
-editors do not all participate in the lock. Readers and backups do not acquire
+Older PSLedger versions and external editors do not participate in the lock.
+Readers, backups, restores and exports do not acquire
 a consistent-snapshot lock either. Avoid running those operations concurrently
 with writes. Shared network filesystems and simultaneous writes through Git,
 OneDrive or similar synchronisation are not supported by this mechanism.

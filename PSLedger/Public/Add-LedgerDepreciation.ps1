@@ -94,43 +94,53 @@ function Add-LedgerDepreciation {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        if ($PSCmdlet.ParameterSetName -eq 'StraightLine') {
-            if ($AcquisitionCost -le 0) {
-                throw "AcquisitionCost must be positive. Got: $AcquisitionCost"
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
+
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
+
+            if ($PSCmdlet.ParameterSetName -eq 'StraightLine') {
+                if ($AcquisitionCost -le 0) {
+                    throw "AcquisitionCost must be positive. Got: $AcquisitionCost"
+                }
+                if ($UsefulLifeYears -le 0) {
+                    throw "UsefulLifeYears must be positive. Got: $UsefulLifeYears"
+                }
+                $DepreciationAmount = [Math]::Round([decimal]$AcquisitionCost / $UsefulLifeYears, 2)
             }
-            if ($UsefulLifeYears -le 0) {
-                throw "UsefulLifeYears must be positive. Got: $UsefulLifeYears"
+            else {
+                $DepreciationAmount = [Math]::Round([decimal]$Amount, 2)
             }
-            $DepreciationAmount = [Math]::Round([decimal]$AcquisitionCost / $UsefulLifeYears, 2)
-        }
-        else {
-            $DepreciationAmount = [Math]::Round([decimal]$Amount, 2)
-        }
 
-        if ($DepreciationAmount -le 0) {
-            throw "Depreciation amount must be positive. Got: $DepreciationAmount"
+            if ($DepreciationAmount -le 0) {
+                throw "Depreciation amount must be positive. Got: $DepreciationAmount"
+            }
+
+            if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Book depreciation of $DepreciationAmount")) {
+                return
+            }
+
+            # Debit the expense account, credit the accumulated depreciation account.
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date $Date -Description $Description -Rows @(
+                @{ Account = $ExpenseAccount; Amount = $DepreciationAmount }
+                @{ Account = $AccumulatedDepreciationAccount; Amount = -$DepreciationAmount }
+            )
+
+            [PSCustomObject]@{
+                FiscalYear                     = $FiscalYear
+                Date                           = $Date
+                Description                    = $Description
+                ExpenseAccount                 = $ExpenseAccount
+                AccumulatedDepreciationAccount = $AccumulatedDepreciationAccount
+                Amount                         = $DepreciationAmount
+            }
         }
-
-        if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Book depreciation of $DepreciationAmount")) {
-            return
-        }
-
-        # Debit the expense account, credit the accumulated depreciation account.
-        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-            -Date $Date -Description $Description -Rows @(
-            @{ Account = $ExpenseAccount; Amount = $DepreciationAmount }
-            @{ Account = $AccumulatedDepreciationAccount; Amount = -$DepreciationAmount }
-        )
-
-        [PSCustomObject]@{
-            FiscalYear                     = $FiscalYear
-            Date                           = $Date
-            Description                    = $Description
-            ExpenseAccount                 = $ExpenseAccount
-            AccumulatedDepreciationAccount = $AccumulatedDepreciationAccount
-            Amount                         = $DepreciationAmount
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

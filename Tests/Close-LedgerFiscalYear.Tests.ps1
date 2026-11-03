@@ -120,6 +120,25 @@ Describe 'Close-LedgerFiscalYear' {
             $Integrity = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear -ExpectedHash $Result.ChainHash
             $Integrity.Status | Should -Be 'Valid'
             $Integrity.Verifications | Should -Be 2
+            $Integrity.Metadata | Should -Be 1
+
+            $YearFile = Join-Path $JournalPath $FiscalYear 'year.txt'
+            (Get-Content $YearFile) -replace 'Status: Closed', 'Status: Open' | Set-Content $YearFile
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear).Issues.Problem | Should -Be 'Modified'
+        }
+
+        It 'Should refuse to close a year whose sealed year.txt has been changed' {
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1910' -AccountName 'Kassa'
+            Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '1930' -AccountName 'Bank'
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2024-06-01' -Description 'Insättning' -Rows @(
+                @{ Account = '1930'; Amount = 1000 }
+                @{ Account = '1910'; Amount = -1000 }
+            )
+            $YearFile = Join-Path $JournalPath $FiscalYear 'year.txt'
+            (Get-Content $YearFile) -replace '2024-12-31', '2025-03-31' | Set-Content $YearFile
+
+            { Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear } | Should -Throw '*changed since it was sealed*'
+            (Get-LedgerFiscalYear -JournalPath $JournalPath).Status | Should -Be 'Open'
         }
 
         It 'Should throw if fiscal year does not exist' {
@@ -271,7 +290,7 @@ Describe 'Close-LedgerFiscalYear' {
                         -OperationId $(if ($OperationId) { $OperationId } else { [guid]::Empty }) -ReservedNumber ([int]$ReservedNumber) -Confirm:$false
                 }
                 Mock -ModuleName PSLedger Write-LedgerVerification { throw 'simulated interruption' } -ParameterFilter { $script:failWrite }
-                Mock -ModuleName PSLedger Protect-LedgerYearContent { & $script:realProtect -YearDir $YearDir }
+                Mock -ModuleName PSLedger Protect-LedgerYearContent { & $script:realProtect -YearDir $YearDir -ChangedMetadata $ChangedMetadata -Closing:$Closing }
                 Mock -ModuleName PSLedger Protect-LedgerYearContent { throw 'simulated interruption' } -ParameterFilter { $script:failProtect }
                 Mock -ModuleName PSLedger Set-LedgerFileContent { & $script:realSet -Path $Path -Value $Value -NoClobber:$NoClobber }
                 Mock -ModuleName PSLedger Set-LedgerFileContent { throw 'simulated interruption' } -ParameterFilter { $script:failStatus -and $Path -like '*year.txt' }

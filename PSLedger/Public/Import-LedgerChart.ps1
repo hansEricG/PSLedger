@@ -63,45 +63,54 @@ function Import-LedgerChart {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $TemplateDir = Join-Path $PSScriptRoot '..' 'Data' 'ChartTemplates'
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    if ($ListAvailable) {
-        $Templates = Get-ChildItem -Path $TemplateDir -Filter '*.txt' -File -ErrorAction SilentlyContinue
-        return ($Templates | ForEach-Object { $_.BaseName })
-    }
+        $TemplateDir = Join-Path $PSScriptRoot '..' 'Data' 'ChartTemplates'
 
-    if (-not (Test-Path $JournalPath -PathType Container)) {
-        throw "Journal not found: $JournalPath"
-    }
+        if ($ListAvailable) {
+            $Templates = Get-ChildItem -Path $TemplateDir -Filter '*.txt' -File -ErrorAction SilentlyContinue
+            return ($Templates | ForEach-Object { $_.BaseName })
+        }
 
-    # Determine source file
-    if ($PSCmdlet.ParameterSetName -eq 'Template') {
-        $SourceFile = Join-Path $TemplateDir "$Template.txt"
-        if (-not (Test-Path $SourceFile)) {
-            $Available = (Get-ChildItem -Path $TemplateDir -Filter '*.txt' -File | ForEach-Object { $_.BaseName }) -join ', '
-            throw "Template '$Template' not found. Available templates: $Available"
+        if (-not (Test-Path $JournalPath -PathType Container)) {
+            throw "Journal not found: $JournalPath"
+        }
+
+        # Determine source file
+        if ($PSCmdlet.ParameterSetName -eq 'Template') {
+            $SourceFile = Join-Path $TemplateDir "$Template.txt"
+            if (-not (Test-Path $SourceFile)) {
+                $Available = (Get-ChildItem -Path $TemplateDir -Filter '*.txt' -File | ForEach-Object { $_.BaseName }) -join ', '
+                throw "Template '$Template' not found. Available templates: $Available"
+            }
+        }
+        else {
+            $SourceFile = $Path
+            if (-not (Test-Path $SourceFile)) {
+                throw "Chart file not found: $Path"
+            }
+        }
+
+        $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
+
+        # Check for existing accounts
+        if ((Test-Path $KontoplanFile) -and -not $Force) {
+            $Existing = Get-Content $KontoplanFile | Where-Object { $_ -match '^\d+\t' }
+            if ($Existing) {
+                throw "Journal already has accounts. Use -Force to replace the existing chart."
+            }
+        }
+
+        # Copy content
+        $Content = Get-Content $SourceFile
+        if ($PSCmdlet.ShouldProcess($KontoplanFile, "Import chart of accounts ($($Content.Count) lines)")) {
+            Set-LedgerFileContent -Path $KontoplanFile -Value $Content
         }
     }
-    else {
-        $SourceFile = $Path
-        if (-not (Test-Path $SourceFile)) {
-            throw "Chart file not found: $Path"
-        }
-    }
-
-    $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
-
-    # Check for existing accounts
-    if ((Test-Path $KontoplanFile) -and -not $Force) {
-        $Existing = Get-Content $KontoplanFile | Where-Object { $_ -match '^\d+\t' }
-        if ($Existing) {
-            throw "Journal already has accounts. Use -Force to replace the existing chart."
-        }
-    }
-
-    # Copy content
-    $Content = Get-Content $SourceFile
-    if ($PSCmdlet.ShouldProcess($KontoplanFile, "Import chart of accounts ($($Content.Count) lines)")) {
-        Set-LedgerFileContent -Path $KontoplanFile -Value $Content
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

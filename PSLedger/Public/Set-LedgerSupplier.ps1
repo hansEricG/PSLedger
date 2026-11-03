@@ -69,57 +69,66 @@ function Set-LedgerSupplier {
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-        if (-not (Test-Path $JournalPath -PathType Container)) {
-            throw "Journal not found: $JournalPath"
-        }
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        $SupplierFile = Join-Path $JournalPath 'suppliers.txt'
-        if (-not (Test-Path $SupplierFile)) {
-            throw "Supplier '$SupplierNumber' does not exist."
-        }
-
-        $updateName = $PSBoundParameters.ContainsKey('Name')
-        $updateOrg = $PSBoundParameters.ContainsKey('OrgNumber')
-        $updateEmail = $PSBoundParameters.ContainsKey('Email')
-        $updateTerms = $PSBoundParameters.ContainsKey('PaymentTermsDays')
-
-        if (-not ($updateName -or $updateOrg -or $updateEmail -or $updateTerms)) {
-            throw "Nothing to update. Specify -Name, -OrgNumber, -Email and/or -PaymentTermsDays."
-        }
-
-        $lines = @(Get-Content $SupplierFile -Encoding UTF8)
-        $found = $false
-        $newLines = foreach ($line in $lines) {
-            if ([string]::IsNullOrWhiteSpace($line)) { continue }
-            $parts = $line -split "`t"
-            if ($parts[0] -eq $SupplierNumber) {
-                $found = $true
-                $curName = if ($parts.Count -ge 2) { $parts[1] } else { '' }
-                $curOrg = if ($parts.Count -ge 3) { $parts[2] } else { '' }
-                $curEmail = if ($parts.Count -ge 4) { $parts[3] } else { '' }
-                $curTerms = if ($parts.Count -ge 5) { $parts[4] } else { '30' }
-
-                if ($updateName) { $curName = ConvertTo-LedgerTextField $Name }
-                if ($updateOrg) { $curOrg = ConvertTo-LedgerTextField $OrgNumber }
-                if ($updateEmail) { $curEmail = ConvertTo-LedgerTextField $Email }
-                if ($updateTerms) { $curTerms = $PaymentTermsDays }
-
-                "$SupplierNumber`t$curName`t$curOrg`t$curEmail`t$curTerms"
+            if (-not (Test-Path $JournalPath -PathType Container)) {
+                throw "Journal not found: $JournalPath"
             }
-            else {
-                $line
+
+            $SupplierFile = Join-Path $JournalPath 'suppliers.txt'
+            if (-not (Test-Path $SupplierFile)) {
+                throw "Supplier '$SupplierNumber' does not exist."
+            }
+
+            $updateName = $PSBoundParameters.ContainsKey('Name')
+            $updateOrg = $PSBoundParameters.ContainsKey('OrgNumber')
+            $updateEmail = $PSBoundParameters.ContainsKey('Email')
+            $updateTerms = $PSBoundParameters.ContainsKey('PaymentTermsDays')
+
+            if (-not ($updateName -or $updateOrg -or $updateEmail -or $updateTerms)) {
+                throw "Nothing to update. Specify -Name, -OrgNumber, -Email and/or -PaymentTermsDays."
+            }
+
+            $lines = @(Get-Content $SupplierFile -Encoding UTF8)
+            $found = $false
+            $newLines = foreach ($line in $lines) {
+                if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                $parts = $line -split "`t"
+                if ($parts[0] -eq $SupplierNumber) {
+                    $found = $true
+                    $curName = if ($parts.Count -ge 2) { $parts[1] } else { '' }
+                    $curOrg = if ($parts.Count -ge 3) { $parts[2] } else { '' }
+                    $curEmail = if ($parts.Count -ge 4) { $parts[3] } else { '' }
+                    $curTerms = if ($parts.Count -ge 5) { $parts[4] } else { '30' }
+
+                    if ($updateName) { $curName = ConvertTo-LedgerTextField $Name }
+                    if ($updateOrg) { $curOrg = ConvertTo-LedgerTextField $OrgNumber }
+                    if ($updateEmail) { $curEmail = ConvertTo-LedgerTextField $Email }
+                    if ($updateTerms) { $curTerms = $PaymentTermsDays }
+
+                    "$SupplierNumber`t$curName`t$curOrg`t$curEmail`t$curTerms"
+                }
+                else {
+                    $line
+                }
+            }
+
+            if (-not $found) {
+                throw "Supplier '$SupplierNumber' does not exist."
+            }
+
+            if ($PSCmdlet.ShouldProcess($SupplierNumber, "Update supplier")) {
+                Set-LedgerFileContent -Path $SupplierFile -Value $newLines
+                if ($PassThru) {
+                    Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber
+                }
             }
         }
-
-        if (-not $found) {
-            throw "Supplier '$SupplierNumber' does not exist."
-        }
-
-        if ($PSCmdlet.ShouldProcess($SupplierNumber, "Update supplier")) {
-            Set-LedgerFileContent -Path $SupplierFile -Value $newLines
-            if ($PassThru) {
-                Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber
-            }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

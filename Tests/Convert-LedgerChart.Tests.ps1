@@ -135,6 +135,7 @@ Describe 'Convert-LedgerChart' {
         It 'Should convert opening balances and be safe to run again' {
             Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2660' -AccountName 'Moms omvänd skattskyldighet'
             Set-Content -LiteralPath (Join-Path $JournalPath $FiscalYear 'ib.txt') -Value @("1930`t1000", "2660`t-1000")
+            Protect-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear | Out-Null
 
             $result = Convert-LedgerChart -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2025-03-01' -WarningAction SilentlyContinue
             ($result | Where-Object Account -eq '2660').Transferred | Should -Be -1000

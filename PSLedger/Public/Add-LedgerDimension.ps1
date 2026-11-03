@@ -47,24 +47,33 @@ function Add-LedgerDimension {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    if (-not (Test-Path $JournalPath -PathType Container)) {
-        throw "Journal not found: $JournalPath"
-    }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    $DimFile = Join-Path $JournalPath 'dimensions.txt'
+        if (-not (Test-Path $JournalPath -PathType Container)) {
+            throw "Journal not found: $JournalPath"
+        }
 
-    if (Test-Path $DimFile) {
-        foreach ($Line in (Get-Content $DimFile)) {
-            if ($Line -match "^$DimensionNumber`t") {
-                throw "Dimension $DimensionNumber already exists."
+        $DimFile = Join-Path $JournalPath 'dimensions.txt'
+
+        if (Test-Path $DimFile) {
+            foreach ($Line in (Get-Content $DimFile)) {
+                if ($Line -match "^$DimensionNumber`t") {
+                    throw "Dimension $DimensionNumber already exists."
+                }
+            }
+        }
+
+        if ($PSCmdlet.ShouldProcess("$DimensionNumber", 'Add dimension')) {
+            Add-LedgerFileLine -Path $DimFile -Line "$DimensionNumber`t$(ConvertTo-LedgerTextField $Name)"
+            if ($PassThru) {
+                Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $DimensionNumber
             }
         }
     }
-
-    if ($PSCmdlet.ShouldProcess("$DimensionNumber", 'Add dimension')) {
-        Add-LedgerFileLine -Path $DimFile -Line "$DimensionNumber`t$(ConvertTo-LedgerTextField $Name)"
-        if ($PassThru) {
-            Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $DimensionNumber
-        }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

@@ -54,23 +54,33 @@ function Remove-LedgerHolding {
     )
     process {
         $ResolvedJournal = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $ResolvedYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $ResolvedJournal
 
-        $YearDir = Join-Path $ResolvedJournal $ResolvedYear
-        if (-not (Test-Path $YearDir -PathType Container)) {
-            throw "Fiscal year not found: $ResolvedYear"
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $ResolvedJournal
+            Assert-LedgerJournalSchema -Path $ResolvedJournal -Write
+
+            $ResolvedYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $ResolvedJournal
+
+            $YearDir = Join-Path $ResolvedJournal $ResolvedYear
+            if (-not (Test-Path $YearDir -PathType Container)) {
+                throw "Fiscal year not found: $ResolvedYear"
+            }
+            Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $ResolvedYear -Action 'change holdings'
+
+            $existing = Read-LedgerHoldings -YearDir $YearDir
+            $remaining = @($existing | Where-Object { -not ($_.Account -eq $Account -and $_.Name -eq $Name) })
+            if ($remaining.Count -eq $existing.Count) {
+                throw "Holding '$Name' on account $Account not found in $ResolvedYear."
+            }
+
+            $Path = Get-LedgerHoldingsPath -YearDir $YearDir
+            if ($PSCmdlet.ShouldProcess($Path, "Remove holding '$Name' on account $Account")) {
+                Write-LedgerHoldings -YearDir $YearDir -Rows $remaining
+            }
         }
-        Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $ResolvedYear -Action 'change holdings'
-
-        $existing = Read-LedgerHoldings -YearDir $YearDir
-        $remaining = @($existing | Where-Object { -not ($_.Account -eq $Account -and $_.Name -eq $Name) })
-        if ($remaining.Count -eq $existing.Count) {
-            throw "Holding '$Name' on account $Account not found in $ResolvedYear."
-        }
-
-        $Path = Get-LedgerHoldingsPath -YearDir $YearDir
-        if ($PSCmdlet.ShouldProcess($Path, "Remove holding '$Name' on account $Account")) {
-            Write-LedgerHoldings -YearDir $YearDir -Rows $remaining
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

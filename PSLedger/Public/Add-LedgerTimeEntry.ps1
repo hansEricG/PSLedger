@@ -93,34 +93,43 @@ function Add-LedgerTimeEntry {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $h = ConvertFrom-LedgerHours -Text $Hours
-    Test-LedgerHours -Hours $h
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    $context = Get-LedgerTimeContext -JournalPath $JournalPath
-    $rateArg = if ($PSBoundParameters.ContainsKey('Rate')) { $Rate } else { $null }
-    $target = Resolve-LedgerTimeEntryTarget -Context $context -ResourceId $ResourceId -ProjectNumber $ProjectNumber `
-        -CustomerNumber $CustomerNumber -Billable (-not $NonBillable) -Rate $rateArg
+        $h = ConvertFrom-LedgerHours -Text $Hours
+        Test-LedgerHours -Hours $h
 
-    $entries = @(Read-LedgerTimeEntries -JournalPath $JournalPath)
-    $nextId = if ($entries) { ($entries | Measure-Object -Property EntryId -Maximum).Maximum + 1 } else { 1 }
-    $entry = [PSCustomObject]@{
-        EntryId        = [int]$nextId
-        Date           = $Date.Date
-        ResourceId     = $target.ResourceId
-        ProjectNumber  = $target.ProjectNumber
-        CustomerNumber = $target.CustomerNumber
-        Hours          = $h
-        Billable       = $target.Billable
-        Rate           = $target.Rate
-        Text           = ConvertTo-LedgerTimeField $Text
-        InvoiceNumber  = $null
-    }
+        $context = Get-LedgerTimeContext -JournalPath $JournalPath
+        $rateArg = if ($PSBoundParameters.ContainsKey('Rate')) { $Rate } else { $null }
+        $target = Resolve-LedgerTimeEntryTarget -Context $context -ResourceId $ResourceId -ProjectNumber $ProjectNumber `
+            -CustomerNumber $CustomerNumber -Billable (-not $NonBillable) -Rate $rateArg
 
-    $what = if ($target.ProjectNumber) { "project $($target.ProjectNumber)" } else { "customer $($target.CustomerNumber)" }
-    if ($PSCmdlet.ShouldProcess("$($Date.ToString('yyyy-MM-dd')) $($target.ResourceId)", "Report $h h on $what")) {
-        Save-LedgerTimeEntries -JournalPath $JournalPath -Entries ($entries + $entry) -Months $Date.ToString('yyyy-MM')
-        if ($PassThru) {
-            ConvertTo-LedgerTimeEntryOutput -Entry $entry -Context $context -InvoiceStatus @{}
+        $entries = @(Read-LedgerTimeEntries -JournalPath $JournalPath)
+        $nextId = if ($entries) { ($entries | Measure-Object -Property EntryId -Maximum).Maximum + 1 } else { 1 }
+        $entry = [PSCustomObject]@{
+            EntryId        = [int]$nextId
+            Date           = $Date.Date
+            ResourceId     = $target.ResourceId
+            ProjectNumber  = $target.ProjectNumber
+            CustomerNumber = $target.CustomerNumber
+            Hours          = $h
+            Billable       = $target.Billable
+            Rate           = $target.Rate
+            Text           = ConvertTo-LedgerTimeField $Text
+            InvoiceNumber  = $null
         }
+
+        $what = if ($target.ProjectNumber) { "project $($target.ProjectNumber)" } else { "customer $($target.CustomerNumber)" }
+        if ($PSCmdlet.ShouldProcess("$($Date.ToString('yyyy-MM-dd')) $($target.ResourceId)", "Report $h h on $what")) {
+            Save-LedgerTimeEntries -JournalPath $JournalPath -Entries ($entries + $entry) -Months $Date.ToString('yyyy-MM')
+            if ($PassThru) {
+                ConvertTo-LedgerTimeEntryOutput -Entry $entry -Context $context -InvoiceStatus @{}
+            }
+        }
+    }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

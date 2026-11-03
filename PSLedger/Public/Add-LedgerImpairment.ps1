@@ -126,107 +126,117 @@ function Add-LedgerImpairment {
     )
     process {
         $ResolvedJournal = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $ResolvedYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $ResolvedJournal
 
-        $YearDir = Join-Path $ResolvedJournal $ResolvedYear
-        if (-not (Test-Path $YearDir -PathType Container)) {
-            throw "Fiscal year not found: $ResolvedYear"
-        }
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $ResolvedJournal
+            Assert-LedgerJournalSchema -Path $ResolvedJournal -Write
 
-        $EntryDate = $Date
-        if (-not $PSBoundParameters.ContainsKey('Date')) {
-            $Year = Get-LedgerFiscalYear -JournalPath $ResolvedJournal | Where-Object { $_.Name -eq $ResolvedYear } | Select-Object -First 1
-            $EntryDate = [datetime]::ParseExact($Year.EndDate.Trim(), 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
-        }
+            $ResolvedYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $ResolvedJournal
 
-        $Holding = $null
-        if ($PSCmdlet.ParameterSetName -eq 'Holding') {
-            $Valuation = Get-LedgerHoldingValuation -JournalPath $ResolvedJournal -FiscalYear $ResolvedYear
-            $Holding = $Valuation.Holdings | Where-Object { $_.Account -eq $Account -and $_.Name -eq $Name } | Select-Object -First 1
-            if (-not $Holding) {
-                throw "Holding '$Name' on account $Account not found in $ResolvedYear."
+            $YearDir = Join-Path $ResolvedJournal $ResolvedYear
+            if (-not (Test-Path $YearDir -PathType Container)) {
+                throw "Fiscal year not found: $ResolvedYear"
+            }
+
+            $EntryDate = $Date
+            if (-not $PSBoundParameters.ContainsKey('Date')) {
+                $Year = Get-LedgerFiscalYear -JournalPath $ResolvedJournal | Where-Object { $_.Name -eq $ResolvedYear } | Select-Object -First 1
+                $EntryDate = [datetime]::ParseExact($Year.EndDate.Trim(), 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+
+            $Holding = $null
+            if ($PSCmdlet.ParameterSetName -eq 'Holding') {
+                $Valuation = Get-LedgerHoldingValuation -JournalPath $ResolvedJournal -FiscalYear $ResolvedYear
+                $Holding = $Valuation.Holdings | Where-Object { $_.Account -eq $Account -and $_.Name -eq $Name } | Select-Object -First 1
+                if (-not $Holding) {
+                    throw "Holding '$Name' on account $Account not found in $ResolvedYear."
+                }
+
+                if ($Reverse) {
+                    if ($null -eq $Holding.BookValue -or $null -eq $Holding.Cost) {
+                        throw "Holding '$Name' needs both BookValue and Cost to compute a reversal. Record them with Set-LedgerHolding or use -Amount."
+                    }
+                    $Booked = [Math]::Round([decimal]$Holding.Reversible, 2)
+                    if ($Booked -le 0) {
+                        throw "Holding '$Name' has nothing to reverse (market value $($Holding.MarketValue), book value $($Holding.BookValue), cost $($Holding.Cost))."
+                    }
+                    if (-not $Description) { $Description = "Återföring av nedskrivning $Name" }
+                }
+                else {
+                    if ($null -ne $Holding.BookValue) {
+                        $Booked = $Holding.BookValue - $Holding.MarketValue
+                    }
+                    else {
+                        $OnAccount = @($Valuation.Holdings | Where-Object { $_.Account -eq $Account })
+                        if ($OnAccount.Count -ne 1) {
+                            throw "Holding '$Name' has no BookValue and shares account $Account with other holdings. Record its BookValue with Set-LedgerHolding or use -Amount."
+                        }
+                        $AccountRow = $Valuation.Accounts | Where-Object { $_.Account -eq $Account }
+                        $Booked = $AccountRow.BookValue - $AccountRow.MarketValue
+                    }
+                    $Booked = [Math]::Round([decimal]$Booked, 2)
+                    if ($Booked -le 0) {
+                        throw "Holding '$Name' is not below its book value (market value $($Holding.MarketValue)). Nothing to write down."
+                    }
+                    if ($null -eq $Holding.Cost) {
+                        Write-Warning "Holding '$Name' has no Cost (anskaffningsvärde). Record it with Set-LedgerHolding -Cost so a later reversal can be computed."
+                    }
+                    if (-not $Description) { $Description = "Nedskrivning $Name till marknadsvärde" }
+                }
+            }
+            else {
+                $Booked = [Math]::Round([decimal]$Amount, 2)
+                if ($Booked -le 0) {
+                    throw "Amount must be positive. Got: $Booked"
+                }
+            }
+            if (-not $Description) {
+                $Description = if ($Reverse) { 'Återföring av nedskrivning' } else { 'Nedskrivning' }
             }
 
             if ($Reverse) {
-                if ($null -eq $Holding.BookValue -or $null -eq $Holding.Cost) {
-                    throw "Holding '$Name' needs both BookValue and Cost to compute a reversal. Record them with Set-LedgerHolding or use -Amount."
+                # The value adjustment account carries a credit balance; a reversal must not exceed it.
+                $AdjustmentRow = Get-LedgerBalance -JournalPath $ResolvedJournal -FiscalYear $ResolvedYear |
+                    Where-Object { $_.AccountNumber -eq $AdjustmentAccount } | Select-Object -First 1
+                $Accumulated = if ($AdjustmentRow) { -[decimal]$AdjustmentRow.Balance } else { [decimal]0 }
+                if ($Booked -gt $Accumulated) {
+                    throw "Reversal $Booked exceeds the write-downs accumulated on $AdjustmentAccount ($Accumulated)."
                 }
-                $Booked = [Math]::Round([decimal]$Holding.Reversible, 2)
-                if ($Booked -le 0) {
-                    throw "Holding '$Name' has nothing to reverse (market value $($Holding.MarketValue), book value $($Holding.BookValue), cost $($Holding.Cost))."
-                }
-                if (-not $Description) { $Description = "Återföring av nedskrivning $Name" }
             }
-            else {
-                if ($null -ne $Holding.BookValue) {
-                    $Booked = $Holding.BookValue - $Holding.MarketValue
-                }
-                else {
-                    $OnAccount = @($Valuation.Holdings | Where-Object { $_.Account -eq $Account })
-                    if ($OnAccount.Count -ne 1) {
-                        throw "Holding '$Name' has no BookValue and shares account $Account with other holdings. Record its BookValue with Set-LedgerHolding or use -Amount."
-                    }
-                    $AccountRow = $Valuation.Accounts | Where-Object { $_.Account -eq $Account }
-                    $Booked = $AccountRow.BookValue - $AccountRow.MarketValue
-                }
-                $Booked = [Math]::Round([decimal]$Booked, 2)
-                if ($Booked -le 0) {
-                    throw "Holding '$Name' is not below its book value (market value $($Holding.MarketValue)). Nothing to write down."
-                }
-                if ($null -eq $Holding.Cost) {
-                    Write-Warning "Holding '$Name' has no Cost (anskaffningsvärde). Record it with Set-LedgerHolding -Cost so a later reversal can be computed."
-                }
-                if (-not $Description) { $Description = "Nedskrivning $Name till marknadsvärde" }
-            }
-        }
-        else {
-            $Booked = [Math]::Round([decimal]$Amount, 2)
-            if ($Booked -le 0) {
-                throw "Amount must be positive. Got: $Booked"
-            }
-        }
-        if (-not $Description) {
-            $Description = if ($Reverse) { 'Återföring av nedskrivning' } else { 'Nedskrivning' }
-        }
 
-        if ($Reverse) {
-            # The value adjustment account carries a credit balance; a reversal must not exceed it.
-            $AdjustmentRow = Get-LedgerBalance -JournalPath $ResolvedJournal -FiscalYear $ResolvedYear |
-                Where-Object { $_.AccountNumber -eq $AdjustmentAccount } | Select-Object -First 1
-            $Accumulated = if ($AdjustmentRow) { -[decimal]$AdjustmentRow.Balance } else { [decimal]0 }
-            if ($Booked -gt $Accumulated) {
-                throw "Reversal $Booked exceeds the write-downs accumulated on $AdjustmentAccount ($Accumulated)."
+            $Action = if ($Reverse) { "Book reversal of write-down of $Booked" } else { "Book write-down of $Booked" }
+            if (-not $PSCmdlet.ShouldProcess($ResolvedYear, $Action)) {
+                return
+            }
+
+            $Sign = if ($Reverse) { -1 } else { 1 }
+            $Entry = Add-LedgerEntry -JournalPath $ResolvedJournal -FiscalYear $ResolvedYear `
+                -Date $EntryDate -Description $Description -PassThru -Rows @(
+                @{ Account = $ExpenseAccount; Amount = $Sign * $Booked }
+                @{ Account = $AdjustmentAccount; Amount = -$Sign * $Booked }
+            )
+
+            if ($Holding) {
+                $NewBookValue = if ($Reverse) { $Holding.BookValue + $Booked } else { $Holding.MarketValue }
+                Set-LedgerHolding -JournalPath $ResolvedJournal -FiscalYear $ResolvedYear -Account $Account -Name $Name `
+                    -BookValue $NewBookValue -WarningAction SilentlyContinue -Confirm:$false
+            }
+
+            [PSCustomObject]@{
+                FiscalYear         = $ResolvedYear
+                VerificationNumber = $Entry.VerificationNumber
+                Date               = $EntryDate
+                Description        = $Description
+                Type               = if ($Reverse) { 'Reversal' } else { 'WriteDown' }
+                ExpenseAccount     = $ExpenseAccount
+                AdjustmentAccount  = $AdjustmentAccount
+                Amount             = $Booked
+                Holding            = if ($Holding) { $Name } else { $null }
             }
         }
-
-        $Action = if ($Reverse) { "Book reversal of write-down of $Booked" } else { "Book write-down of $Booked" }
-        if (-not $PSCmdlet.ShouldProcess($ResolvedYear, $Action)) {
-            return
-        }
-
-        $Sign = if ($Reverse) { -1 } else { 1 }
-        $Entry = Add-LedgerEntry -JournalPath $ResolvedJournal -FiscalYear $ResolvedYear `
-            -Date $EntryDate -Description $Description -PassThru -Rows @(
-            @{ Account = $ExpenseAccount; Amount = $Sign * $Booked }
-            @{ Account = $AdjustmentAccount; Amount = -$Sign * $Booked }
-        )
-
-        if ($Holding) {
-            $NewBookValue = if ($Reverse) { $Holding.BookValue + $Booked } else { $Holding.MarketValue }
-            Set-LedgerHolding -JournalPath $ResolvedJournal -FiscalYear $ResolvedYear -Account $Account -Name $Name `
-                -BookValue $NewBookValue -WarningAction SilentlyContinue -Confirm:$false
-        }
-
-        [PSCustomObject]@{
-            FiscalYear         = $ResolvedYear
-            VerificationNumber = $Entry.VerificationNumber
-            Date               = $EntryDate
-            Description        = $Description
-            Type               = if ($Reverse) { 'Reversal' } else { 'WriteDown' }
-            ExpenseAccount     = $ExpenseAccount
-            AdjustmentAccount  = $AdjustmentAccount
-            Amount             = $Booked
-            Holding            = if ($Holding) { $Name } else { $null }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

@@ -142,88 +142,98 @@ function Set-LedgerHolding {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $YearDir = Join-Path $JournalPath $FiscalYear
-        if (-not (Test-Path $YearDir -PathType Container)) {
-            throw "Fiscal year not found: $FiscalYear"
-        }
-        Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'change holdings'
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        if ($Name -match "[`t`r`n]") {
-            throw 'Name must not contain tabs or line breaks.'
-        }
-        if ($Source -match "[`t`r`n]") {
-            throw 'Source must not contain tabs or line breaks.'
-        }
-        if ($PSBoundParameters.ContainsKey('Isin') -and $Isin -and -not (Test-LedgerIsin -Isin $Isin)) {
-            throw "Invalid ISIN '$Isin'. Expected 2 letters, 9 alphanumerics and a valid check digit (e.g. SE0015811963)."
-        }
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $existing = Read-LedgerHoldings -YearDir $YearDir
-        $current = $existing | Where-Object { $_.Account -eq $Account -and $_.Name -eq $Name } | Select-Object -First 1
+            $YearDir = Join-Path $JournalPath $FiscalYear
+            if (-not (Test-Path $YearDir -PathType Container)) {
+                throw "Fiscal year not found: $FiscalYear"
+            }
+            Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'change holdings'
 
-        if (-not $current) {
-            foreach ($required in 'Quantity', 'Price') {
-                if (-not $PSBoundParameters.ContainsKey($required)) {
-                    throw "-$required is required when adding a new holding."
+            if ($Name -match "[`t`r`n]") {
+                throw 'Name must not contain tabs or line breaks.'
+            }
+            if ($Source -match "[`t`r`n]") {
+                throw 'Source must not contain tabs or line breaks.'
+            }
+            if ($PSBoundParameters.ContainsKey('Isin') -and $Isin -and -not (Test-LedgerIsin -Isin $Isin)) {
+                throw "Invalid ISIN '$Isin'. Expected 2 letters, 9 alphanumerics and a valid check digit (e.g. SE0015811963)."
+            }
+
+            $existing = Read-LedgerHoldings -YearDir $YearDir
+            $current = $existing | Where-Object { $_.Account -eq $Account -and $_.Name -eq $Name } | Select-Object -First 1
+
+            if (-not $current) {
+                foreach ($required in 'Quantity', 'Price') {
+                    if (-not $PSBoundParameters.ContainsKey($required)) {
+                        throw "-$required is required when adding a new holding."
+                    }
+                }
+            }
+
+            $bound = @{} + $PSBoundParameters
+            if ($bound.ContainsKey('PriceDate') -and $null -ne $PriceDate) {
+                $bound['PriceDate'] = $PriceDate.ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture)
+            }
+            $pick = {
+                param($Key, $Fallback)
+                if ($bound.ContainsKey($Key)) { $bound[$Key] } else { $Fallback }
+            }
+
+            $newCurrency = & $pick 'Currency' $current.Currency
+            $newFxRate = & $pick 'FxRate' $current.FxRate
+            # Switching to SEK resets an inherited foreign exchange rate.
+            if ($PSBoundParameters.ContainsKey('Currency') -and -not $PSBoundParameters.ContainsKey('FxRate') -and
+                $newCurrency.ToUpperInvariant() -ne "$($current.Currency)") {
+                $newFxRate = $null
+            }
+
+            $record = New-LedgerHoldingRecord -Account $Account -Name $Name `
+                -Isin (& $pick 'Isin' $current.Isin) `
+                -Quantity (& $pick 'Quantity' $current.Quantity) `
+                -Price (& $pick 'Price' $current.Price) `
+                -Currency $newCurrency -FxRate $newFxRate `
+                -PriceDate (& $pick 'PriceDate' $current.PriceDate) `
+                -Source (& $pick 'Source' $current.Source) `
+                -BookValue (& $pick 'BookValue' $current.BookValue) `
+                -Cost (& $pick 'Cost' $current.Cost)
+
+            if ($null -ne $record.BookValue -and $null -ne $record.Cost -and $record.BookValue -gt $record.Cost) {
+                Write-Warning "Holding '$Name': book value $($record.BookValue) exceeds the acquisition cost $($record.Cost)."
+            }
+
+            if ($record.Isin) {
+                $dup = $existing | Where-Object { $_.Isin -eq $record.Isin -and -not ($_.Account -eq $Account -and $_.Name -eq $Name) }
+                if ($dup) {
+                    Write-Warning "ISIN $($record.Isin) is already used by holding '$(@($dup)[0].Name)' on account $(@($dup)[0].Account)."
+                }
+            }
+            if (-not (Get-LedgerAccount -JournalPath $JournalPath -AccountNumber $Account)) {
+                Write-Warning "Account $Account is not in the chart of accounts."
+            }
+            if ((Get-LedgerHoldingValuationRule $Account) -eq 'Other') {
+                Write-Warning "Account $Account is not a 13xx or 18xx securities account."
+            }
+
+            $rows = @($existing | Where-Object { -not ($_.Account -eq $Account -and $_.Name -eq $Name) }) + $record
+
+            $action = if ($current) { "Update holding '$Name' on account $Account" } else { "Add holding '$Name' on account $Account" }
+            $Path = Get-LedgerHoldingsPath -YearDir $YearDir
+            if ($PSCmdlet.ShouldProcess($Path, $action)) {
+                Write-LedgerHoldings -YearDir $YearDir -Rows $rows
+                if ($PassThru) {
+                    Get-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account $Account -Name $Name
                 }
             }
         }
-
-        $bound = @{} + $PSBoundParameters
-        if ($bound.ContainsKey('PriceDate') -and $null -ne $PriceDate) {
-            $bound['PriceDate'] = $PriceDate.ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture)
-        }
-        $pick = {
-            param($Key, $Fallback)
-            if ($bound.ContainsKey($Key)) { $bound[$Key] } else { $Fallback }
-        }
-
-        $newCurrency = & $pick 'Currency' $current.Currency
-        $newFxRate = & $pick 'FxRate' $current.FxRate
-        # Switching to SEK resets an inherited foreign exchange rate.
-        if ($PSBoundParameters.ContainsKey('Currency') -and -not $PSBoundParameters.ContainsKey('FxRate') -and
-            $newCurrency.ToUpperInvariant() -ne "$($current.Currency)") {
-            $newFxRate = $null
-        }
-
-        $record = New-LedgerHoldingRecord -Account $Account -Name $Name `
-            -Isin (& $pick 'Isin' $current.Isin) `
-            -Quantity (& $pick 'Quantity' $current.Quantity) `
-            -Price (& $pick 'Price' $current.Price) `
-            -Currency $newCurrency -FxRate $newFxRate `
-            -PriceDate (& $pick 'PriceDate' $current.PriceDate) `
-            -Source (& $pick 'Source' $current.Source) `
-            -BookValue (& $pick 'BookValue' $current.BookValue) `
-            -Cost (& $pick 'Cost' $current.Cost)
-
-        if ($null -ne $record.BookValue -and $null -ne $record.Cost -and $record.BookValue -gt $record.Cost) {
-            Write-Warning "Holding '$Name': book value $($record.BookValue) exceeds the acquisition cost $($record.Cost)."
-        }
-
-        if ($record.Isin) {
-            $dup = $existing | Where-Object { $_.Isin -eq $record.Isin -and -not ($_.Account -eq $Account -and $_.Name -eq $Name) }
-            if ($dup) {
-                Write-Warning "ISIN $($record.Isin) is already used by holding '$(@($dup)[0].Name)' on account $(@($dup)[0].Account)."
-            }
-        }
-        if (-not (Get-LedgerAccount -JournalPath $JournalPath -AccountNumber $Account)) {
-            Write-Warning "Account $Account is not in the chart of accounts."
-        }
-        if ((Get-LedgerHoldingValuationRule $Account) -eq 'Other') {
-            Write-Warning "Account $Account is not a 13xx or 18xx securities account."
-        }
-
-        $rows = @($existing | Where-Object { -not ($_.Account -eq $Account -and $_.Name -eq $Name) }) + $record
-
-        $action = if ($current) { "Update holding '$Name' on account $Account" } else { "Add holding '$Name' on account $Account" }
-        $Path = Get-LedgerHoldingsPath -YearDir $YearDir
-        if ($PSCmdlet.ShouldProcess($Path, $action)) {
-            Write-LedgerHoldings -YearDir $YearDir -Rows $rows
-            if ($PassThru) {
-                Get-LedgerHolding -JournalPath $JournalPath -FiscalYear $FiscalYear -Account $Account -Name $Name
-            }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

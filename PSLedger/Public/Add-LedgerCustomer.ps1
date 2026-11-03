@@ -86,28 +86,37 @@ function Add-LedgerCustomer {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    if (-not (Test-Path $JournalPath -PathType Container)) {
-        throw "Journal not found: $JournalPath"
-    }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    Assert-LedgerKeyField -Name 'CustomerNumber' -Value $CustomerNumber
+        if (-not (Test-Path $JournalPath -PathType Container)) {
+            throw "Journal not found: $JournalPath"
+        }
 
-    $CustomerFile = Join-Path $JournalPath 'customers.txt'
+        Assert-LedgerKeyField -Name 'CustomerNumber' -Value $CustomerNumber
 
-    if (Test-Path $CustomerFile) {
-        foreach ($Line in (Get-Content $CustomerFile -Encoding UTF8)) {
-            if ($Line -match "^$([regex]::Escape($CustomerNumber))`t") {
-                throw "Customer '$CustomerNumber' already exists."
+        $CustomerFile = Join-Path $JournalPath 'customers.txt'
+
+        if (Test-Path $CustomerFile) {
+            foreach ($Line in (Get-Content $CustomerFile -Encoding UTF8)) {
+                if ($Line -match "^$([regex]::Escape($CustomerNumber))`t") {
+                    throw "Customer '$CustomerNumber' already exists."
+                }
+            }
+        }
+
+        if ($PSCmdlet.ShouldProcess($CustomerNumber, 'Add customer')) {
+            $rateField = if ($PSBoundParameters.ContainsKey('HourlyRate')) { "`t$(Format-LedgerInvoiceAmount -Value $HourlyRate)" } else { '' }
+            $fields = @($Name, $OrgNumber, $Email) | ForEach-Object { ConvertTo-LedgerTextField $_ }
+            Add-LedgerFileLine -Path $CustomerFile -Line "$CustomerNumber`t$($fields -join "`t")`t$PaymentTermsDays$rateField"
+            if ($PassThru) {
+                Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $CustomerNumber
             }
         }
     }
-
-    if ($PSCmdlet.ShouldProcess($CustomerNumber, 'Add customer')) {
-        $rateField = if ($PSBoundParameters.ContainsKey('HourlyRate')) { "`t$(Format-LedgerInvoiceAmount -Value $HourlyRate)" } else { '' }
-        $fields = @($Name, $OrgNumber, $Email) | ForEach-Object { ConvertTo-LedgerTextField $_ }
-        Add-LedgerFileLine -Path $CustomerFile -Line "$CustomerNumber`t$($fields -join "`t")`t$PaymentTermsDays$rateField"
-        if ($PassThru) {
-            Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $CustomerNumber
-        }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

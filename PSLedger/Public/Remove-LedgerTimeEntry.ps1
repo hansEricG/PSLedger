@@ -35,16 +35,25 @@ function Remove-LedgerTimeEntry {
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-        $entries = @(Read-LedgerTimeEntries -JournalPath $JournalPath)
-        $entry = $entries | Where-Object EntryId -eq $EntryId | Select-Object -First 1
-        if (-not $entry) { throw "Time entry $EntryId does not exist." }
-        if (Test-LedgerTimeEntryInvoiced -Entry $entry -InvoiceStatus (Get-LedgerTimeInvoiceStatusMap -JournalPath $JournalPath)) {
-            throw "Time entry $EntryId is on invoice $($entry.InvoiceNumber). Credit the invoice first to remove it."
-        }
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        if ($PSCmdlet.ShouldProcess("Time entry $EntryId ($($entry.Date.ToString('yyyy-MM-dd')), $($entry.Hours) h)", 'Remove time entry')) {
-            $remaining = @($entries | Where-Object EntryId -ne $EntryId)
-            Save-LedgerTimeEntries -JournalPath $JournalPath -Entries $remaining -Months $entry.Date.ToString('yyyy-MM')
+            $entries = @(Read-LedgerTimeEntries -JournalPath $JournalPath)
+            $entry = $entries | Where-Object EntryId -eq $EntryId | Select-Object -First 1
+            if (-not $entry) { throw "Time entry $EntryId does not exist." }
+            if (Test-LedgerTimeEntryInvoiced -Entry $entry -InvoiceStatus (Get-LedgerTimeInvoiceStatusMap -JournalPath $JournalPath)) {
+                throw "Time entry $EntryId is on invoice $($entry.InvoiceNumber). Credit the invoice first to remove it."
+            }
+
+            if ($PSCmdlet.ShouldProcess("Time entry $EntryId ($($entry.Date.ToString('yyyy-MM-dd')), $($entry.Hours) h)", 'Remove time entry')) {
+                $remaining = @($entries | Where-Object EntryId -ne $EntryId)
+                Save-LedgerTimeEntries -JournalPath $JournalPath -Entries $remaining -Months $entry.Date.ToString('yyyy-MM')
+            }
+        }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

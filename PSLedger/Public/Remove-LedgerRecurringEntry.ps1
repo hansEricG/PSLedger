@@ -34,16 +34,25 @@ function Remove-LedgerRecurringEntry {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $Name = Assert-LedgerSafeLeafName -Name $Name -Kind 'recurring entry'
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    $recurringDir = Join-Path $JournalPath 'recurring'
-    $filePath = Join-Path $recurringDir "$Name.txt"
+        $Name = Assert-LedgerSafeLeafName -Name $Name -Kind 'recurring entry'
 
-    if (-not (Test-Path $filePath)) {
-        throw "Recurring entry '$Name' not found."
+        $recurringDir = Join-Path $JournalPath 'recurring'
+        $filePath = Join-Path $recurringDir "$Name.txt"
+
+        if (-not (Test-Path $filePath)) {
+            throw "Recurring entry '$Name' not found."
+        }
+
+        if ($PSCmdlet.ShouldProcess($Name, 'Remove recurring entry')) {
+            Remove-Item -Path $filePath -Force
+        }
     }
-
-    if ($PSCmdlet.ShouldProcess($Name, 'Remove recurring entry')) {
-        Remove-Item -Path $filePath -Force
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

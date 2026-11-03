@@ -73,27 +73,36 @@ function Add-LedgerSupplier {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    if (-not (Test-Path $JournalPath -PathType Container)) {
-        throw "Journal not found: $JournalPath"
-    }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    Assert-LedgerKeyField -Name 'SupplierNumber' -Value $SupplierNumber
+        if (-not (Test-Path $JournalPath -PathType Container)) {
+            throw "Journal not found: $JournalPath"
+        }
 
-    $SupplierFile = Join-Path $JournalPath 'suppliers.txt'
+        Assert-LedgerKeyField -Name 'SupplierNumber' -Value $SupplierNumber
 
-    if (Test-Path $SupplierFile) {
-        foreach ($Line in (Get-Content $SupplierFile -Encoding UTF8)) {
-            if ($Line -match "^$([regex]::Escape($SupplierNumber))`t") {
-                throw "Supplier '$SupplierNumber' already exists."
+        $SupplierFile = Join-Path $JournalPath 'suppliers.txt'
+
+        if (Test-Path $SupplierFile) {
+            foreach ($Line in (Get-Content $SupplierFile -Encoding UTF8)) {
+                if ($Line -match "^$([regex]::Escape($SupplierNumber))`t") {
+                    throw "Supplier '$SupplierNumber' already exists."
+                }
+            }
+        }
+
+        if ($PSCmdlet.ShouldProcess($SupplierNumber, 'Add supplier')) {
+            $fields = @($Name, $OrgNumber, $Email) | ForEach-Object { ConvertTo-LedgerTextField $_ }
+            Add-LedgerFileLine -Path $SupplierFile -Line "$SupplierNumber`t$($fields -join "`t")`t$PaymentTermsDays"
+            if ($PassThru) {
+                Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber
             }
         }
     }
-
-    if ($PSCmdlet.ShouldProcess($SupplierNumber, 'Add supplier')) {
-        $fields = @($Name, $OrgNumber, $Email) | ForEach-Object { ConvertTo-LedgerTextField $_ }
-        Add-LedgerFileLine -Path $SupplierFile -Line "$SupplierNumber`t$($fields -join "`t")`t$PaymentTermsDays"
-        if ($PassThru) {
-            Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber
-        }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

@@ -74,29 +74,38 @@ function Add-LedgerEmployee {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    if (-not (Test-Path $JournalPath -PathType Container)) {
-        throw "Journal not found: $JournalPath"
-    }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    Assert-LedgerKeyField -Name 'EmployeeNumber' -Value $EmployeeNumber
-    Assert-LedgerKeyField -Name 'SalaryAccount' -Value $SalaryAccount
+        if (-not (Test-Path $JournalPath -PathType Container)) {
+            throw "Journal not found: $JournalPath"
+        }
 
-    $EmployeeFile = Join-Path $JournalPath 'employees.txt'
+        Assert-LedgerKeyField -Name 'EmployeeNumber' -Value $EmployeeNumber
+        Assert-LedgerKeyField -Name 'SalaryAccount' -Value $SalaryAccount
 
-    if (Test-Path $EmployeeFile) {
-        foreach ($Line in (Get-Content $EmployeeFile -Encoding UTF8)) {
-            if ($Line -match "^$([regex]::Escape($EmployeeNumber))`t") {
-                throw "Employee '$EmployeeNumber' already exists."
+        $EmployeeFile = Join-Path $JournalPath 'employees.txt'
+
+        if (Test-Path $EmployeeFile) {
+            foreach ($Line in (Get-Content $EmployeeFile -Encoding UTF8)) {
+                if ($Line -match "^$([regex]::Escape($EmployeeNumber))`t") {
+                    throw "Employee '$EmployeeNumber' already exists."
+                }
+            }
+        }
+
+        $rate = Format-LedgerInvoiceAmount -Value $TaxRate
+        if ($PSCmdlet.ShouldProcess($EmployeeNumber, 'Add employee')) {
+            $fields = @($Name, $PersonalNumber) | ForEach-Object { ConvertTo-LedgerTextField $_ }
+            Add-LedgerFileLine -Path $EmployeeFile -Line "$EmployeeNumber`t$($fields -join "`t")`t$SalaryAccount`t$rate"
+            if ($PassThru) {
+                Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber $EmployeeNumber
             }
         }
     }
-
-    $rate = Format-LedgerInvoiceAmount -Value $TaxRate
-    if ($PSCmdlet.ShouldProcess($EmployeeNumber, 'Add employee')) {
-        $fields = @($Name, $PersonalNumber) | ForEach-Object { ConvertTo-LedgerTextField $_ }
-        Add-LedgerFileLine -Path $EmployeeFile -Line "$EmployeeNumber`t$($fields -join "`t")`t$SalaryAccount`t$rate"
-        if ($PassThru) {
-            Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber $EmployeeNumber
-        }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

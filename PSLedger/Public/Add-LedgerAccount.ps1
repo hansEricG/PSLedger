@@ -47,27 +47,36 @@ function Add-LedgerAccount {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    if (-not (Test-Path $JournalPath -PathType Container)) {
-        throw "Journal not found: $JournalPath"
-    }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    Assert-LedgerKeyField -Name 'AccountNumber' -Value $AccountNumber
+        if (-not (Test-Path $JournalPath -PathType Container)) {
+            throw "Journal not found: $JournalPath"
+        }
 
-    $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
+        Assert-LedgerKeyField -Name 'AccountNumber' -Value $AccountNumber
 
-    if (Test-Path $KontoplanFile) {
-        $Existing = Get-Content $KontoplanFile
-        foreach ($Line in $Existing) {
-            if ($Line -match "^$AccountNumber\s+") {
-                throw "Account $AccountNumber already exists in chart of accounts."
+        $KontoplanFile = Join-Path $JournalPath 'accounts.txt'
+
+        if (Test-Path $KontoplanFile) {
+            $Existing = Get-Content $KontoplanFile
+            foreach ($Line in $Existing) {
+                if ($Line -match "^$AccountNumber\s+") {
+                    throw "Account $AccountNumber already exists in chart of accounts."
+                }
+            }
+        }
+
+        if ($PSCmdlet.ShouldProcess($AccountNumber, 'Add account')) {
+            Add-LedgerFileLine -Path $KontoplanFile -Line "$AccountNumber`t$(ConvertTo-LedgerTextField $AccountName)"
+            if ($PassThru) {
+                Get-LedgerAccount -JournalPath $JournalPath -AccountNumber $AccountNumber
             }
         }
     }
-
-    if ($PSCmdlet.ShouldProcess($AccountNumber, 'Add account')) {
-        Add-LedgerFileLine -Path $KontoplanFile -Line "$AccountNumber`t$(ConvertTo-LedgerTextField $AccountName)"
-        if ($PassThru) {
-            Get-LedgerAccount -JournalPath $JournalPath -AccountNumber $AccountNumber
-        }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

@@ -80,84 +80,93 @@ function Set-LedgerJournal {
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-        if (-not (Test-Path $JournalPath -PathType Container)) {
-            throw "Journal not found: $JournalPath"
-        }
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        $JournalFile = Join-Path $JournalPath 'journal.txt'
-        if (-not (Test-Path $JournalFile)) {
-            throw "Invalid journal - journal.txt not found in: $JournalPath"
-        }
-
-        $UpdateName = $PSBoundParameters.ContainsKey('Name')
-        $UpdateOrg = $PSBoundParameters.ContainsKey('OrgNumber')
-        $UpdateCompanyType = $PSBoundParameters.ContainsKey('CompanyType')
-
-        # Collect every field to change into a single ordered map (key -> value).
-        # An empty/$null value means "remove this field". Reserved keys keep their
-        # dedicated parameters; -Metadata handles everything else.
-        $Updates = [ordered]@{}
-
-        if ($UpdateName) {
-            $Updates['Name'] = Format-LedgerMetadataValue -Value $Name
-        }
-        if ($UpdateOrg) {
-            $Updates['OrgNumber'] = Format-LedgerMetadataValue -Value $OrgNumber
-        }
-        if ($UpdateCompanyType) {
-            if (-not [string]::IsNullOrEmpty($CompanyType)) {
-                Test-LedgerCompanyType -CompanyType $CompanyType
+            if (-not (Test-Path $JournalPath -PathType Container)) {
+                throw "Journal not found: $JournalPath"
             }
-            $Updates['CompanyType'] = $CompanyType
-        }
-        if ($PSBoundParameters.ContainsKey('Metadata')) {
-            foreach ($Key in $Metadata.Keys) {
-                Test-LedgerMetadataKey -Key ([string]$Key)
-                $Updates[[string]$Key] = Format-LedgerMetadataValue -Value ([string]$Metadata[$Key])
+
+            $JournalFile = Join-Path $JournalPath 'journal.txt'
+            if (-not (Test-Path $JournalFile)) {
+                throw "Invalid journal - journal.txt not found in: $JournalPath"
             }
-        }
 
-        if ($Updates.Count -eq 0) {
-            throw "Nothing to update. Specify -Name, -OrgNumber, -CompanyType and/or -Metadata."
-        }
+            $UpdateName = $PSBoundParameters.ContainsKey('Name')
+            $UpdateOrg = $PSBoundParameters.ContainsKey('OrgNumber')
+            $UpdateCompanyType = $PSBoundParameters.ContainsKey('CompanyType')
 
-        $Lines = @(Get-Content $JournalFile)
-        $NewLines = [System.Collections.Generic.List[string]]::new()
-        $Written = @{}
+            # Collect every field to change into a single ordered map (key -> value).
+            # An empty/$null value means "remove this field". Reserved keys keep their
+            # dedicated parameters; -Metadata handles everything else.
+            $Updates = [ordered]@{}
 
-        foreach ($Line in $Lines) {
-            $Matched = $false
+            if ($UpdateName) {
+                $Updates['Name'] = Format-LedgerMetadataValue -Value $Name
+            }
+            if ($UpdateOrg) {
+                $Updates['OrgNumber'] = Format-LedgerMetadataValue -Value $OrgNumber
+            }
+            if ($UpdateCompanyType) {
+                if (-not [string]::IsNullOrEmpty($CompanyType)) {
+                    Test-LedgerCompanyType -CompanyType $CompanyType
+                }
+                $Updates['CompanyType'] = $CompanyType
+            }
+            if ($PSBoundParameters.ContainsKey('Metadata')) {
+                foreach ($Key in $Metadata.Keys) {
+                    Test-LedgerMetadataKey -Key ([string]$Key)
+                    $Updates[[string]$Key] = Format-LedgerMetadataValue -Value ([string]$Metadata[$Key])
+                }
+            }
+
+            if ($Updates.Count -eq 0) {
+                throw "Nothing to update. Specify -Name, -OrgNumber, -CompanyType and/or -Metadata."
+            }
+
+            $Lines = @(Get-Content $JournalFile)
+            $NewLines = [System.Collections.Generic.List[string]]::new()
+            $Written = @{}
+
+            foreach ($Line in $Lines) {
+                $Matched = $false
+                foreach ($Key in $Updates.Keys) {
+                    if ($Line -match "^$([regex]::Escape($Key)):\s*") {
+                        $Matched = $true
+                        $Written[$Key] = $true
+                        $Value = $Updates[$Key]
+                        if (-not [string]::IsNullOrEmpty($Value)) {
+                            $NewLines.Add("${Key}: $Value")
+                        }
+                        break
+                    }
+                }
+                if (-not $Matched) {
+                    $NewLines.Add($Line)
+                }
+            }
+
+            # Append any fields that weren't already present (skip removals).
             foreach ($Key in $Updates.Keys) {
-                if ($Line -match "^$([regex]::Escape($Key)):\s*") {
-                    $Matched = $true
-                    $Written[$Key] = $true
+                if (-not $Written.ContainsKey($Key)) {
                     $Value = $Updates[$Key]
                     if (-not [string]::IsNullOrEmpty($Value)) {
                         $NewLines.Add("${Key}: $Value")
                     }
-                    break
                 }
             }
-            if (-not $Matched) {
-                $NewLines.Add($Line)
-            }
-        }
 
-        # Append any fields that weren't already present (skip removals).
-        foreach ($Key in $Updates.Keys) {
-            if (-not $Written.ContainsKey($Key)) {
-                $Value = $Updates[$Key]
-                if (-not [string]::IsNullOrEmpty($Value)) {
-                    $NewLines.Add("${Key}: $Value")
+            if ($PSCmdlet.ShouldProcess($JournalPath, "Update journal metadata")) {
+                Set-LedgerFileContent -Path $JournalFile -Value $NewLines
+                if ($PassThru) {
+                    Get-LedgerJournal -Path $JournalPath
                 }
             }
         }
-
-        if ($PSCmdlet.ShouldProcess($JournalPath, "Update journal metadata")) {
-            Set-LedgerFileContent -Path $JournalFile -Value $NewLines
-            if ($PassThru) {
-                Get-LedgerJournal -Path $JournalPath
-            }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

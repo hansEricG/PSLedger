@@ -75,31 +75,41 @@ function Add-LedgerTaxEntry {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $TaxAmount = [Math]::Round([decimal]$Amount, 2)
-        if ($TaxAmount -le 0) {
-            throw "Tax amount must be positive. Got: $TaxAmount"
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
+
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
+
+            $TaxAmount = [Math]::Round([decimal]$Amount, 2)
+            if ($TaxAmount -le 0) {
+                throw "Tax amount must be positive. Got: $TaxAmount"
+            }
+
+            if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Book tax of $TaxAmount")) {
+                return
+            }
+
+            # Debit the tax expense account, credit the tax liability account.
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date $Date -Description $Description -Rows @(
+                @{ Account = $TaxAccount; Amount = $TaxAmount }
+                @{ Account = $LiabilityAccount; Amount = -$TaxAmount }
+            )
+
+            [PSCustomObject]@{
+                FiscalYear       = $FiscalYear
+                Date             = $Date
+                Description      = $Description
+                TaxAccount       = $TaxAccount
+                LiabilityAccount = $LiabilityAccount
+                Amount           = $TaxAmount
+            }
         }
-
-        if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Book tax of $TaxAmount")) {
-            return
-        }
-
-        # Debit the tax expense account, credit the tax liability account.
-        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-            -Date $Date -Description $Description -Rows @(
-            @{ Account = $TaxAccount; Amount = $TaxAmount }
-            @{ Account = $LiabilityAccount; Amount = -$TaxAmount }
-        )
-
-        [PSCustomObject]@{
-            FiscalYear       = $FiscalYear
-            Date             = $Date
-            Description      = $Description
-            TaxAccount       = $TaxAccount
-            LiabilityAccount = $LiabilityAccount
-            Amount           = $TaxAmount
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

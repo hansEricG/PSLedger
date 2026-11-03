@@ -42,68 +42,77 @@ function Invoke-LedgerRecurringEntry {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $templates = if ($Name) {
-        @(Get-LedgerRecurringEntry -JournalPath $JournalPath -Name $Name)
-    }
-    else {
-        @(Get-LedgerRecurringEntry -JournalPath $JournalPath)
-    }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    $generated = 0
-
-    foreach ($tmpl in $templates) {
-        if (-not $tmpl) { continue }
-        if ($tmpl.Schedule -ne 'monthly') { continue }
-
-        # Determine start point for generation
-        $genStart = if ($tmpl.LastGenerated) {
-            $tmpl.LastGenerated.AddDays(1)
+        $templates = if ($Name) {
+            @(Get-LedgerRecurringEntry -JournalPath $JournalPath -Name $Name)
         }
         else {
-            $tmpl.StartDate
+            @(Get-LedgerRecurringEntry -JournalPath $JournalPath)
         }
 
-        $endLimit = if ($tmpl.EndDate -lt $Through) { $tmpl.EndDate } else { $Through }
+        $generated = 0
 
-        # Generate monthly entries
-        $current = [datetime]::new($genStart.Year, $genStart.Month, 1)
-        $lastGen = $tmpl.LastGenerated
+        foreach ($tmpl in $templates) {
+            if (-not $tmpl) { continue }
+            if ($tmpl.Schedule -ne 'monthly') { continue }
 
-        while ($current -le $endLimit) {
-            $entryDate = [datetime]::new($current.Year, $current.Month, $tmpl.DayOfMonth)
+            # Determine start point for generation
+            $genStart = if ($tmpl.LastGenerated) {
+                $tmpl.LastGenerated.AddDays(1)
+            }
+            else {
+                $tmpl.StartDate
+            }
 
-            if ($entryDate -ge $genStart -and $entryDate -le $endLimit) {
-                # Find the fiscal year for this date
-                $fiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $entryDate
+            $endLimit = if ($tmpl.EndDate -lt $Through) { $tmpl.EndDate } else { $Through }
 
-                if ($fiscalYear) {
-                    if ($PSCmdlet.ShouldProcess($fiscalYear, "Generate recurring entry '$($tmpl.Name)' for $($entryDate.ToString('yyyy-MM-dd'))")) {
-                        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $fiscalYear `
-                            -Date $entryDate -Description $tmpl.Description -Rows $tmpl.Rows
-                        $lastGen = $entryDate
-                        $generated++
+            # Generate monthly entries
+            $current = [datetime]::new($genStart.Year, $genStart.Month, 1)
+            $lastGen = $tmpl.LastGenerated
+
+            while ($current -le $endLimit) {
+                $entryDate = [datetime]::new($current.Year, $current.Month, $tmpl.DayOfMonth)
+
+                if ($entryDate -ge $genStart -and $entryDate -le $endLimit) {
+                    # Find the fiscal year for this date
+                    $fiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $entryDate
+
+                    if ($fiscalYear) {
+                        if ($PSCmdlet.ShouldProcess($fiscalYear, "Generate recurring entry '$($tmpl.Name)' for $($entryDate.ToString('yyyy-MM-dd'))")) {
+                            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $fiscalYear `
+                                -Date $entryDate -Description $tmpl.Description -Rows $tmpl.Rows
+                            $lastGen = $entryDate
+                            $generated++
+                        }
                     }
                 }
+
+                $current = $current.AddMonths(1)
             }
 
-            $current = $current.AddMonths(1)
+            # Update LastGenerated in the template file
+            if ($lastGen -and $lastGen -ne $tmpl.LastGenerated) {
+                $content = Get-Content -Path $tmpl.FilePath -Encoding UTF8
+                $updated = $content | ForEach-Object {
+                    if ($_ -match '^LastGenerated:') {
+                        "LastGenerated:`t$($lastGen.ToString('yyyy-MM-dd'))"
+                    }
+                    else { $_ }
+                }
+                Set-LedgerFileContent -Path $tmpl.FilePath -Value $updated
+            }
         }
 
-        # Update LastGenerated in the template file
-        if ($lastGen -and $lastGen -ne $tmpl.LastGenerated) {
-            $content = Get-Content -Path $tmpl.FilePath -Encoding UTF8
-            $updated = $content | ForEach-Object {
-                if ($_ -match '^LastGenerated:') {
-                    "LastGenerated:`t$($lastGen.ToString('yyyy-MM-dd'))"
-                }
-                else { $_ }
-            }
-            Set-LedgerFileContent -Path $tmpl.FilePath -Value $updated
+        [PSCustomObject]@{
+            Generated = $generated
         }
     }
-
-    [PSCustomObject]@{
-        Generated = $generated
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }
 

@@ -82,33 +82,42 @@ function Add-LedgerBankRule {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $Pattern = ConvertTo-LedgerBankField $Pattern
-    if (-not $Pattern) { throw "Pattern must not be empty." }
-    if ($VatRate -gt 0 -and -not $VatAccount) { throw "A VatAccount is required when VatRate is set." }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    $accounts = @(Get-LedgerAccount -JournalPath $JournalPath | ForEach-Object { $_.AccountNumber })
-    if ($accounts) {
-        foreach ($a in @($Account) + @($VatAccount | Where-Object { $_ })) {
-            if ($a -notin $accounts) { throw "Account $a does not exist in chart of accounts." }
+        $Pattern = ConvertTo-LedgerBankField $Pattern
+        if (-not $Pattern) { throw "Pattern must not be empty." }
+        if ($VatRate -gt 0 -and -not $VatAccount) { throw "A VatAccount is required when VatRate is set." }
+
+        $accounts = @(Get-LedgerAccount -JournalPath $JournalPath | ForEach-Object { $_.AccountNumber })
+        if ($accounts) {
+            foreach ($a in @($Account) + @($VatAccount | Where-Object { $_ })) {
+                if ($a -notin $accounts) { throw "Account $a does not exist in chart of accounts." }
+            }
         }
+
+        $rules = @(Read-LedgerBankRules -JournalPath $JournalPath)
+        if ($rules | Where-Object { $_.Pattern -eq $Pattern }) {
+            throw "A bank rule with pattern '$Pattern' already exists."
+        }
+
+        $rule = [PSCustomObject]@{
+            Priority    = $rules.Count + 1
+            Pattern     = $Pattern
+            Account     = $Account
+            Description = ConvertTo-LedgerBankField $Description
+            VatRate     = $VatRate
+            VatAccount  = if ($VatRate -gt 0) { $VatAccount } else { '' }
+        }
+
+        if (-not $PSCmdlet.ShouldProcess("Bank rule '$Pattern'", "Add (account $Account)")) { return }
+
+        Save-LedgerBankRules -JournalPath $JournalPath -Rules (@($rules) + $rule)
+        if ($PassThru) { $rule }
     }
-
-    $rules = @(Read-LedgerBankRules -JournalPath $JournalPath)
-    if ($rules | Where-Object { $_.Pattern -eq $Pattern }) {
-        throw "A bank rule with pattern '$Pattern' already exists."
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
-
-    $rule = [PSCustomObject]@{
-        Priority    = $rules.Count + 1
-        Pattern     = $Pattern
-        Account     = $Account
-        Description = ConvertTo-LedgerBankField $Description
-        VatRate     = $VatRate
-        VatAccount  = if ($VatRate -gt 0) { $VatAccount } else { '' }
-    }
-
-    if (-not $PSCmdlet.ShouldProcess("Bank rule '$Pattern'", "Add (account $Account)")) { return }
-
-    Save-LedgerBankRules -JournalPath $JournalPath -Rules (@($rules) + $rule)
-    if ($PassThru) { $rule }
 }

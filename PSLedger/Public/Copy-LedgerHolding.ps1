@@ -61,50 +61,60 @@ function Copy-LedgerHolding {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FromFiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FromFiscalYear -JournalPath $JournalPath
 
-        $FromDir = Join-Path $JournalPath $FromFiscalYear
-        if (-not (Test-Path $FromDir -PathType Container)) {
-            throw "Source fiscal year not found: $FromFiscalYear"
-        }
-        $ToDir = Join-Path $JournalPath $ToFiscalYear
-        if (-not (Test-Path $ToDir -PathType Container)) {
-            throw "Target fiscal year not found: $ToFiscalYear"
-        }
-        if ($FromFiscalYear -eq $ToFiscalYear) {
-            throw 'Source and target fiscal year must differ.'
-        }
-        Assert-LedgerFiscalYearOpen -YearDir $ToDir -FiscalYear $ToFiscalYear -Action 'copy holdings into it'
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        $Holdings = Read-LedgerHoldings -YearDir $FromDir
-        if ($Holdings.Count -eq 0) {
-            throw "No holdings recorded in $FromFiscalYear."
-        }
+            $FromFiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FromFiscalYear -JournalPath $JournalPath
 
-        $Existing = Read-LedgerHoldings -YearDir $ToDir
-        if ($Existing.Count -gt 0 -and -not $Force) {
-            throw "Target fiscal year $ToFiscalYear already has holdings. Use -Force to replace them."
-        }
+            $FromDir = Join-Path $JournalPath $FromFiscalYear
+            if (-not (Test-Path $FromDir -PathType Container)) {
+                throw "Source fiscal year not found: $FromFiscalYear"
+            }
+            $ToDir = Join-Path $JournalPath $ToFiscalYear
+            if (-not (Test-Path $ToDir -PathType Container)) {
+                throw "Target fiscal year not found: $ToFiscalYear"
+            }
+            if ($FromFiscalYear -eq $ToFiscalYear) {
+                throw 'Source and target fiscal year must differ.'
+            }
+            Assert-LedgerFiscalYearOpen -YearDir $ToDir -FiscalYear $ToFiscalYear -Action 'copy holdings into it'
 
-        $Opening = @{}
-        foreach ($Row in (Read-LedgerOpeningBalance -YearDir $ToDir)) {
-            $Opening[[string]$Row.Account] = [decimal]$Row.Amount
-        }
-        foreach ($Account in ($Holdings | ForEach-Object { $_.Account } | Select-Object -Unique)) {
-            if (-not $Opening.ContainsKey($Account) -or $Opening[$Account] -eq 0) {
-                Write-Warning "Account $Account has no opening balance in $ToFiscalYear. Copy the opening balance first (Copy-LedgerOpeningBalance) or check the holding."
+            $Holdings = Read-LedgerHoldings -YearDir $FromDir
+            if ($Holdings.Count -eq 0) {
+                throw "No holdings recorded in $FromFiscalYear."
+            }
+
+            $Existing = Read-LedgerHoldings -YearDir $ToDir
+            if ($Existing.Count -gt 0 -and -not $Force) {
+                throw "Target fiscal year $ToFiscalYear already has holdings. Use -Force to replace them."
+            }
+
+            $Opening = @{}
+            foreach ($Row in (Read-LedgerOpeningBalance -YearDir $ToDir)) {
+                $Opening[[string]$Row.Account] = [decimal]$Row.Amount
+            }
+            foreach ($Account in ($Holdings | ForEach-Object { $_.Account } | Select-Object -Unique)) {
+                if (-not $Opening.ContainsKey($Account) -or $Opening[$Account] -eq 0) {
+                    Write-Warning "Account $Account has no opening balance in $ToFiscalYear. Copy the opening balance first (Copy-LedgerOpeningBalance) or check the holding."
+                }
+            }
+
+            if (-not $PSCmdlet.ShouldProcess($ToFiscalYear, "Copy $($Holdings.Count) holding(s) from $FromFiscalYear")) {
+                return
+            }
+            Write-LedgerHoldings -YearDir $ToDir -Rows $Holdings
+
+            foreach ($h in $Holdings) {
+                $Out = $h.PSObject.Copy()
+                $Out | Add-Member -NotePropertyName FiscalYear -NotePropertyValue $ToFiscalYear -Force
+                $Out
             }
         }
-
-        if (-not $PSCmdlet.ShouldProcess($ToFiscalYear, "Copy $($Holdings.Count) holding(s) from $FromFiscalYear")) {
-            return
-        }
-        Write-LedgerHoldings -YearDir $ToDir -Rows $Holdings
-
-        foreach ($h in $Holdings) {
-            $Out = $h.PSObject.Copy()
-            $Out | Add-Member -NotePropertyName FiscalYear -NotePropertyValue $ToFiscalYear -Force
-            $Out
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

@@ -3,6 +3,23 @@
 ## [Unreleased]
 
 ### Added
+- **Fiscal-year metadata is sealed.** `integrity.txt` now also seals `year.txt`
+  and `ib.txt` as `Metadata` records. `Test-LedgerIntegrity` reports hand edits
+  as `Modified` (and returns a `Metadata` count), `Close-LedgerFiscalYear`
+  refuses to close a year whose sealed `year.txt` changed and reseals it as
+  closed, and `Copy-LedgerOpeningBalance`/`Import-LedgerSie` reseal `ib.txt`.
+  Existing chains stay valid; open years gain the records on their next seal or
+  `Protect-LedgerFiscalYear`. Older PSLedger versions report the new records as
+  `Malformed`. No schema version change.
+- `Copy-LedgerOpeningBalance -Force` replaces an existing opening balance.
+- **Every journal writer holds the journal lock.** Register commands (accounts,
+  customers, suppliers, employees, projects, dimensions, objects, bank rules,
+  recurring and time entries, time resources), supplier and time invoices,
+  holdings, documents, report input, `Set-LedgerJournal`, opening balances,
+  `New-LedgerFiscalYear`, the remaining booking helpers and `Update-LedgerJournal`
+  now hold the journal write lock for the whole command, and recheck the schema
+  version after acquiring it. Concurrent register updates no longer lose lines
+  or create duplicate keys.
 - **Recoverable SIE import.** `Import-LedgerSie` validates the whole file
   (accounts, dates, amounts, dimensions and objects) before the first write and
   holds the journal lock. `<year>/import.txt` binds the import to the source file,

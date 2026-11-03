@@ -93,42 +93,51 @@ function New-LedgerRecurringEntry {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $recurringDir = Join-Path $JournalPath 'recurring'
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    $Name = Assert-LedgerSafeLeafName -Name $Name -Kind 'recurring entry'
-    Assert-LedgerKeyField -Name 'Name' -Value $Name
-    $filePath = Join-Path $recurringDir "$Name.txt"
-    if (Test-Path $filePath) {
-        throw "Recurring entry '$Name' already exists."
-    }
+        $recurringDir = Join-Path $JournalPath 'recurring'
 
-    # Validate balance
-    $sum = ($Rows | ForEach-Object { [decimal]$_.Amount } | Measure-Object -Sum).Sum
-    if ($sum -ne 0) {
-        throw "Rows do not balance. Sum: $sum"
-    }
-
-    $lines = @(
-        "Name:`t$Name"
-        "Description:`t$(ConvertTo-LedgerTextField $Description)"
-        "Schedule:`t$Schedule"
-        "DayOfMonth:`t$DayOfMonth"
-        "StartDate:`t$($StartDate.ToString('yyyy-MM-dd'))"
-        "EndDate:`t$($EndDate.ToString('yyyy-MM-dd'))"
-        "LastGenerated:`t"
-        "Rows:"
-    )
-    foreach ($row in $Rows) {
-        $lines += "$($row.Account)`t$($row.Amount)"
-    }
-
-    if ($PSCmdlet.ShouldProcess($Name, 'Create recurring entry')) {
-        if (-not (Test-Path $recurringDir)) {
-            New-Item -Path $recurringDir -ItemType Directory | Out-Null
+        $Name = Assert-LedgerSafeLeafName -Name $Name -Kind 'recurring entry'
+        Assert-LedgerKeyField -Name 'Name' -Value $Name
+        $filePath = Join-Path $recurringDir "$Name.txt"
+        if (Test-Path $filePath) {
+            throw "Recurring entry '$Name' already exists."
         }
-        Set-LedgerFileContent -Path $filePath -Value $lines
-        if ($PassThru) {
-            Get-LedgerRecurringEntry -JournalPath $JournalPath -Name $Name
+
+        # Validate balance
+        $sum = ($Rows | ForEach-Object { [decimal]$_.Amount } | Measure-Object -Sum).Sum
+        if ($sum -ne 0) {
+            throw "Rows do not balance. Sum: $sum"
         }
+
+        $lines = @(
+            "Name:`t$Name"
+            "Description:`t$(ConvertTo-LedgerTextField $Description)"
+            "Schedule:`t$Schedule"
+            "DayOfMonth:`t$DayOfMonth"
+            "StartDate:`t$($StartDate.ToString('yyyy-MM-dd'))"
+            "EndDate:`t$($EndDate.ToString('yyyy-MM-dd'))"
+            "LastGenerated:`t"
+            "Rows:"
+        )
+        foreach ($row in $Rows) {
+            $lines += "$($row.Account)`t$($row.Amount)"
+        }
+
+        if ($PSCmdlet.ShouldProcess($Name, 'Create recurring entry')) {
+            if (-not (Test-Path $recurringDir)) {
+                New-Item -Path $recurringDir -ItemType Directory | Out-Null
+            }
+            Set-LedgerFileContent -Path $filePath -Value $lines
+            if ($PassThru) {
+                Get-LedgerRecurringEntry -JournalPath $JournalPath -Name $Name
+            }
+        }
+    }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

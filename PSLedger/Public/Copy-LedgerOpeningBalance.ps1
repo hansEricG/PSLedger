@@ -9,6 +9,10 @@ opening balance metadata (ib.txt) of the target fiscal year. The opening balance
 is stored as metadata, not as a verification, so verification numbering starts at
 ver0001 for the first real entry. The target fiscal year must not be closed.
 
+The opening balance is sealed in the target year's integrity chain. Replace it
+with -Force, for example after correcting the source year; the new version is
+sealed too, while a hand edit of ib.txt is reported by Test-LedgerIntegrity.
+
 .PARAMETER JournalPath
 The path to an existing journal directory.
 
@@ -18,11 +22,13 @@ The source fiscal year to read closing balances from.
 .PARAMETER ToFiscalYear
 The target fiscal year where the opening balance entry will be created.
 
+.PARAMETER Force
+Replaces an existing opening balance in the target fiscal year.
+
 .EXAMPLE
 Copy-LedgerOpeningBalance -JournalPath .\MinFirma.ledger -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
 
-Creates an opening balance verification in the 2025 fiscal year based on
-2024's closing balances.
+Writes the 2025 opening balance (ib.txt) from 2024's closing balances.
 
 .EXAMPLE
 Close-LedgerFiscalYear -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
@@ -30,6 +36,16 @@ New-LedgerFiscalYear -JournalPath .\MinFirma.ledger -StartDate '2025-01-01' -End
 Copy-LedgerOpeningBalance -JournalPath .\MinFirma.ledger -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12'
 
 Typical year-end workflow: close old year, create new, copy balances.
+
+.EXAMPLE
+Add-LedgerEntry -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12' -Date '2024-12-31' `
+    -Description 'Periodisering hyra' -Rows @(
+        @{ Account = '1710'; Amount = 12000 }
+        @{ Account = '5010'; Amount = -12000 }
+    )
+Copy-LedgerOpeningBalance -JournalPath .\MinFirma.ledger -FromFiscalYear '2024-01_2024-12' -ToFiscalYear '2025-01_2025-12' -Force
+
+Replaces a preliminary 2025 opening balance after a late adjustment in 2024.
 #>
 function Copy-LedgerOpeningBalance {
     [CmdletBinding(SupportsShouldProcess)]
@@ -42,77 +58,91 @@ function Copy-LedgerOpeningBalance {
         [string]$FromFiscalYear,
 
         [Parameter(Mandatory)]
-        [string]$ToFiscalYear
+        [string]$ToFiscalYear,
+
+        [Parameter()]
+        [switch]$Force
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FromFiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FromFiscalYear -JournalPath $JournalPath
 
-        # Validate source fiscal year
-        $FromDir = Join-Path $JournalPath $FromFiscalYear
-        if (-not (Test-Path $FromDir -PathType Container)) {
-            throw "Source fiscal year not found: $FromFiscalYear"
-        }
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        # Validate target fiscal year
-        $ToDir = Join-Path $JournalPath $ToFiscalYear
-        if (-not (Test-Path $ToDir -PathType Container)) {
-            throw "Target fiscal year not found: $ToFiscalYear"
-        }
-        Assert-LedgerFiscalYearOpen -YearDir $ToDir -FiscalYear $ToFiscalYear -Action 'change its opening balance'
+            $FromFiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FromFiscalYear -JournalPath $JournalPath
 
-        # Check target has no opening balance yet
-        $ExistingIb = Get-LedgerOpeningBalancePath -YearDir $ToDir
-        if (Test-Path $ExistingIb -PathType Leaf) {
-            throw "Target fiscal year $ToFiscalYear already has an opening balance (ib.txt)."
-        }
-
-        # Get balance accounts from source year
-        $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FromFiscalYear
-        if (-not $Balance) {
-            throw "No entries found in source fiscal year $FromFiscalYear."
-        }
-
-        # Filter to balance sheet accounts (1xxx and 2xxx)
-        $BalanceAccounts = $Balance | Where-Object { $_.AccountNumber -match '^[12]' -and $_.Balance -ne 0 }
-
-        # Calculate year's result from P&L accounts (3xxx-8xxx) and carry it into
-        # the equity result account. The account depends on the journal's
-        # CompanyType (AB -> 2099, EF -> 2019), falling back to 2099.
-        $PLAccounts = $Balance | Where-Object { $_.AccountNumber -match '^[3-8]' }
-        $YearResult = if ($PLAccounts) { ($PLAccounts | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
-
-        if (-not $BalanceAccounts -and $YearResult -eq 0) {
-            throw "No balance sheet accounts with non-zero balances in $FromFiscalYear."
-        }
-
-        # Merge year's result into the equity result account
-        if ($YearResult -ne 0) {
-            $ResultAccount = Resolve-LedgerResultCarryAccount -JournalPath $JournalPath
-            $ExistingResult = $BalanceAccounts | Where-Object { $_.AccountNumber -eq $ResultAccount }
-            if ($ExistingResult) {
-                $BalanceAccounts = $BalanceAccounts | Where-Object { $_.AccountNumber -ne $ResultAccount }
-                $YearResult += $ExistingResult.Balance
+            # Validate source fiscal year
+            $FromDir = Join-Path $JournalPath $FromFiscalYear
+            if (-not (Test-Path $FromDir -PathType Container)) {
+                throw "Source fiscal year not found: $FromFiscalYear"
             }
-            $BalanceAccounts = @($BalanceAccounts) + @([PSCustomObject]@{
-                AccountNumber = $ResultAccount
-                AccountName   = 'Årets resultat'
-                Debit         = [decimal]0
-                Credit        = [decimal]0
-                Balance       = $YearResult
-            })
-        }
 
-        if (-not $BalanceAccounts) {
-            throw "No balance sheet accounts with non-zero balances in $FromFiscalYear."
-        }
+            # Validate target fiscal year
+            $ToDir = Join-Path $JournalPath $ToFiscalYear
+            if (-not (Test-Path $ToDir -PathType Container)) {
+                throw "Target fiscal year not found: $ToFiscalYear"
+            }
+            Assert-LedgerFiscalYearOpen -YearDir $ToDir -FiscalYear $ToFiscalYear -Action 'change its opening balance'
 
-        # Write the opening balance as metadata (ib.txt), not as a verification.
-        $IbRows = foreach ($Acc in $BalanceAccounts) {
-            [PSCustomObject]@{ Account = $Acc.AccountNumber; Amount = $Acc.Balance }
+            # Check target has no opening balance yet
+            $ExistingIb = Get-LedgerOpeningBalancePath -YearDir $ToDir
+            if (-not $Force -and (Test-Path $ExistingIb -PathType Leaf)) {
+                throw "Target fiscal year $ToFiscalYear already has an opening balance (ib.txt). Use -Force to replace it."
+            }
+
+            # Get balance accounts from source year
+            $Balance = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FromFiscalYear
+            if (-not $Balance) {
+                throw "No entries found in source fiscal year $FromFiscalYear."
+            }
+
+            # Filter to balance sheet accounts (1xxx and 2xxx)
+            $BalanceAccounts = $Balance | Where-Object { $_.AccountNumber -match '^[12]' -and $_.Balance -ne 0 }
+
+            # Calculate year's result from P&L accounts (3xxx-8xxx) and carry it into
+            # the equity result account. The account depends on the journal's
+            # CompanyType (AB -> 2099, EF -> 2019), falling back to 2099.
+            $PLAccounts = $Balance | Where-Object { $_.AccountNumber -match '^[3-8]' }
+            $YearResult = if ($PLAccounts) { ($PLAccounts | Measure-Object -Property Balance -Sum).Sum } else { [decimal]0 }
+
+            if (-not $BalanceAccounts -and $YearResult -eq 0) {
+                throw "No balance sheet accounts with non-zero balances in $FromFiscalYear."
+            }
+
+            # Merge year's result into the equity result account
+            if ($YearResult -ne 0) {
+                $ResultAccount = Resolve-LedgerResultCarryAccount -JournalPath $JournalPath
+                $ExistingResult = $BalanceAccounts | Where-Object { $_.AccountNumber -eq $ResultAccount }
+                if ($ExistingResult) {
+                    $BalanceAccounts = $BalanceAccounts | Where-Object { $_.AccountNumber -ne $ResultAccount }
+                    $YearResult += $ExistingResult.Balance
+                }
+                $BalanceAccounts = @($BalanceAccounts) + @([PSCustomObject]@{
+                    AccountNumber = $ResultAccount
+                    AccountName   = 'Årets resultat'
+                    Debit         = [decimal]0
+                    Credit        = [decimal]0
+                    Balance       = $YearResult
+                })
+            }
+
+            if (-not $BalanceAccounts) {
+                throw "No balance sheet accounts with non-zero balances in $FromFiscalYear."
+            }
+
+            # Write the opening balance as metadata (ib.txt), not as a verification.
+            $IbRows = foreach ($Acc in $BalanceAccounts) {
+                [PSCustomObject]@{ Account = $Acc.AccountNumber; Amount = $Acc.Balance }
+            }
+            if ($PSCmdlet.ShouldProcess($ToFiscalYear, "Copy opening balance from $FromFiscalYear")) {
+                Write-LedgerOpeningBalance -YearDir $ToDir -Rows $IbRows
+                Register-LedgerYearMetadata -YearDir $ToDir -Name 'ib.txt'
+            }
         }
-        if ($PSCmdlet.ShouldProcess($ToFiscalYear, "Copy opening balance from $FromFiscalYear")) {
-            Write-LedgerOpeningBalance -YearDir $ToDir -Rows $IbRows
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

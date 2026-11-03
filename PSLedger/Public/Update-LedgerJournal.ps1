@@ -42,35 +42,43 @@ function Update-LedgerJournal {
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck None
 
-        if (-not (Test-Path $JournalPath -PathType Container)) {
-            throw "Journal not found: $JournalPath"
-        }
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
 
-        $version = Get-LedgerJournalSchemaVersion -Path $JournalPath
-        if ($null -eq $version) {
-            throw "Invalid journal - journal.txt not found in: $JournalPath"
-        }
-
-        $current = $script:CurrentSchemaVersion
-        if ($version -gt $current) {
-            throw "Journal '$JournalPath' uses schema version $version which is newer than this PSLedger supports (version $current). Upgrade the PSLedger module to work with this journal."
-        }
-
-        for ($v = $version; $v -lt $current; $v++) {
-            $migration = $script:LedgerSchemaMigrations[$v]
-            $description = if ($migration) { $migration.Description } else { "schema v$v to v$($v + 1)" }
-
-            if (-not $PSCmdlet.ShouldProcess($JournalPath, "Migrate schema version $v -> $($v + 1): $description")) {
-                # Stop at the first declined/-WhatIf step; later steps depend on
-                # earlier ones and must not run against an un-migrated journal.
-                break
+            if (-not (Test-Path $JournalPath -PathType Container)) {
+                throw "Journal not found: $JournalPath"
             }
 
-            if ($migration -and $migration.Action) {
-                & $migration.Action -JournalPath $JournalPath
+            $version = Get-LedgerJournalSchemaVersion -Path $JournalPath
+            if ($null -eq $version) {
+                throw "Invalid journal - journal.txt not found in: $JournalPath"
             }
 
-            Set-LedgerJournalSchemaVersion -Path $JournalPath -Version ($v + 1)
+            $current = $script:CurrentSchemaVersion
+            if ($version -gt $current) {
+                throw "Journal '$JournalPath' uses schema version $version which is newer than this PSLedger supports (version $current). Upgrade the PSLedger module to work with this journal."
+            }
+
+            for ($v = $version; $v -lt $current; $v++) {
+                $migration = $script:LedgerSchemaMigrations[$v]
+                $description = if ($migration) { $migration.Description } else { "schema v$v to v$($v + 1)" }
+
+                if (-not $PSCmdlet.ShouldProcess($JournalPath, "Migrate schema version $v -> $($v + 1): $description")) {
+                    # Stop at the first declined/-WhatIf step; later steps depend on
+                    # earlier ones and must not run against an un-migrated journal.
+                    break
+                }
+
+                if ($migration -and $migration.Action) {
+                    & $migration.Action -JournalPath $JournalPath
+                }
+
+                Set-LedgerJournalSchemaVersion -Path $JournalPath -Version ($v + 1)
+            }
+        }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

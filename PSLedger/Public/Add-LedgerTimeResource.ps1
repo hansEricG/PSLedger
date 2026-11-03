@@ -83,32 +83,41 @@ function Add-LedgerTimeResource {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $resources = @(Read-LedgerTimeResources -JournalPath $JournalPath)
-    if ($resources | Where-Object ResourceId -eq $ResourceId) {
-        throw "Time resource '$ResourceId' already exists."
-    }
-    if ($EmployeeNumber -and -not (Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber $EmployeeNumber)) {
-        throw "Employee '$EmployeeNumber' does not exist."
-    }
-    if ($SupplierNumber -and -not (Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber)) {
-        throw "Supplier '$SupplierNumber' does not exist."
-    }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    $isDefault = $Default -or -not $resources
-    if ($isDefault) { foreach ($r in $resources) { $r.IsDefault = $false } }
-    $resources += [PSCustomObject]@{
-        ResourceId     = $ResourceId
-        Name           = $Name
-        EmployeeNumber = $EmployeeNumber
-        SupplierNumber = $SupplierNumber
-        CostRate       = if ($PSBoundParameters.ContainsKey('CostRate')) { $CostRate } else { $null }
-        IsDefault      = [bool]$isDefault
-    }
-
-    if ($PSCmdlet.ShouldProcess($ResourceId, 'Add time resource')) {
-        Save-LedgerTimeResources -JournalPath $JournalPath -Resources $resources
-        if ($PassThru) {
-            Get-LedgerTimeResource -JournalPath $JournalPath -ResourceId $ResourceId
+        $resources = @(Read-LedgerTimeResources -JournalPath $JournalPath)
+        if ($resources | Where-Object ResourceId -eq $ResourceId) {
+            throw "Time resource '$ResourceId' already exists."
         }
+        if ($EmployeeNumber -and -not (Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber $EmployeeNumber)) {
+            throw "Employee '$EmployeeNumber' does not exist."
+        }
+        if ($SupplierNumber -and -not (Get-LedgerSupplier -JournalPath $JournalPath -SupplierNumber $SupplierNumber)) {
+            throw "Supplier '$SupplierNumber' does not exist."
+        }
+
+        $isDefault = $Default -or -not $resources
+        if ($isDefault) { foreach ($r in $resources) { $r.IsDefault = $false } }
+        $resources += [PSCustomObject]@{
+            ResourceId     = $ResourceId
+            Name           = $Name
+            EmployeeNumber = $EmployeeNumber
+            SupplierNumber = $SupplierNumber
+            CostRate       = if ($PSBoundParameters.ContainsKey('CostRate')) { $CostRate } else { $null }
+            IsDefault      = [bool]$isDefault
+        }
+
+        if ($PSCmdlet.ShouldProcess($ResourceId, 'Add time resource')) {
+            Save-LedgerTimeResources -JournalPath $JournalPath -Resources $resources
+            if ($PassThru) {
+                Get-LedgerTimeResource -JournalPath $JournalPath -ResourceId $ResourceId
+            }
+        }
+    }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

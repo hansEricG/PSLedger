@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Seals the verifications and attachments of a fiscal year in its integrity chain.
+Seals the verifications, attachments and metadata of a fiscal year in its integrity chain.
 
 .DESCRIPTION
 PSLedger seals each verification and attachment in the fiscal year's
@@ -12,6 +12,11 @@ Every verification and attachment in the year that the chain does not yet cover 
 sealed, in verification-number order. Items already sealed are left as they are,
 so a changed verification stays reported as Modified by Test-LedgerIntegrity.
 Closed fiscal years can be sealed too; nothing in the bookkeeping changes.
+
+The year metadata (year.txt and the opening balance ib.txt) is sealed when the
+chain does not cover it yet. A closed year whose chain was written before
+metadata sealing keeps its chain unchanged, so a final chain hash saved when it
+was closed stays valid.
 
 Returns the Test-LedgerIntegrity result for the year, including the ChainHash to
 save somewhere outside the journal.
@@ -26,7 +31,7 @@ Accepts pipeline input from fiscal year objects.
 .EXAMPLE
 Protect-LedgerFiscalYear -JournalPath .\MinFirma.ledger -FiscalYear '2024-01_2024-12'
 
-Seals all verifications and attachments of 2024 in Min Firma AB's journal.
+Seals all verifications, attachments and metadata of 2024 in Min Firma AB's journal.
 
 .EXAMPLE
 Get-LedgerFiscalYear -JournalPath .\Konsult.ledger | Protect-LedgerFiscalYear -JournalPath .\Konsult.ledger |
@@ -58,7 +63,7 @@ function Protect-LedgerFiscalYear {
                 throw "Fiscal year not found: $FiscalYear"
             }
 
-            if ($PSCmdlet.ShouldProcess($FiscalYear, 'Seal verifications and attachments')) {
+            if ($PSCmdlet.ShouldProcess($FiscalYear, 'Seal verifications, attachments and metadata')) {
                 $sealed = Protect-LedgerYearContent -YearDir $yearDir
                 Write-Verbose "Sealed $sealed item(s) in $FiscalYear."
                 Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear

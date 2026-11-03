@@ -22,6 +22,23 @@ Describe 'Test-LedgerIntegrity' {
             Add-LedgerEntry @params
         }
 
+        # Rewrites the chain without Metadata records, as written before metadata sealing.
+        function ConvertTo-LegacyChain {
+            param ([string]$YearDir)
+            $chainFile = Join-Path $YearDir 'integrity.txt'
+            $previous = '0' * 64
+            $lines = foreach ($line in Get-Content -LiteralPath $chainFile) {
+                if ($line -match '^;') { $line; continue }
+                $fields = $line -split "`t"
+                if ($fields[0] -eq 'Metadata') { continue }
+                $fields[4] = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData(
+                        [Text.Encoding]::UTF8.GetBytes("$previous`t$($fields[0..3] -join "`t")"))).ToLowerInvariant()
+                $previous = $fields[4]
+                $fields -join "`t"
+            }
+            Set-Content -LiteralPath $chainFile -Value $lines
+        }
+
         function Get-Problem {
             param ($Result)
             @($Result.Issues | ForEach-Object { "$($_.Kind) $($_.Key) $($_.Problem)" })
@@ -67,9 +84,9 @@ Describe 'Test-LedgerIntegrity' {
             Add-TestEntry -JournalPath $JournalPath -Description 'Papper'
 
             $lines = @(Get-Content (Join-Path $JournalPath $FiscalYear 'integrity.txt') | Where-Object { $_ -notmatch '^;' })
-            $lines.Count | Should -Be 3
+            $lines.Count | Should -Be 4
             ($lines | ForEach-Object { ($_ -split "`t")[0..1] -join ' ' }) |
-                Should -Be @('Verification 1', "Attachment 1/$(Split-Path $Receipt -Leaf)", 'Verification 2')
+                Should -Be @('Metadata year.txt', 'Verification 1', "Attachment 1/$(Split-Path $Receipt -Leaf)", 'Verification 2')
 
             $result = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
             $result.Status | Should -Be 'Valid'
@@ -174,10 +191,10 @@ Describe 'Test-LedgerIntegrity' {
             Add-TestEntry -JournalPath $JournalPath
             $chainFile = Join-Path $JournalPath $FiscalYear 'integrity.txt'
             $lines = @(Get-Content $chainFile)
-            Set-Content $chainFile ($lines[0], $lines[1], $lines[3])
+            Set-Content $chainFile ($lines[0], $lines[1], $lines[2], $lines[4])
 
             $problems = Get-Problem (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear)
-            $problems | Should -Contain 'Chain line 3 ChainBroken'
+            $problems | Should -Contain 'Chain line 4 ChainBroken'
             $problems | Should -Contain 'Verification 1 Unsealed'
         }
 
@@ -186,7 +203,7 @@ Describe 'Test-LedgerIntegrity' {
             Add-Content (Join-Path $JournalPath $FiscalYear 'integrity.txt') 'Verification	2	trasig'
 
             Get-Problem (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear) |
-                Should -Be @('Chain line 4 Malformed')
+                Should -Be @('Chain line 5 Malformed')
         }
 
         It 'Rejects a duplicate verification with a valid chain hash and changed item hash=<ChangedHash>' -ForEach @(
@@ -197,7 +214,7 @@ Describe 'Test-LedgerIntegrity' {
             Add-TestEntry -JournalPath $JournalPath
             $chainFile = Join-Path $JournalPath $FiscalYear 'integrity.txt'
             $records = @(Get-Content -LiteralPath $chainFile | Where-Object { $_ -notmatch '^;' })
-            $duplicate = $records[0] -split "`t"
+            $duplicate = @($records | Where-Object { $_ -like "Verification`t*" })[0] -split "`t"
             if ($ChangedHash) { $duplicate[3] = 'f' * 64 }
             $previous = ($records[-1] -split "`t")[4]
             $payload = "$previous`t$($duplicate[0..3] -join "`t")"
@@ -286,6 +303,56 @@ Describe 'Test-LedgerIntegrity' {
             $result.Status | Should -Be 'Valid'
             $result.Verifications | Should -Be 3
             $result.Attachments | Should -Be 1
+        }
+
+        It 'Reports unsealed, changed and deleted year metadata' {
+            Add-TestEntry -JournalPath $JournalPath
+            $yearDir = Join-Path $JournalPath $FiscalYear
+            $ib = Join-Path $yearDir 'ib.txt'
+            Set-Content -LiteralPath $ib -Value "1930`t5000.00", "2081`t-5000.00"
+            Get-Problem (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear) | Should -Be @('Metadata ib.txt Unsealed')
+
+            (Protect-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear).Metadata | Should -Be 2
+            Set-Content -LiteralPath $ib -Value "1930`t9000.00", "2081`t-9000.00"
+            (Get-Content -LiteralPath (Join-Path $yearDir 'year.txt')) -replace '2024-12-31', '2025-06-30' |
+                Set-Content -LiteralPath (Join-Path $yearDir 'year.txt')
+            Get-Problem (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear) |
+                Should -Be @('Metadata year.txt Modified', 'Metadata ib.txt Modified')
+
+            Remove-Item -LiteralPath $ib
+            Get-Problem (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear) |
+                Should -Contain 'Metadata ib.txt Missing'
+        }
+
+        It 'Seals metadata of an older chain in an open year with the next entry' {
+            Add-TestEntry -JournalPath $JournalPath
+            $yearDir = Join-Path $JournalPath $FiscalYear
+            ConvertTo-LegacyChain -YearDir $yearDir
+            Set-Content -LiteralPath (Join-Path $yearDir 'ib.txt') -Value "1930`t5000.00", "2081`t-5000.00"
+            $result = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $result.Status | Should -Be 'Valid'
+            $result.Metadata | Should -Be 0
+
+            Add-TestEntry -JournalPath $JournalPath
+            $result = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $result.Status | Should -Be 'Valid'
+            $result.Metadata | Should -Be 2
+            Set-Content -LiteralPath (Join-Path $yearDir 'ib.txt') -Value "1930`t1.00", "2081`t-1.00"
+            Get-Problem (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear) | Should -Be @('Metadata ib.txt Modified')
+        }
+
+        It 'Keeps the chain hash of a closed year whose chain predates metadata sealing' {
+            Add-TestEntry -JournalPath $JournalPath
+            $yearDir = Join-Path $JournalPath $FiscalYear
+            (Get-Content -LiteralPath (Join-Path $yearDir 'year.txt')) -replace '^Status:.*', 'Status: Closed' |
+                Set-Content -LiteralPath (Join-Path $yearDir 'year.txt')
+            ConvertTo-LegacyChain -YearDir $yearDir
+            $hash = (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear).ChainHash
+
+            $result = Protect-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $result.Status | Should -Be 'Valid'
+            $result.Metadata | Should -Be 0
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear -ExpectedHash $hash).IsValid | Should -BeTrue
         }
 
         It 'Does not modify the journal' {

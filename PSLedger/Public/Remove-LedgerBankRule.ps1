@@ -36,11 +36,20 @@ function Remove-LedgerBankRule {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
     }
     process {
-        $rules = @(Read-LedgerBankRules -JournalPath $JournalPath)
-        if (-not ($rules | Where-Object { $_.Pattern -eq $Pattern })) {
-            throw "Bank rule '$Pattern' does not exist."
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
+
+            $rules = @(Read-LedgerBankRules -JournalPath $JournalPath)
+            if (-not ($rules | Where-Object { $_.Pattern -eq $Pattern })) {
+                throw "Bank rule '$Pattern' does not exist."
+            }
+            if (-not $PSCmdlet.ShouldProcess("Bank rule '$Pattern'", 'Remove')) { return }
+            Save-LedgerBankRules -JournalPath $JournalPath -Rules @($rules | Where-Object { $_.Pattern -ne $Pattern })
         }
-        if (-not $PSCmdlet.ShouldProcess("Bank rule '$Pattern'", 'Remove')) { return }
-        Save-LedgerBankRules -JournalPath $JournalPath -Rules @($rules | Where-Object { $_.Pattern -ne $Pattern })
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
+        }
     }
 }

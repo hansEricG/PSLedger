@@ -1,15 +1,16 @@
 # Tamper detection (varaktighet) for verifications and their attachments.
 #
 # Each fiscal year directory may hold an append-only integrity.txt: a hash chain
-# with one record per sealed verification, sealed attachment and removed
-# attachment. A record stores the SHA-256 of the item and a chain hash over the
+# with one record per sealed verification, sealed attachment, removed attachment
+# and sealed version of the year metadata (year.txt, ib.txt). A record stores the SHA-256 of the item and a chain hash over the
 # previous record's chain hash and the record's own fields, so changing, removing
 # or re-ordering a record breaks every chain hash after it. See
 # docs/File-format.md for the format.
 
 $script:LedgerIntegrityFileName = 'integrity.txt'
 $script:LedgerIntegrityGenesis = '0' * 64
-$script:LedgerIntegrityKinds = @('Verification', 'Attachment', 'AttachmentRemoved')
+$script:LedgerIntegrityKinds = @('Verification', 'Attachment', 'AttachmentRemoved', 'Metadata')
+$script:LedgerIntegrityMetadataFiles = @('year.txt', 'ib.txt')
 
 function Get-LedgerSha256Hex {
     [CmdletBinding()]
@@ -121,22 +122,70 @@ function Get-LedgerIntegrityHead {
 function Get-LedgerIntegrityState {
     <#
     .SYNOPSIS
-    Folds a chain into the sealed verifications and the live sealed attachments.
+    Folds a chain into the sealed verifications, the live sealed attachments and
+    the latest sealed version of each metadata file.
     #>
     [CmdletBinding()]
     param ([Parameter()] [AllowNull()] [object]$Chain)
 
     $verifications = [ordered]@{}
     $attachments = [ordered]@{}
+    $metadata = [ordered]@{}
     foreach ($r in @($Chain)) {
         if (-not $r -or -not $r.WellFormed) { continue }
         switch ($r.Kind) {
             'Verification' { if (-not $verifications.Contains($r.Key)) { $verifications[$r.Key] = $r.Hash } }
             'Attachment' { $attachments[$r.Key] = $r.Hash }
             'AttachmentRemoved' { $attachments.Remove($r.Key) }
+            'Metadata' { $metadata[$r.Key] = $r.Hash }
         }
     }
-    return [pscustomobject]@{ Verifications = $verifications; Attachments = $attachments }
+    return [pscustomobject]@{ Verifications = $verifications; Attachments = $attachments; Metadata = $metadata }
+}
+
+function Test-LedgerYearClosedStatus {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param ([Parameter(Mandatory)] [string]$YearDir)
+    $yearFile = Join-Path $YearDir 'year.txt'
+    if (-not (Test-Path -LiteralPath $yearFile -PathType Leaf)) { return $false }
+    return [bool](@(Get-Content -LiteralPath $yearFile) -match '^Status:\s*Closed')
+}
+
+function Get-LedgerYearMetadataRecord {
+    <#
+    .SYNOPSIS
+    The Metadata records needed to seal year.txt and ib.txt.
+
+    .DESCRIPTION
+    Seals metadata files the chain does not cover yet, and a new version of the
+    files in -Changed (written legitimately by the caller) whose hash differs from
+    the sealed one. A sealed file changed by anything else is left for
+    Test-LedgerIntegrity to report. A closed year whose existing chain predates
+    metadata sealing is left untouched, so a final chain hash stored when it was
+    closed stays valid; -Closing (used by Close-LedgerFiscalYear) seals it anyway.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string]$YearDir,
+        [Parameter()] [AllowNull()] [object]$Chain,
+        [string[]]$Changed = @(),
+        [switch]$Closing
+    )
+    $state = Get-LedgerIntegrityState -Chain $Chain
+    if ($null -ne $Chain -and $state.Metadata.Count -eq 0 -and -not $Closing -and (Test-LedgerYearClosedStatus -YearDir $YearDir)) {
+        return @()
+    }
+    $records = foreach ($name in $script:LedgerIntegrityMetadataFiles) {
+        $path = Join-Path $YearDir $name
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+        if ($state.Metadata.Contains($name) -and $name -notin $Changed) { continue }
+        $hash = Get-LedgerContentHash -Path $path
+        if ($state.Metadata[$name] -ne $hash) {
+            [pscustomobject]@{ Kind = 'Metadata'; Key = $name; Hash = $hash }
+        }
+    }
+    return @($records)
 }
 
 function Get-LedgerYearContent {
@@ -177,7 +226,12 @@ function Write-LedgerIntegrityRecord {
 
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
-        [object[]]$Record
+        [object[]]$Record,
+
+        # The chain as already read under the same lock, to avoid reading it again.
+        [Parameter()]
+        [AllowNull()]
+        [object]$Chain
     )
     if ($Record.Count -eq 0) { return }
 
@@ -192,7 +246,7 @@ function Write-LedgerIntegrityRecord {
             )
             $Chain = $null
         }
-        else {
+        elseif (-not $PSBoundParameters.ContainsKey('Chain')) {
             $Chain = Read-LedgerIntegrityChain -YearDir $YearDir
         }
 
@@ -219,10 +273,19 @@ function Write-LedgerIntegrityRecord {
 function Protect-LedgerYearContent {
     <#
     .SYNOPSIS
-    Seals every verification and attachment in a year that the chain lacks.
+    Seals every verification, attachment and metadata file in a year that the chain lacks.
+
+    .DESCRIPTION
+    -ChangedMetadata names metadata files the caller has just written, whose new
+    version is sealed too. -Closing seals metadata of a closed year whose chain
+    predates metadata sealing (see Get-LedgerYearMetadataRecord).
     #>
     [CmdletBinding()]
-    param ([Parameter(Mandatory)] [string]$YearDir)
+    param (
+        [Parameter(Mandatory)] [string]$YearDir,
+        [string[]]$ChangedMetadata = @(),
+        [switch]$Closing
+    )
 
     $journalLock = $null
     try {
@@ -232,6 +295,9 @@ function Protect-LedgerYearContent {
         $content = Get-LedgerYearContent -YearDir $YearDir
 
         $records = [System.Collections.Generic.List[object]]::new()
+        foreach ($m in @(Get-LedgerYearMetadataRecord -YearDir $YearDir -Chain $chain -Changed $ChangedMetadata -Closing:$Closing)) {
+            $records.Add($m)
+        }
         foreach ($v in $content.Verifications) {
             if (-not $state.Verifications.Contains($v.Key)) {
                 $records.Add([pscustomobject]@{ Kind = 'Verification'; Key = $v.Key; Hash = (Get-LedgerContentHash -Path $v.Path) })
@@ -242,7 +308,7 @@ function Protect-LedgerYearContent {
                 }
             }
         }
-        Write-LedgerIntegrityRecord -YearDir $YearDir -Record $records.ToArray()
+        Write-LedgerIntegrityRecord -YearDir $YearDir -Record $records.ToArray() -Chain $chain
         return $records.Count
     }
     finally { Exit-LedgerJournalLock -Lock $journalLock }
@@ -256,6 +322,8 @@ function Register-LedgerIntegrityItem {
     .DESCRIPTION
     When the year has no chain yet (a journal created before tamper detection),
     everything already in the year is sealed first, which includes the new item.
+    An open year whose chain does not cover its metadata yet has the metadata
+    sealed before the item.
     #>
     [CmdletBinding()]
     param (
@@ -271,8 +339,44 @@ function Register-LedgerIntegrityItem {
             [void](Protect-LedgerYearContent -YearDir $YearDir)
             return
         }
-        $record = [pscustomobject]@{ Kind = $Kind; Key = $Key; Hash = (Get-LedgerContentHash -Path $Path) }
-        Write-LedgerIntegrityRecord -YearDir $YearDir -Record @($record)
+        $chain = Read-LedgerIntegrityChain -YearDir $YearDir
+        $records = [System.Collections.Generic.List[object]]::new()
+        if (-not @($chain | Where-Object { $_.WellFormed -and $_.Kind -eq 'Metadata' })) {
+            foreach ($m in @(Get-LedgerYearMetadataRecord -YearDir $YearDir -Chain $chain)) { $records.Add($m) }
+        }
+        $records.Add([pscustomobject]@{ Kind = $Kind; Key = $Key; Hash = (Get-LedgerContentHash -Path $Path) })
+        Write-LedgerIntegrityRecord -YearDir $YearDir -Record $records.ToArray() -Chain $chain
+    }
+    finally { Exit-LedgerJournalLock -Lock $journalLock }
+}
+
+function Register-LedgerYearMetadata {
+    <#
+    .SYNOPSIS
+    Seals a metadata file (year.txt or ib.txt) the caller has just written.
+
+    .DESCRIPTION
+    Creates the chain when the year has none, sealing everything already in the
+    year. Otherwise only metadata is sealed; unsealed verifications stay reported.
+    Repeating it after an interruption appends nothing once the current version
+    is sealed.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory)] [string]$YearDir,
+        [Parameter(Mandatory)] [ValidateSet('year.txt', 'ib.txt')] [string]$Name,
+        [switch]$Closing
+    )
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath (Split-Path -Path $YearDir -Parent)
+        if (-not (Test-Path -LiteralPath (Get-LedgerIntegrityPath -YearDir $YearDir) -PathType Leaf)) {
+            [void](Protect-LedgerYearContent -YearDir $YearDir -Closing:$Closing)
+            return
+        }
+        $chain = Read-LedgerIntegrityChain -YearDir $YearDir
+        $records = @(Get-LedgerYearMetadataRecord -YearDir $YearDir -Chain $chain -Changed $Name -Closing:$Closing)
+        Write-LedgerIntegrityRecord -YearDir $YearDir -Record $records -Chain $chain
     }
     finally { Exit-LedgerJournalLock -Lock $journalLock }
 }

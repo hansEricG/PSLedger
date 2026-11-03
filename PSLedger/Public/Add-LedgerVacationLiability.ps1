@@ -123,64 +123,73 @@ function Add-LedgerVacationLiability {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    # Resolve the fiscal year from the date unless one was supplied.
-    if (-not $FiscalYear) {
-        $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $Date
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
+
+        # Resolve the fiscal year from the date unless one was supplied.
         if (-not $FiscalYear) {
-            throw "No fiscal year covers the date $($Date.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+            $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $Date
+            if (-not $FiscalYear) {
+                throw "No fiscal year covers the date $($Date.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+            }
+        }
+
+        # Determine the change in the liability. For -TargetBalance the change is the
+        # difference from the account's current (credit, i.e. negative) balance
+        # expressed as a positive liability.
+        if ($PSCmdlet.ParameterSetName -eq 'TargetBalance') {
+            $balances = @(Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear)
+            $row = $balances | Where-Object { $_.AccountNumber -eq $LiabilityAccount }
+            $currentLiability = if ($row) { -[decimal]$row.Balance } else { [decimal]0 }
+            $change = [Math]::Round([decimal]$TargetBalance - $currentLiability, 2)
+        }
+        else {
+            $change = [Math]::Round([decimal]$Amount, 2)
+        }
+
+        if ($change -eq 0) {
+            throw "Nothing to book: the change in the vacation pay liability is zero."
+        }
+
+        $employerChange = if ($IncludeEmployerContributions) {
+            [Math]::Round($change * $EmployerContributionRate, 2)
+        }
+        else {
+            [decimal]0
+        }
+
+        if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Book vacation pay liability change of $change")) {
+            return
+        }
+
+        # A positive change increases the liability: debit the change (cost) account
+        # and credit the liability. A negative change reverses both signs.
+        $entryRows = @(
+            @{ Account = $ChangeAccount; Amount = $change }
+            @{ Account = $LiabilityAccount; Amount = -$change }
+        )
+        if ($employerChange -ne 0) {
+            $entryRows += @{ Account = $EmployerContributionAccount; Amount = $employerChange }
+            $entryRows += @{ Account = $EmployerContributionLiabilityAccount; Amount = -$employerChange }
+        }
+
+        $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+            -Date $Date -Description $Description -Rows @($entryRows) -PassThru
+
+        [PSCustomObject]@{
+            FiscalYear                 = $FiscalYear
+            Date                       = $Date
+            Description                = $Description
+            Change                     = $change
+            LiabilityAccount           = $LiabilityAccount
+            ChangeAccount              = $ChangeAccount
+            EmployerContribution       = $employerChange
+            VerificationNumber         = $verification.VerificationNumber
         }
     }
-
-    # Determine the change in the liability. For -TargetBalance the change is the
-    # difference from the account's current (credit, i.e. negative) balance
-    # expressed as a positive liability.
-    if ($PSCmdlet.ParameterSetName -eq 'TargetBalance') {
-        $balances = @(Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear)
-        $row = $balances | Where-Object { $_.AccountNumber -eq $LiabilityAccount }
-        $currentLiability = if ($row) { -[decimal]$row.Balance } else { [decimal]0 }
-        $change = [Math]::Round([decimal]$TargetBalance - $currentLiability, 2)
-    }
-    else {
-        $change = [Math]::Round([decimal]$Amount, 2)
-    }
-
-    if ($change -eq 0) {
-        throw "Nothing to book: the change in the vacation pay liability is zero."
-    }
-
-    $employerChange = if ($IncludeEmployerContributions) {
-        [Math]::Round($change * $EmployerContributionRate, 2)
-    }
-    else {
-        [decimal]0
-    }
-
-    if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Book vacation pay liability change of $change")) {
-        return
-    }
-
-    # A positive change increases the liability: debit the change (cost) account
-    # and credit the liability. A negative change reverses both signs.
-    $entryRows = @(
-        @{ Account = $ChangeAccount; Amount = $change }
-        @{ Account = $LiabilityAccount; Amount = -$change }
-    )
-    if ($employerChange -ne 0) {
-        $entryRows += @{ Account = $EmployerContributionAccount; Amount = $employerChange }
-        $entryRows += @{ Account = $EmployerContributionLiabilityAccount; Amount = -$employerChange }
-    }
-
-    $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-        -Date $Date -Description $Description -Rows @($entryRows) -PassThru
-
-    [PSCustomObject]@{
-        FiscalYear                 = $FiscalYear
-        Date                       = $Date
-        Description                = $Description
-        Change                     = $change
-        LiabilityAccount           = $LiabilityAccount
-        ChangeAccount              = $ChangeAccount
-        EmployerContribution       = $employerChange
-        VerificationNumber         = $verification.VerificationNumber
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

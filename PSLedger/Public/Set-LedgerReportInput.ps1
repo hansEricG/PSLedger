@@ -194,56 +194,66 @@ function Set-LedgerReportInput {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $YearDir = Join-Path $JournalPath $FiscalYear
-        if (-not (Test-Path $YearDir -PathType Container)) {
-            throw "Fiscal year not found: $FiscalYear"
-        }
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        # Only the fields the caller actually supplied are changed. An empty
-        # string removes the field; SignificantEvents keeps its newlines.
-        $order = @(
-            'ProposedDividend', 'AverageEmployees', 'SecuritiesMarketValue',
-            'SigningPlace', 'SigningDate', 'AnnualMeetingDate', 'CertificatePlace',
-            'CertificateSigner', 'Framework', 'PledgedAssets', 'ContingentLiabilities',
-            'ComparativeFiguresNote', 'TransitionNote', 'DeferredTaxStatement',
-            'Ownership', 'EventsAfterBalanceDate', 'SignificantEvents'
-        )
-        $supplied = @{}
-        $values = @{}
-        foreach ($key in $order) {
-            $supplied[$key] = $PSBoundParameters.ContainsKey($key)
-            $value = $PSBoundParameters[$key]
-            $values[$key] = if ($value -is [datetime]) { $value.ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture) } elseif ($null -ne $value) { [string]$value } else { $null }
-        }
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        if (-not ($supplied.Values -contains $true)) {
-            throw "Nothing to update. Specify at least one field, for example -SignificantEvents or -ProposedDividend."
-        }
+            $YearDir = Join-Path $JournalPath $FiscalYear
+            if (-not (Test-Path $YearDir -PathType Container)) {
+                throw "Fiscal year not found: $FiscalYear"
+            }
 
-        $Path = Get-LedgerReportInputPath -JournalPath $JournalPath -FiscalYear $FiscalYear
-        $existing = Read-LedgerReportInput -Path $Path
+            # Only the fields the caller actually supplied are changed. An empty
+            # string removes the field; SignificantEvents keeps its newlines.
+            $order = @(
+                'ProposedDividend', 'AverageEmployees', 'SecuritiesMarketValue',
+                'SigningPlace', 'SigningDate', 'AnnualMeetingDate', 'CertificatePlace',
+                'CertificateSigner', 'Framework', 'PledgedAssets', 'ContingentLiabilities',
+                'ComparativeFiguresNote', 'TransitionNote', 'DeferredTaxStatement',
+                'Ownership', 'EventsAfterBalanceDate', 'SignificantEvents'
+            )
+            $supplied = @{}
+            $values = @{}
+            foreach ($key in $order) {
+                $supplied[$key] = $PSBoundParameters.ContainsKey($key)
+                $value = $PSBoundParameters[$key]
+                $values[$key] = if ($value -is [datetime]) { $value.ToString('yyyy-MM-dd', [cultureinfo]::InvariantCulture) } elseif ($null -ne $value) { [string]$value } else { $null }
+            }
 
-        # Rebuild an ordered dictionary honouring the canonical field order so the
-        # written file is stable regardless of update order.
-        $result = [ordered]@{}
-        foreach ($key in $order) {
-            if ($supplied[$key]) {
-                if (-not [string]::IsNullOrEmpty($values[$key])) {
-                    $result[$key] = $values[$key]
+            if (-not ($supplied.Values -contains $true)) {
+                throw "Nothing to update. Specify at least one field, for example -SignificantEvents or -ProposedDividend."
+            }
+
+            $Path = Get-LedgerReportInputPath -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $existing = Read-LedgerReportInput -Path $Path
+
+            # Rebuild an ordered dictionary honouring the canonical field order so the
+            # written file is stable regardless of update order.
+            $result = [ordered]@{}
+            foreach ($key in $order) {
+                if ($supplied[$key]) {
+                    if (-not [string]::IsNullOrEmpty($values[$key])) {
+                        $result[$key] = $values[$key]
+                    }
+                }
+                elseif ($existing.Contains($key)) {
+                    $result[$key] = $existing[$key]
                 }
             }
-            elseif ($existing.Contains($key)) {
-                $result[$key] = $existing[$key]
+
+            if ($PSCmdlet.ShouldProcess($Path, "Update annual report input")) {
+                Write-LedgerReportInput -Path $Path -Fields $result
+                if ($PassThru) {
+                    Get-LedgerReportInput -JournalPath $JournalPath -FiscalYear $FiscalYear
+                }
             }
         }
-
-        if ($PSCmdlet.ShouldProcess($Path, "Update annual report input")) {
-            Write-LedgerReportInput -Path $Path -Fields $result
-            if ($PassThru) {
-                Get-LedgerReportInput -JournalPath $JournalPath -FiscalYear $FiscalYear
-            }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

@@ -183,9 +183,12 @@ Implement the locking part together with step 12, not as a separate append lock.
       valid chain hashes, including a repeated key with a different content
       hash. The earlier review mistook the state reader keeping the first seal
       for missing detection; `Test-LedgerIntegrity` already reports duplicates.
-- [ ] Seal opening balances and relevant fiscal-year metadata, with an explicit
+- [x] Seal opening balances and relevant fiscal-year metadata, with an explicit
       lifecycle for legitimate updates and a compatibility plan for old chains.
-      A changed opening balance changes every balance in the year.
+      `year.txt` and `ib.txt` are sealed as latest-wins `Metadata` records;
+      only closing, `Copy-LedgerOpeningBalance` and `Import-LedgerSie` reseal
+      them, hand edits are reported. Chains without metadata records stay
+      valid and open years gain the records on their next seal.
 
 #### 12. Concurrent writers
 Verification numbers come from scanning `ver*.txt` and saved invoice-posting
@@ -211,10 +214,11 @@ writers outside the shared lock can still collide or lose a line.
 - [x] Extend the payment lock to supplier payments and supplier invoice posting,
       keeping validation, payment plans, verification writes and status updates
       within the same boundary. Bank matching respects unfinished payments of both types.
-- [ ] Extend operation-wide locking and conflict detection to remaining
+- [x] Extend operation-wide locking and conflict detection to remaining
       registers, invoices, payments, payroll, imports and metadata writers.
-      Pair this with recovery in step 30; the first increment is not general
-      multi-user support or a consistent reader/backup snapshot (see step 32).
+      Every public journal writer holds the lock for the whole command and
+      rechecks the schema version under it. This is not general multi-user
+      support or a consistent reader/backup snapshot (see step 32).
 
 ### Shared validation and technical debt
 

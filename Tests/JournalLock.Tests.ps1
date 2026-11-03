@@ -200,6 +200,18 @@ BeforeAll {
         elseif ($Mode -eq 'Close') {
             Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -EquityAccount '2099' | Out-Null
         }
+        elseif ($Mode -eq 'Registers') {
+            for ($i = 1; $i -le 15; $i++) {
+                Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber "$PID-$i" -Name "Kund $i"
+                Set-LedgerCustomer -JournalPath $JournalPath -CustomerNumber '1' -Email "$PID-$i@example.se"
+                Add-LedgerAccount -JournalPath $JournalPath -AccountNumber "$(4000 + $i)$PID" -AccountName "Konto $PID $i"
+                try {
+                    Add-LedgerCustomer -JournalPath $JournalPath -CustomerNumber "shared-$i" -Name 'Delad kund'
+                    Add-Content -LiteralPath "$Ready.added" -Value $i
+                }
+                catch { if ($_.Exception.Message -notlike '*already exists*') { throw } }
+            }
+        }
         elseif ($Mode -eq 'Seal') {
             Protect-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' | Out-Null
         }
@@ -423,6 +435,7 @@ Describe 'Journal write locking' {
     }
 
     It 'Does not create a coordination file or verification for WhatIf' {
+        Remove-Item -LiteralPath (Join-Path $journal '.write.lock') -ErrorAction SilentlyContinue
         Add-LedgerEntry @entry -WhatIf
         Test-Path -LiteralPath (Join-Path $journal '.write.lock') | Should -BeFalse
         @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 0
@@ -1191,5 +1204,27 @@ Describe 'Journal write locking' {
         Complete-LockTestWorker $second
         @(Get-LedgerBankTransaction -JournalPath $journal) | Should -HaveCount 1
         @(Get-LedgerBankStatement -JournalPath $journal) | Should -HaveCount 1
+    }
+
+    It 'Serializes register writers without lost lines or duplicate keys' {
+        Add-LedgerCustomer -JournalPath $journal -CustomerNumber '1' -Name 'Volvo AB'
+        $first = Start-LockTestWorker Registers
+        $second = Start-LockTestWorker Registers
+        Wait-LockTestReady $first
+        Wait-LockTestReady $second
+        Set-Content -LiteralPath $gate -Value 'go'
+        Complete-LockTestWorker $first
+        Complete-LockTestWorker $second
+
+        $customers = @(Get-LedgerCustomer -JournalPath $journal)
+        $customers | Should -HaveCount (1 + 2 * 15 + 15)
+        @($customers.CustomerNumber | Sort-Object -Unique) | Should -HaveCount $customers.Count
+        @($customers | Where-Object CustomerNumber -like 'shared-*').Name | Should -Be (@('Delad kund') * 15)
+        $added = foreach ($worker in @($first, $second)) {
+            if (Test-Path -LiteralPath "$($worker.Ready).added") { Get-Content -LiteralPath "$($worker.Ready).added" }
+        }
+        @($added | Sort-Object { [int]$_ }) | Should -Be @(1..15 | ForEach-Object { "$_" })
+        (Get-LedgerCustomer -JournalPath $journal -CustomerNumber '1').Email | Should -Match '^\d+-\d+@example\.se$'
+        @(Get-LedgerAccount -JournalPath $journal | Where-Object AccountName -like 'Konto * *') | Should -HaveCount 30
     }
 }

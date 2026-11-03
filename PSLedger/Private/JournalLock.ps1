@@ -10,6 +10,9 @@ function Enter-LedgerJournalLock {
 
     if ($WhatIfPreference) { return $null }
     $fullPath = [System.IO.Path]::GetFullPath($PSCmdlet.GetUnresolvedProviderPathFromPSPath($JournalPath))
+    if (-not [System.IO.Directory]::Exists($fullPath)) {
+        return $null # Let the caller report the missing journal.
+    }
     $lockPath = Join-Path $fullPath '.write.lock'
     if ($script:LedgerJournalLocks.ContainsKey($lockPath)) {
         return $null # The outer operation owns the handle in this runspace.

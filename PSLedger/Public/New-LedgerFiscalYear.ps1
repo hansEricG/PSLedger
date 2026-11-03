@@ -48,36 +48,45 @@ function New-LedgerFiscalYear {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    if (-not (Test-Path $JournalPath -PathType Container)) {
-        throw "Journal not found: $JournalPath"
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
+
+        if (-not (Test-Path $JournalPath -PathType Container)) {
+            throw "Journal not found: $JournalPath"
+        }
+
+        if ($EndDate -le $StartDate) {
+            throw "EndDate must be after StartDate."
+        }
+
+        $DirName = '{0:yyyy-MM}_{1:yyyy-MM}' -f $StartDate, $EndDate
+        $YearDir = Join-Path $JournalPath $DirName
+
+        if (Test-Path $YearDir) {
+            throw "Fiscal year already exists: $DirName"
+        }
+
+        if (-not $PSCmdlet.ShouldProcess($DirName, 'Create fiscal year')) {
+            return
+        }
+
+        New-Item -ItemType Directory -Path $YearDir -Force | Out-Null
+
+        $Lines = @(
+            "StartDate: $($StartDate.ToString('yyyy-MM-dd'))"
+            "EndDate: $($EndDate.ToString('yyyy-MM-dd'))"
+            "Status: Open"
+        )
+
+        $YearFile = Join-Path $YearDir 'year.txt'
+        Set-LedgerFileContent -Path $YearFile -Value $Lines
+        if ($PassThru) {
+            Get-LedgerFiscalYear -JournalPath $JournalPath | Where-Object { $_.Name -eq $DirName }
+        }
     }
-
-    if ($EndDate -le $StartDate) {
-        throw "EndDate must be after StartDate."
-    }
-
-    $DirName = '{0:yyyy-MM}_{1:yyyy-MM}' -f $StartDate, $EndDate
-    $YearDir = Join-Path $JournalPath $DirName
-
-    if (Test-Path $YearDir) {
-        throw "Fiscal year already exists: $DirName"
-    }
-
-    if (-not $PSCmdlet.ShouldProcess($DirName, 'Create fiscal year')) {
-        return
-    }
-
-    New-Item -ItemType Directory -Path $YearDir -Force | Out-Null
-
-    $Lines = @(
-        "StartDate: $($StartDate.ToString('yyyy-MM-dd'))"
-        "EndDate: $($EndDate.ToString('yyyy-MM-dd'))"
-        "Status: Open"
-    )
-
-    $YearFile = Join-Path $YearDir 'year.txt'
-    Set-LedgerFileContent -Path $YearFile -Value $Lines
-    if ($PassThru) {
-        Get-LedgerFiscalYear -JournalPath $JournalPath | Where-Object { $_.Name -eq $DirName }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

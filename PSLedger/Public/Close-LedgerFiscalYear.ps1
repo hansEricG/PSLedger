@@ -138,11 +138,17 @@ function Close-LedgerFiscalYear {
                 if (-not $operation) {
                     throw "Fiscal year $FiscalYear is already closed."
                 }
-                if (@($check.Issues | Where-Object Problem -ne 'Unsealed').Count) {
+                # The new Closed status may not be sealed yet.
+                if (@($check.Issues | Where-Object { $_.Problem -ne 'Unsealed' -and -not ($_.Kind -eq 'Metadata' -and $_.Key -eq 'year.txt') }).Count) {
                     throw "Fiscal year $FiscalYear was closed but has integrity issues; recovery stopped: $(@($check.Issues | ForEach-Object Detail) -join ' ')"
                 }
             }
             else {
+                # Closing reseals year.txt, so it must not carry an unsealed edit forward.
+                $sealedYear = (Get-LedgerIntegrityState -Chain (Read-LedgerIntegrityChain -YearDir $YearDir)).Metadata['year.txt']
+                if ($sealedYear -and $sealedYear -ne (Get-LedgerContentHash -Path $YearFile)) {
+                    throw "Fiscal year $FiscalYear cannot be closed: '$YearFile' has been changed since it was sealed. Run Test-LedgerIntegrity and restore it first."
+                }
                 if (Test-Path -LiteralPath (Get-LedgerSieImportPath -JournalPath $JournalPath -FiscalYear $FiscalYear)) {
                     throw "Fiscal year $FiscalYear has an unfinished SIE import. Repeat Import-LedgerSie with the same file to complete it before closing the year."
                 }
@@ -254,7 +260,7 @@ function Close-LedgerFiscalYear {
                     Set-LedgerFileContent -Path $YearFile -Value $NewLines
                 }
 
-                [void](Protect-LedgerYearContent -YearDir $YearDir)
+                [void](Protect-LedgerYearContent -YearDir $YearDir -ChangedMetadata 'year.txt' -Closing)
                 # The plan only marks an unfinished close; a completed year needs no reservation.
                 Remove-Item -LiteralPath $closingPath -Force
             }

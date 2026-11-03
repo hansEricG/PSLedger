@@ -108,90 +108,100 @@ function Add-LedgerProfitDisposition {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $Years = @(Get-LedgerFiscalYear -JournalPath $JournalPath | Sort-Object StartDate)
-        $Names = @($Years | ForEach-Object { $_.Name })
-        if ($Names -notcontains $FiscalYear) {
-            throw "Fiscal year not found: $FiscalYear"
-        }
-        if (-not $FromFiscalYear) {
-            $Index = $Names.IndexOf($FiscalYear)
-            if ($Index -lt 1) {
-                throw "No fiscal year precedes $FiscalYear. Specify -FromFiscalYear."
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
+
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
+
+            $Years = @(Get-LedgerFiscalYear -JournalPath $JournalPath | Sort-Object StartDate)
+            $Names = @($Years | ForEach-Object { $_.Name })
+            if ($Names -notcontains $FiscalYear) {
+                throw "Fiscal year not found: $FiscalYear"
             }
-            $FromFiscalYear = $Names[$Index - 1]
-        }
-        elseif ($Names -notcontains $FromFiscalYear) {
-            throw "Fiscal year not found: $FromFiscalYear"
-        }
-
-        $ReportInput = Get-LedgerReportInput -JournalPath $JournalPath -FiscalYear $FromFiscalYear
-        if (-not $PSBoundParameters.ContainsKey('Date')) {
-            if (-not $ReportInput.AnnualMeetingDate) {
-                throw "No AnnualMeetingDate recorded for $FromFiscalYear. Specify -Date or record it with Set-LedgerReportInput."
+            if (-not $FromFiscalYear) {
+                $Index = $Names.IndexOf($FiscalYear)
+                if ($Index -lt 1) {
+                    throw "No fiscal year precedes $FiscalYear. Specify -FromFiscalYear."
+                }
+                $FromFiscalYear = $Names[$Index - 1]
             }
-            $Date = [datetime]::ParseExact($ReportInput.AnnualMeetingDate, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
-        }
-        if (-not $PSBoundParameters.ContainsKey('Dividend')) {
-            $Dividend = if ($ReportInput.ProposedDividend) { [decimal]$ReportInput.ProposedDividend } else { [decimal]0 }
-        }
-        $Dividend = [Math]::Round([decimal]$Dividend, 2)
-        if (-not $ResultAccount) {
-            $ResultAccount = Resolve-LedgerResultCarryAccount -JournalPath $JournalPath
-        }
-        if (-not $Description) {
-            $Description = "Resultatdisposition enligt årsstämma $($Date.ToString('yyyy-MM-dd'))"
-        }
+            elseif ($Names -notcontains $FromFiscalYear) {
+                throw "Fiscal year not found: $FromFiscalYear"
+            }
 
-        $Balance = @(Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear)
-        $ResultRow = $Balance | Where-Object { $_.AccountNumber -eq $ResultAccount } | Select-Object -First 1
-        $ResultBalance = if ($ResultRow) { [Math]::Round([decimal]$ResultRow.Balance, 2) } else { [decimal]0 }
-        if ($ResultBalance -eq 0) {
-            throw "Result account $ResultAccount has no balance in $FiscalYear. The disposition has probably been booked already (or the opening balance has not been copied)."
-        }
+            $ReportInput = Get-LedgerReportInput -JournalPath $JournalPath -FiscalYear $FromFiscalYear
+            if (-not $PSBoundParameters.ContainsKey('Date')) {
+                if (-not $ReportInput.AnnualMeetingDate) {
+                    throw "No AnnualMeetingDate recorded for $FromFiscalYear. Specify -Date or record it with Set-LedgerReportInput."
+                }
+                $Date = [datetime]::ParseExact($ReportInput.AnnualMeetingDate, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            if (-not $PSBoundParameters.ContainsKey('Dividend')) {
+                $Dividend = if ($ReportInput.ProposedDividend) { [decimal]$ReportInput.ProposedDividend } else { [decimal]0 }
+            }
+            $Dividend = [Math]::Round([decimal]$Dividend, 2)
+            if (-not $ResultAccount) {
+                $ResultAccount = Resolve-LedgerResultCarryAccount -JournalPath $JournalPath
+            }
+            if (-not $Description) {
+                $Description = "Resultatdisposition enligt årsstämma $($Date.ToString('yyyy-MM-dd'))"
+            }
 
-        # The balance on the result account should be the disposed year's result.
-        $FromResult = @(Get-LedgerEquityReconciliation -JournalPath $JournalPath -FiscalYear $FromFiscalYear |
-            Where-Object { $_.Component -eq 'YearResult' })[0].ClosingBalance
-        if ($null -ne $FromResult -and [Math]::Round([decimal]$FromResult, 2) -ne -$ResultBalance) {
-            Write-Warning "The balance on $ResultAccount ($(-$ResultBalance) as a result) differs from the result of $FromFiscalYear ($FromResult)."
-        }
+            $Balance = @(Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear)
+            $ResultRow = $Balance | Where-Object { $_.AccountNumber -eq $ResultAccount } | Select-Object -First 1
+            $ResultBalance = if ($ResultRow) { [Math]::Round([decimal]$ResultRow.Balance, 2) } else { [decimal]0 }
+            if ($ResultBalance -eq 0) {
+                throw "Result account $ResultAccount has no balance in $FiscalYear. The disposition has probably been booked already (or the opening balance has not been copied)."
+            }
 
-        if ($Dividend -gt 0) {
-            $Disposable = (Get-LedgerProfitDisposition -JournalPath $JournalPath -FiscalYear $FromFiscalYear -Dividend $Dividend).TotalDisposable
-            if ($Dividend -gt $Disposable) {
-                throw "Dividend $Dividend exceeds the disposable free equity of $FromFiscalYear ($Disposable)."
+            # The balance on the result account should be the disposed year's result.
+            $FromResult = @(Get-LedgerEquityReconciliation -JournalPath $JournalPath -FiscalYear $FromFiscalYear |
+                Where-Object { $_.Component -eq 'YearResult' })[0].ClosingBalance
+            if ($null -ne $FromResult -and [Math]::Round([decimal]$FromResult, 2) -ne -$ResultBalance) {
+                Write-Warning "The balance on $ResultAccount ($(-$ResultBalance) as a result) differs from the result of $FromFiscalYear ($FromResult)."
+            }
+
+            if ($Dividend -gt 0) {
+                $Disposable = (Get-LedgerProfitDisposition -JournalPath $JournalPath -FiscalYear $FromFiscalYear -Dividend $Dividend).TotalDisposable
+                if ($Dividend -gt $Disposable) {
+                    throw "Dividend $Dividend exceeds the disposable free equity of $FromFiscalYear ($Disposable)."
+                }
+            }
+
+            $Rows = @(
+                @{ Account = $ResultAccount; Amount = -$ResultBalance }
+                @{ Account = $RetainedEarningsAccount; Amount = $ResultBalance + $Dividend }
+            )
+            if ($Dividend -gt 0) {
+                $Rows += @{ Account = $DividendAccount; Amount = -$Dividend }
+            }
+            $Rows = @($Rows | Where-Object { $_.Amount -ne 0 })
+
+            $Result = -$ResultBalance
+            $Action = "Book resultatdisposition of $FromFiscalYear (result $Result, dividend $Dividend)"
+            if (-not $PSCmdlet.ShouldProcess($FiscalYear, $Action)) {
+                return
+            }
+
+            $Entry = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date `
+                -Description $Description -Rows $Rows -PassThru
+
+            [PSCustomObject]@{
+                FiscalYear         = $FiscalYear
+                FromFiscalYear     = $FromFiscalYear
+                VerificationNumber = $Entry.VerificationNumber
+                Date               = $Date
+                Description        = $Description
+                Result             = $Result
+                Dividend           = $Dividend
+                CarriedForward     = $Result - $Dividend
             }
         }
-
-        $Rows = @(
-            @{ Account = $ResultAccount; Amount = -$ResultBalance }
-            @{ Account = $RetainedEarningsAccount; Amount = $ResultBalance + $Dividend }
-        )
-        if ($Dividend -gt 0) {
-            $Rows += @{ Account = $DividendAccount; Amount = -$Dividend }
-        }
-        $Rows = @($Rows | Where-Object { $_.Amount -ne 0 })
-
-        $Result = -$ResultBalance
-        $Action = "Book resultatdisposition of $FromFiscalYear (result $Result, dividend $Dividend)"
-        if (-not $PSCmdlet.ShouldProcess($FiscalYear, $Action)) {
-            return
-        }
-
-        $Entry = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date `
-            -Description $Description -Rows $Rows -PassThru
-
-        [PSCustomObject]@{
-            FiscalYear         = $FiscalYear
-            FromFiscalYear     = $FromFiscalYear
-            VerificationNumber = $Entry.VerificationNumber
-            Date               = $Date
-            Description        = $Description
-            Result             = $Result
-            Dividend           = $Dividend
-            CarriedForward     = $Result - $Dividend
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

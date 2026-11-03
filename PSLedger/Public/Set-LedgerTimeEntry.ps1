@@ -95,50 +95,59 @@ function Set-LedgerTimeEntry {
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-        $entries = @(Read-LedgerTimeEntries -JournalPath $JournalPath)
-        $entry = $entries | Where-Object EntryId -eq $EntryId | Select-Object -First 1
-        if (-not $entry) { throw "Time entry $EntryId does not exist." }
-        $invoiceStatus = Get-LedgerTimeInvoiceStatusMap -JournalPath $JournalPath
-        if (Test-LedgerTimeEntryInvoiced -Entry $entry -InvoiceStatus $invoiceStatus) {
-            throw "Time entry $EntryId is on invoice $($entry.InvoiceNumber). Credit the invoice first to change it."
-        }
-        $oldMonth = $entry.Date.ToString('yyyy-MM')
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        if ($PSBoundParameters.ContainsKey('Hours')) {
-            $h = ConvertFrom-LedgerHours -Text $Hours
-            Test-LedgerHours -Hours $h
-            $entry.Hours = $h
-        }
-        if ($PSBoundParameters.ContainsKey('Date')) { $entry.Date = $Date.Date }
-        if ($PSBoundParameters.ContainsKey('Text')) { $entry.Text = ConvertTo-LedgerTimeField $Text }
-
-        $retarget = $PSBoundParameters.ContainsKey('ProjectNumber') -or $PSBoundParameters.ContainsKey('CustomerNumber') -or
-            $PSBoundParameters.ContainsKey('ResourceId') -or $PSBoundParameters.ContainsKey('Billable') -or $PSBoundParameters.ContainsKey('Rate')
-        if ($retarget) {
-            $newProject = if ($PSBoundParameters.ContainsKey('ProjectNumber')) { $ProjectNumber } else { $entry.ProjectNumber }
-            $newCustomer = if ($PSBoundParameters.ContainsKey('CustomerNumber')) { $CustomerNumber }
-                           elseif ($PSBoundParameters.ContainsKey('ProjectNumber')) { '' }
-                           else { $entry.CustomerNumber }
-            $keepRate = -not ($PSBoundParameters.ContainsKey('ProjectNumber') -or $PSBoundParameters.ContainsKey('CustomerNumber'))
-            $newRate = if ($PSBoundParameters.ContainsKey('Rate')) { $Rate } elseif ($keepRate) { $entry.Rate } else { $null }
-            $newBillable = if ($PSBoundParameters.ContainsKey('Billable')) { $Billable } else { $entry.Billable }
-            $newResource = if ($PSBoundParameters.ContainsKey('ResourceId')) { $ResourceId } else { $entry.ResourceId }
-
-            $target = Resolve-LedgerTimeEntryTarget -Context (Get-LedgerTimeContext -JournalPath $JournalPath) `
-                -ResourceId $newResource -ProjectNumber $newProject -CustomerNumber $newCustomer -Billable $newBillable -Rate $newRate
-            $entry.ResourceId = $target.ResourceId
-            $entry.ProjectNumber = $target.ProjectNumber
-            $entry.CustomerNumber = $target.CustomerNumber
-            $entry.Billable = $target.Billable
-            $entry.Rate = $target.Rate
-        }
-        $entry.InvoiceNumber = $null
-
-        if ($PSCmdlet.ShouldProcess("Time entry $EntryId", 'Update time entry')) {
-            Save-LedgerTimeEntries -JournalPath $JournalPath -Entries $entries -Months @($oldMonth, $entry.Date.ToString('yyyy-MM'))
-            if ($PassThru) {
-                Get-LedgerTimeEntry -JournalPath $JournalPath -EntryId $EntryId
+            $entries = @(Read-LedgerTimeEntries -JournalPath $JournalPath)
+            $entry = $entries | Where-Object EntryId -eq $EntryId | Select-Object -First 1
+            if (-not $entry) { throw "Time entry $EntryId does not exist." }
+            $invoiceStatus = Get-LedgerTimeInvoiceStatusMap -JournalPath $JournalPath
+            if (Test-LedgerTimeEntryInvoiced -Entry $entry -InvoiceStatus $invoiceStatus) {
+                throw "Time entry $EntryId is on invoice $($entry.InvoiceNumber). Credit the invoice first to change it."
             }
+            $oldMonth = $entry.Date.ToString('yyyy-MM')
+
+            if ($PSBoundParameters.ContainsKey('Hours')) {
+                $h = ConvertFrom-LedgerHours -Text $Hours
+                Test-LedgerHours -Hours $h
+                $entry.Hours = $h
+            }
+            if ($PSBoundParameters.ContainsKey('Date')) { $entry.Date = $Date.Date }
+            if ($PSBoundParameters.ContainsKey('Text')) { $entry.Text = ConvertTo-LedgerTimeField $Text }
+
+            $retarget = $PSBoundParameters.ContainsKey('ProjectNumber') -or $PSBoundParameters.ContainsKey('CustomerNumber') -or
+                $PSBoundParameters.ContainsKey('ResourceId') -or $PSBoundParameters.ContainsKey('Billable') -or $PSBoundParameters.ContainsKey('Rate')
+            if ($retarget) {
+                $newProject = if ($PSBoundParameters.ContainsKey('ProjectNumber')) { $ProjectNumber } else { $entry.ProjectNumber }
+                $newCustomer = if ($PSBoundParameters.ContainsKey('CustomerNumber')) { $CustomerNumber }
+                               elseif ($PSBoundParameters.ContainsKey('ProjectNumber')) { '' }
+                               else { $entry.CustomerNumber }
+                $keepRate = -not ($PSBoundParameters.ContainsKey('ProjectNumber') -or $PSBoundParameters.ContainsKey('CustomerNumber'))
+                $newRate = if ($PSBoundParameters.ContainsKey('Rate')) { $Rate } elseif ($keepRate) { $entry.Rate } else { $null }
+                $newBillable = if ($PSBoundParameters.ContainsKey('Billable')) { $Billable } else { $entry.Billable }
+                $newResource = if ($PSBoundParameters.ContainsKey('ResourceId')) { $ResourceId } else { $entry.ResourceId }
+
+                $target = Resolve-LedgerTimeEntryTarget -Context (Get-LedgerTimeContext -JournalPath $JournalPath) `
+                    -ResourceId $newResource -ProjectNumber $newProject -CustomerNumber $newCustomer -Billable $newBillable -Rate $newRate
+                $entry.ResourceId = $target.ResourceId
+                $entry.ProjectNumber = $target.ProjectNumber
+                $entry.CustomerNumber = $target.CustomerNumber
+                $entry.Billable = $target.Billable
+                $entry.Rate = $target.Rate
+            }
+            $entry.InvoiceNumber = $null
+
+            if ($PSCmdlet.ShouldProcess("Time entry $EntryId", 'Update time entry')) {
+                Save-LedgerTimeEntries -JournalPath $JournalPath -Entries $entries -Months @($oldMonth, $entry.Date.ToString('yyyy-MM'))
+                if ($PassThru) {
+                    Get-LedgerTimeEntry -JournalPath $JournalPath -EntryId $EntryId
+                }
+            }
+        }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

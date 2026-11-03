@@ -93,68 +93,77 @@ function Add-LedgerPayrollTaxPayment {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    # Resolve the fiscal year from the payment date unless one was supplied.
-    if (-not $FiscalYear) {
-        $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $Date
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
+
+        # Resolve the fiscal year from the payment date unless one was supplied.
         if (-not $FiscalYear) {
-            throw "No fiscal year covers the payment date $($Date.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+            $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $Date
+            if (-not $FiscalYear) {
+                throw "No fiscal year covers the payment date $($Date.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+            }
+        }
+
+        # Read the outstanding liability balances for defaults. A liability that is
+        # owed has a negative (credit) balance, so the amount owed is its negation.
+        $balances = @(Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear)
+        $balanceOf = {
+            param($account)
+            $row = $balances | Where-Object { $_.AccountNumber -eq $account }
+            if ($row) { [decimal]$row.Balance } else { [decimal]0 }
+        }
+
+        if ($PSBoundParameters.ContainsKey('TaxAmount')) {
+            $tax = [Math]::Round([decimal]$TaxAmount, 2)
+        }
+        else {
+            $owed = -(& $balanceOf $TaxLiabilityAccount)
+            $tax = if ($owed -gt 0) { [Math]::Round($owed, 2) } else { [decimal]0 }
+        }
+
+        if ($PSBoundParameters.ContainsKey('EmployerContributionAmount')) {
+            $employer = [Math]::Round([decimal]$EmployerContributionAmount, 2)
+        }
+        else {
+            $owed = -(& $balanceOf $EmployerContributionLiabilityAccount)
+            $employer = if ($owed -gt 0) { [Math]::Round($owed, 2) } else { [decimal]0 }
+        }
+
+        if ($tax -lt 0) { throw "TaxAmount must not be negative. Got: $tax" }
+        if ($employer -lt 0) { throw "EmployerContributionAmount must not be negative. Got: $employer" }
+
+        $total = [Math]::Round($tax + $employer, 2)
+        if ($total -le 0) {
+            throw "Nothing to pay: the outstanding tax and employer contributions are zero. Specify -TaxAmount and/or -EmployerContributionAmount to force a payment."
+        }
+
+        if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Pay payroll taxes of $total")) {
+            return
+        }
+
+        # Debit the liabilities, credit the payment account.
+        $entryRows = @()
+        if ($tax -ne 0) { $entryRows += @{ Account = $TaxLiabilityAccount; Amount = $tax } }
+        if ($employer -ne 0) { $entryRows += @{ Account = $EmployerContributionLiabilityAccount; Amount = $employer } }
+        $entryRows += @{ Account = $Account; Amount = -$total }
+
+        $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+            -Date $Date -Description $Description -Rows @($entryRows) -PassThru
+
+        [PSCustomObject]@{
+            FiscalYear                 = $FiscalYear
+            Date                       = $Date
+            Description                = $Description
+            TaxAmount                  = $tax
+            EmployerContributionAmount = $employer
+            Total                      = $total
+            Account                    = $Account
+            VerificationNumber         = $verification.VerificationNumber
         }
     }
-
-    # Read the outstanding liability balances for defaults. A liability that is
-    # owed has a negative (credit) balance, so the amount owed is its negation.
-    $balances = @(Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear)
-    $balanceOf = {
-        param($account)
-        $row = $balances | Where-Object { $_.AccountNumber -eq $account }
-        if ($row) { [decimal]$row.Balance } else { [decimal]0 }
-    }
-
-    if ($PSBoundParameters.ContainsKey('TaxAmount')) {
-        $tax = [Math]::Round([decimal]$TaxAmount, 2)
-    }
-    else {
-        $owed = -(& $balanceOf $TaxLiabilityAccount)
-        $tax = if ($owed -gt 0) { [Math]::Round($owed, 2) } else { [decimal]0 }
-    }
-
-    if ($PSBoundParameters.ContainsKey('EmployerContributionAmount')) {
-        $employer = [Math]::Round([decimal]$EmployerContributionAmount, 2)
-    }
-    else {
-        $owed = -(& $balanceOf $EmployerContributionLiabilityAccount)
-        $employer = if ($owed -gt 0) { [Math]::Round($owed, 2) } else { [decimal]0 }
-    }
-
-    if ($tax -lt 0) { throw "TaxAmount must not be negative. Got: $tax" }
-    if ($employer -lt 0) { throw "EmployerContributionAmount must not be negative. Got: $employer" }
-
-    $total = [Math]::Round($tax + $employer, 2)
-    if ($total -le 0) {
-        throw "Nothing to pay: the outstanding tax and employer contributions are zero. Specify -TaxAmount and/or -EmployerContributionAmount to force a payment."
-    }
-
-    if (-not $PSCmdlet.ShouldProcess($FiscalYear, "Pay payroll taxes of $total")) {
-        return
-    }
-
-    # Debit the liabilities, credit the payment account.
-    $entryRows = @()
-    if ($tax -ne 0) { $entryRows += @{ Account = $TaxLiabilityAccount; Amount = $tax } }
-    if ($employer -ne 0) { $entryRows += @{ Account = $EmployerContributionLiabilityAccount; Amount = $employer } }
-    $entryRows += @{ Account = $Account; Amount = -$total }
-
-    $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-        -Date $Date -Description $Description -Rows @($entryRows) -PassThru
-
-    [PSCustomObject]@{
-        FiscalYear                 = $FiscalYear
-        Date                       = $Date
-        Description                = $Description
-        TaxAmount                  = $tax
-        EmployerContributionAmount = $employer
-        Total                      = $total
-        Account                    = $Account
-        VerificationNumber         = $verification.VerificationNumber
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

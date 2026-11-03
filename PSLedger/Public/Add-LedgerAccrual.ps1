@@ -89,45 +89,55 @@ function Add-LedgerAccrual {
     )
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        if ($Amount -le 0) {
-            throw "Amount must be positive. Got: $Amount"
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
+
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
+
+            if ($Amount -le 0) {
+                throw "Amount must be positive. Got: $Amount"
+            }
+
+            # Verify reversal fiscal year exists
+            $reversalYearDir = Join-Path $JournalPath $ReversalFiscalYear
+            if (-not (Test-Path $reversalYearDir)) {
+                throw "Reversal fiscal year '$ReversalFiscalYear' does not exist. Create it first with New-LedgerFiscalYear."
+            }
+
+            if (-not $PSCmdlet.ShouldProcess("$FiscalYear -> $ReversalFiscalYear", "Add accrual of $Amount with reversal")) {
+                return
+            }
+
+            # Create accrual: debit balance sheet account, credit expense account
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                -Date $Date -Description "$Description (periodisering)" -Rows @(
+                @{ Account = $AccrualAccount; Amount = $Amount }
+                @{ Account = $ExpenseAccount; Amount = -$Amount }
+            )
+
+            # Create reversal: debit expense account, credit balance sheet account
+            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $ReversalFiscalYear `
+                -Date $ReversalDate -Description "$Description (återföring)" -Rows @(
+                @{ Account = $ExpenseAccount; Amount = $Amount }
+                @{ Account = $AccrualAccount; Amount = -$Amount }
+            )
+
+            [PSCustomObject]@{
+                AccrualDate       = $Date
+                AccrualFiscalYear = $FiscalYear
+                ReversalDate      = $ReversalDate
+                ReversalFiscalYear = $ReversalFiscalYear
+                ExpenseAccount    = $ExpenseAccount
+                AccrualAccount    = $AccrualAccount
+                Amount            = $Amount
+                Description       = $Description
+            }
         }
-
-        # Verify reversal fiscal year exists
-        $reversalYearDir = Join-Path $JournalPath $ReversalFiscalYear
-        if (-not (Test-Path $reversalYearDir)) {
-            throw "Reversal fiscal year '$ReversalFiscalYear' does not exist. Create it first with New-LedgerFiscalYear."
-        }
-
-        if (-not $PSCmdlet.ShouldProcess("$FiscalYear -> $ReversalFiscalYear", "Add accrual of $Amount with reversal")) {
-            return
-        }
-
-        # Create accrual: debit balance sheet account, credit expense account
-        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-            -Date $Date -Description "$Description (periodisering)" -Rows @(
-            @{ Account = $AccrualAccount; Amount = $Amount }
-            @{ Account = $ExpenseAccount; Amount = -$Amount }
-        )
-
-        # Create reversal: debit expense account, credit balance sheet account
-        Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $ReversalFiscalYear `
-            -Date $ReversalDate -Description "$Description (återföring)" -Rows @(
-            @{ Account = $ExpenseAccount; Amount = $Amount }
-            @{ Account = $AccrualAccount; Amount = -$Amount }
-        )
-
-        [PSCustomObject]@{
-            AccrualDate       = $Date
-            AccrualFiscalYear = $FiscalYear
-            ReversalDate      = $ReversalDate
-            ReversalFiscalYear = $ReversalFiscalYear
-            ExpenseAccount    = $ExpenseAccount
-            AccrualAccount    = $AccrualAccount
-            Amount            = $Amount
-            Description       = $Description
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

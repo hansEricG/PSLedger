@@ -45,34 +45,44 @@ function Remove-LedgerDocument {
 
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $YearDir = Join-Path $JournalPath $FiscalYear
-        if (-not (Test-Path $YearDir -PathType Container)) {
-            throw "Fiscal year not found: $FiscalYear"
-        }
-        Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'remove documents'
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        $FileName = Assert-LedgerSafeLeafName -Name $FileName -Kind 'document'
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $docDir = Join-Path $YearDir 'documents'
-        if (-not (Test-Path $docDir -PathType Container)) {
-            throw "No documents found for fiscal year $FiscalYear."
-        }
-
-        $filePath = Join-Path $docDir $FileName
-        if (-not (Test-Path $filePath -PathType Leaf)) {
-            throw "Document not found: $FileName"
-        }
-
-        if ($PSCmdlet.ShouldProcess($filePath, 'Remove document')) {
-            Remove-Item -Path $filePath -Force
-
-            # Remove directory if empty
-            $remaining = Get-ChildItem -Path $docDir -File
-            if (-not $remaining) {
-                Remove-Item -Path $docDir -Force
+            $YearDir = Join-Path $JournalPath $FiscalYear
+            if (-not (Test-Path $YearDir -PathType Container)) {
+                throw "Fiscal year not found: $FiscalYear"
             }
+            Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'remove documents'
+
+            $FileName = Assert-LedgerSafeLeafName -Name $FileName -Kind 'document'
+
+            $docDir = Join-Path $YearDir 'documents'
+            if (-not (Test-Path $docDir -PathType Container)) {
+                throw "No documents found for fiscal year $FiscalYear."
+            }
+
+            $filePath = Join-Path $docDir $FileName
+            if (-not (Test-Path $filePath -PathType Leaf)) {
+                throw "Document not found: $FileName"
+            }
+
+            if ($PSCmdlet.ShouldProcess($filePath, 'Remove document')) {
+                Remove-Item -Path $filePath -Force
+
+                # Remove directory if empty
+                $remaining = Get-ChildItem -Path $docDir -File
+                if (-not $remaining) {
+                    Remove-Item -Path $docDir -Force
+                }
+            }
+        }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

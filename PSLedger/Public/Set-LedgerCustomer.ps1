@@ -77,61 +77,70 @@ function Set-LedgerCustomer {
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-        if (-not (Test-Path $JournalPath -PathType Container)) {
-            throw "Journal not found: $JournalPath"
-        }
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        $CustomerFile = Join-Path $JournalPath 'customers.txt'
-        if (-not (Test-Path $CustomerFile)) {
-            throw "Customer '$CustomerNumber' does not exist."
-        }
-
-        $updateName = $PSBoundParameters.ContainsKey('Name')
-        $updateOrg = $PSBoundParameters.ContainsKey('OrgNumber')
-        $updateEmail = $PSBoundParameters.ContainsKey('Email')
-        $updateTerms = $PSBoundParameters.ContainsKey('PaymentTermsDays')
-        $updateRate = $PSBoundParameters.ContainsKey('HourlyRate')
-
-        if (-not ($updateName -or $updateOrg -or $updateEmail -or $updateTerms -or $updateRate)) {
-            throw "Nothing to update. Specify -Name, -OrgNumber, -Email, -PaymentTermsDays and/or -HourlyRate."
-        }
-
-        $lines = @(Get-Content $CustomerFile -Encoding UTF8)
-        $found = $false
-        $newLines = foreach ($line in $lines) {
-            if ([string]::IsNullOrWhiteSpace($line)) { continue }
-            $parts = $line -split "`t"
-            if ($parts[0] -eq $CustomerNumber) {
-                $found = $true
-                $curName = if ($parts.Count -ge 2) { $parts[1] } else { '' }
-                $curOrg = if ($parts.Count -ge 3) { $parts[2] } else { '' }
-                $curEmail = if ($parts.Count -ge 4) { $parts[3] } else { '' }
-                $curTerms = if ($parts.Count -ge 5) { $parts[4] } else { '30' }
-                $curRate = if ($parts.Count -ge 6) { $parts[5] } else { '' }
-
-                if ($updateName) { $curName = ConvertTo-LedgerTextField $Name }
-                if ($updateOrg) { $curOrg = ConvertTo-LedgerTextField $OrgNumber }
-                if ($updateEmail) { $curEmail = ConvertTo-LedgerTextField $Email }
-                if ($updateTerms) { $curTerms = $PaymentTermsDays }
-                if ($updateRate) { $curRate = if ($HourlyRate -gt 0) { Format-LedgerInvoiceAmount -Value $HourlyRate } else { '' } }
-
-                $rateField = if ($curRate) { "`t$curRate" } else { '' }
-                "$CustomerNumber`t$curName`t$curOrg`t$curEmail`t$curTerms$rateField"
+            if (-not (Test-Path $JournalPath -PathType Container)) {
+                throw "Journal not found: $JournalPath"
             }
-            else {
-                $line
+
+            $CustomerFile = Join-Path $JournalPath 'customers.txt'
+            if (-not (Test-Path $CustomerFile)) {
+                throw "Customer '$CustomerNumber' does not exist."
+            }
+
+            $updateName = $PSBoundParameters.ContainsKey('Name')
+            $updateOrg = $PSBoundParameters.ContainsKey('OrgNumber')
+            $updateEmail = $PSBoundParameters.ContainsKey('Email')
+            $updateTerms = $PSBoundParameters.ContainsKey('PaymentTermsDays')
+            $updateRate = $PSBoundParameters.ContainsKey('HourlyRate')
+
+            if (-not ($updateName -or $updateOrg -or $updateEmail -or $updateTerms -or $updateRate)) {
+                throw "Nothing to update. Specify -Name, -OrgNumber, -Email, -PaymentTermsDays and/or -HourlyRate."
+            }
+
+            $lines = @(Get-Content $CustomerFile -Encoding UTF8)
+            $found = $false
+            $newLines = foreach ($line in $lines) {
+                if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                $parts = $line -split "`t"
+                if ($parts[0] -eq $CustomerNumber) {
+                    $found = $true
+                    $curName = if ($parts.Count -ge 2) { $parts[1] } else { '' }
+                    $curOrg = if ($parts.Count -ge 3) { $parts[2] } else { '' }
+                    $curEmail = if ($parts.Count -ge 4) { $parts[3] } else { '' }
+                    $curTerms = if ($parts.Count -ge 5) { $parts[4] } else { '30' }
+                    $curRate = if ($parts.Count -ge 6) { $parts[5] } else { '' }
+
+                    if ($updateName) { $curName = ConvertTo-LedgerTextField $Name }
+                    if ($updateOrg) { $curOrg = ConvertTo-LedgerTextField $OrgNumber }
+                    if ($updateEmail) { $curEmail = ConvertTo-LedgerTextField $Email }
+                    if ($updateTerms) { $curTerms = $PaymentTermsDays }
+                    if ($updateRate) { $curRate = if ($HourlyRate -gt 0) { Format-LedgerInvoiceAmount -Value $HourlyRate } else { '' } }
+
+                    $rateField = if ($curRate) { "`t$curRate" } else { '' }
+                    "$CustomerNumber`t$curName`t$curOrg`t$curEmail`t$curTerms$rateField"
+                }
+                else {
+                    $line
+                }
+            }
+
+            if (-not $found) {
+                throw "Customer '$CustomerNumber' does not exist."
+            }
+
+            if ($PSCmdlet.ShouldProcess($CustomerNumber, "Update customer")) {
+                Set-LedgerFileContent -Path $CustomerFile -Value $newLines
+                if ($PassThru) {
+                    Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $CustomerNumber
+                }
             }
         }
-
-        if (-not $found) {
-            throw "Customer '$CustomerNumber' does not exist."
-        }
-
-        if ($PSCmdlet.ShouldProcess($CustomerNumber, "Update customer")) {
-            Set-LedgerFileContent -Path $CustomerFile -Value $newLines
-            if ($PassThru) {
-                Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $CustomerNumber
-            }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

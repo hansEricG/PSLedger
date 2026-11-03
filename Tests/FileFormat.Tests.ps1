@@ -557,7 +557,7 @@ Describe 'File format contract' {
             }
             $script:realProtect = & (Get-Module PSLedger) { (Get-Command Protect-LedgerYearContent).ScriptBlock }
             $script:failProtect = $true
-            Mock -ModuleName PSLedger Protect-LedgerYearContent { & $script:realProtect -YearDir $YearDir }
+            Mock -ModuleName PSLedger Protect-LedgerYearContent { & $script:realProtect -YearDir $YearDir -ChangedMetadata $ChangedMetadata -Closing:$Closing }
             Mock -ModuleName PSLedger Protect-LedgerYearContent { throw 'simulated interruption' } -ParameterFilter { $script:failProtect }
             { Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $Y } | Should -Throw '*rerun Close-LedgerFiscalYear*'
             $script:failProtect = $false

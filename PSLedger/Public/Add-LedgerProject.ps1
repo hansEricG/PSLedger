@@ -68,26 +68,35 @@ function Add-LedgerProject {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    $projects = @(Read-LedgerProjects -JournalPath $JournalPath)
-    if ($projects | Where-Object ProjectNumber -eq $ProjectNumber) {
-        throw "Project '$ProjectNumber' already exists."
-    }
-    if ($CustomerNumber -and -not (Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $CustomerNumber)) {
-        throw "Customer '$CustomerNumber' does not exist."
-    }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    $projects += [PSCustomObject]@{
-        ProjectNumber  = $ProjectNumber
-        Name           = $Name
-        CustomerNumber = $CustomerNumber
-        HourlyRate     = if ($PSBoundParameters.ContainsKey('HourlyRate')) { $HourlyRate } else { $null }
-        Status         = 'Active'
-    }
-
-    if ($PSCmdlet.ShouldProcess($ProjectNumber, 'Add project')) {
-        Save-LedgerProjects -JournalPath $JournalPath -Projects $projects
-        if ($PassThru) {
-            Get-LedgerProject -JournalPath $JournalPath -ProjectNumber $ProjectNumber
+        $projects = @(Read-LedgerProjects -JournalPath $JournalPath)
+        if ($projects | Where-Object ProjectNumber -eq $ProjectNumber) {
+            throw "Project '$ProjectNumber' already exists."
         }
+        if ($CustomerNumber -and -not (Get-LedgerCustomer -JournalPath $JournalPath -CustomerNumber $CustomerNumber)) {
+            throw "Customer '$CustomerNumber' does not exist."
+        }
+
+        $projects += [PSCustomObject]@{
+            ProjectNumber  = $ProjectNumber
+            Name           = $Name
+            CustomerNumber = $CustomerNumber
+            HourlyRate     = if ($PSBoundParameters.ContainsKey('HourlyRate')) { $HourlyRate } else { $null }
+            Status         = 'Active'
+        }
+
+        if ($PSCmdlet.ShouldProcess($ProjectNumber, 'Add project')) {
+            Save-LedgerProjects -JournalPath $JournalPath -Projects $projects
+            if ($PassThru) {
+                Get-LedgerProject -JournalPath $JournalPath -ProjectNumber $ProjectNumber
+            }
+        }
+    }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

@@ -90,66 +90,76 @@ function Add-LedgerDocument {
 
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        $YearDir = Join-Path $JournalPath $FiscalYear
-        if (-not (Test-Path $YearDir -PathType Container)) {
-            throw "Fiscal year not found: $FiscalYear"
-        }
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        $docDir = Join-Path $YearDir 'documents'
+            $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear $FiscalYear -JournalPath $JournalPath
 
-        foreach ($p in $Path) {
-            # Resolve each path to one or more leaf files. Literal paths are
-            # checked first so names containing wildcard characters still work;
-            # otherwise the path is treated as a wildcard pattern.
-            if (Test-Path -LiteralPath $p -PathType Leaf) {
-                $sourceFiles = @(Get-Item -LiteralPath $p)
-            }
-            elseif (Test-Path -LiteralPath $p -PathType Container) {
-                throw "Path is a directory, not a file: $p. To add all files in a folder, pipe them in, e.g. Get-ChildItem '$p' -File | Add-LedgerDocument"
-            }
-            else {
-                $sourceFiles = @(Get-Item -Path $p -ErrorAction SilentlyContinue | Where-Object { -not $_.PSIsContainer })
-                if (-not $sourceFiles) {
-                    throw "File not found: $p"
-                }
+            $YearDir = Join-Path $JournalPath $FiscalYear
+            if (-not (Test-Path $YearDir -PathType Container)) {
+                throw "Fiscal year not found: $FiscalYear"
             }
 
-            foreach ($sourceFile in $sourceFiles) {
-                # Create document directory on demand
-                if (-not (Test-Path $docDir)) {
-                    New-Item -ItemType Directory -Path $docDir -Force | Out-Null
+            $docDir = Join-Path $YearDir 'documents'
+
+            foreach ($p in $Path) {
+                # Resolve each path to one or more leaf files. Literal paths are
+                # checked first so names containing wildcard characters still work;
+                # otherwise the path is treated as a wildcard pattern.
+                if (Test-Path -LiteralPath $p -PathType Leaf) {
+                    $sourceFiles = @(Get-Item -LiteralPath $p)
                 }
-
-                $destPath = Join-Path $docDir $sourceFile.Name
-
-                if ((Test-Path -LiteralPath $destPath -PathType Leaf) -and -not $Force) {
-                    Write-Error "A document named '$($sourceFile.Name)' already exists in fiscal year '$FiscalYear'. Use -Force to overwrite."
-                    continue
-                }
-
-                if (Test-Path -LiteralPath $destPath -PathType Leaf) {
-                    Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'replace existing documents'
-                }
-
-                $verb = if ($Move) { 'Move' } else { 'Copy' }
-                if (-not $PSCmdlet.ShouldProcess($destPath, "$verb document")) {
-                    continue
-                }
-
-                if ($Move) {
-                    Move-Item -LiteralPath $sourceFile.FullName -Destination $destPath -Force
+                elseif (Test-Path -LiteralPath $p -PathType Container) {
+                    throw "Path is a directory, not a file: $p. To add all files in a folder, pipe them in, e.g. Get-ChildItem '$p' -File | Add-LedgerDocument"
                 }
                 else {
-                    Copy-Item -LiteralPath $sourceFile.FullName -Destination $destPath -Force
+                    $sourceFiles = @(Get-Item -Path $p -ErrorAction SilentlyContinue | Where-Object { -not $_.PSIsContainer })
+                    if (-not $sourceFiles) {
+                        throw "File not found: $p"
+                    }
                 }
 
-                if ($PassThru) {
-                    Get-LedgerDocument -JournalPath $JournalPath -FiscalYear $FiscalYear -FileName $sourceFile.Name |
-                        Where-Object { $_.FileName -eq $sourceFile.Name }
+                foreach ($sourceFile in $sourceFiles) {
+                    # Create document directory on demand
+                    if (-not (Test-Path $docDir)) {
+                        New-Item -ItemType Directory -Path $docDir -Force | Out-Null
+                    }
+
+                    $destPath = Join-Path $docDir $sourceFile.Name
+
+                    if ((Test-Path -LiteralPath $destPath -PathType Leaf) -and -not $Force) {
+                        Write-Error "A document named '$($sourceFile.Name)' already exists in fiscal year '$FiscalYear'. Use -Force to overwrite."
+                        continue
+                    }
+
+                    if (Test-Path -LiteralPath $destPath -PathType Leaf) {
+                        Assert-LedgerFiscalYearOpen -YearDir $YearDir -FiscalYear $FiscalYear -Action 'replace existing documents'
+                    }
+
+                    $verb = if ($Move) { 'Move' } else { 'Copy' }
+                    if (-not $PSCmdlet.ShouldProcess($destPath, "$verb document")) {
+                        continue
+                    }
+
+                    if ($Move) {
+                        Move-Item -LiteralPath $sourceFile.FullName -Destination $destPath -Force
+                    }
+                    else {
+                        Copy-Item -LiteralPath $sourceFile.FullName -Destination $destPath -Force
+                    }
+
+                    if ($PassThru) {
+                        Get-LedgerDocument -JournalPath $JournalPath -FiscalYear $FiscalYear -FileName $sourceFile.Name |
+                            Where-Object { $_.FileName -eq $sourceFile.Name }
+                    }
                 }
             }
+        }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

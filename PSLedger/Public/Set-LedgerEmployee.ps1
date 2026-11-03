@@ -70,57 +70,66 @@ function Set-LedgerEmployee {
     process {
         $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-        if (-not (Test-Path $JournalPath -PathType Container)) {
-            throw "Journal not found: $JournalPath"
-        }
+        $journalLock = $null
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        $EmployeeFile = Join-Path $JournalPath 'employees.txt'
-        if (-not (Test-Path $EmployeeFile)) {
-            throw "Employee '$EmployeeNumber' does not exist."
-        }
-
-        $updateName = $PSBoundParameters.ContainsKey('Name')
-        $updatePnr = $PSBoundParameters.ContainsKey('PersonalNumber')
-        $updateAccount = $PSBoundParameters.ContainsKey('SalaryAccount')
-        $updateTax = $PSBoundParameters.ContainsKey('TaxRate')
-
-        if (-not ($updateName -or $updatePnr -or $updateAccount -or $updateTax)) {
-            throw "Nothing to update. Specify -Name, -PersonalNumber, -SalaryAccount and/or -TaxRate."
-        }
-
-        $lines = @(Get-Content $EmployeeFile -Encoding UTF8)
-        $found = $false
-        $newLines = foreach ($line in $lines) {
-            if ([string]::IsNullOrWhiteSpace($line)) { continue }
-            $parts = $line -split "`t"
-            if ($parts[0] -eq $EmployeeNumber) {
-                $found = $true
-                $curName = if ($parts.Count -ge 2) { $parts[1] } else { '' }
-                $curPnr = if ($parts.Count -ge 3) { $parts[2] } else { '' }
-                $curAccount = if ($parts.Count -ge 4) { $parts[3] } else { '7210' }
-                $curTax = if ($parts.Count -ge 5) { $parts[4] } else { '0' }
-
-                if ($updateName) { $curName = ConvertTo-LedgerTextField $Name }
-                if ($updatePnr) { $curPnr = ConvertTo-LedgerTextField $PersonalNumber }
-                if ($updateAccount) { Assert-LedgerKeyField -Name 'SalaryAccount' -Value $SalaryAccount; $curAccount = $SalaryAccount }
-                if ($updateTax) { $curTax = Format-LedgerInvoiceAmount -Value $TaxRate }
-
-                "$EmployeeNumber`t$curName`t$curPnr`t$curAccount`t$curTax"
+            if (-not (Test-Path $JournalPath -PathType Container)) {
+                throw "Journal not found: $JournalPath"
             }
-            else {
-                $line
+
+            $EmployeeFile = Join-Path $JournalPath 'employees.txt'
+            if (-not (Test-Path $EmployeeFile)) {
+                throw "Employee '$EmployeeNumber' does not exist."
+            }
+
+            $updateName = $PSBoundParameters.ContainsKey('Name')
+            $updatePnr = $PSBoundParameters.ContainsKey('PersonalNumber')
+            $updateAccount = $PSBoundParameters.ContainsKey('SalaryAccount')
+            $updateTax = $PSBoundParameters.ContainsKey('TaxRate')
+
+            if (-not ($updateName -or $updatePnr -or $updateAccount -or $updateTax)) {
+                throw "Nothing to update. Specify -Name, -PersonalNumber, -SalaryAccount and/or -TaxRate."
+            }
+
+            $lines = @(Get-Content $EmployeeFile -Encoding UTF8)
+            $found = $false
+            $newLines = foreach ($line in $lines) {
+                if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                $parts = $line -split "`t"
+                if ($parts[0] -eq $EmployeeNumber) {
+                    $found = $true
+                    $curName = if ($parts.Count -ge 2) { $parts[1] } else { '' }
+                    $curPnr = if ($parts.Count -ge 3) { $parts[2] } else { '' }
+                    $curAccount = if ($parts.Count -ge 4) { $parts[3] } else { '7210' }
+                    $curTax = if ($parts.Count -ge 5) { $parts[4] } else { '0' }
+
+                    if ($updateName) { $curName = ConvertTo-LedgerTextField $Name }
+                    if ($updatePnr) { $curPnr = ConvertTo-LedgerTextField $PersonalNumber }
+                    if ($updateAccount) { Assert-LedgerKeyField -Name 'SalaryAccount' -Value $SalaryAccount; $curAccount = $SalaryAccount }
+                    if ($updateTax) { $curTax = Format-LedgerInvoiceAmount -Value $TaxRate }
+
+                    "$EmployeeNumber`t$curName`t$curPnr`t$curAccount`t$curTax"
+                }
+                else {
+                    $line
+                }
+            }
+
+            if (-not $found) {
+                throw "Employee '$EmployeeNumber' does not exist."
+            }
+
+            if ($PSCmdlet.ShouldProcess($EmployeeNumber, "Update employee")) {
+                Set-LedgerFileContent -Path $EmployeeFile -Value $newLines
+                if ($PassThru) {
+                    Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber $EmployeeNumber
+                }
             }
         }
-
-        if (-not $found) {
-            throw "Employee '$EmployeeNumber' does not exist."
-        }
-
-        if ($PSCmdlet.ShouldProcess($EmployeeNumber, "Update employee")) {
-            Set-LedgerFileContent -Path $EmployeeFile -Value $newLines
-            if ($PassThru) {
-                Get-LedgerEmployee -JournalPath $JournalPath -EmployeeNumber $EmployeeNumber
-            }
+        finally {
+            Exit-LedgerJournalLock -Lock $journalLock
         }
     }
 }

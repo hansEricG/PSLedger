@@ -53,32 +53,41 @@ function Add-LedgerObject {
     )
     $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
 
-    if (-not (Test-Path $JournalPath -PathType Container)) {
-        throw "Journal not found: $JournalPath"
-    }
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    Assert-LedgerKeyField -Name 'ObjectNumber' -Value $ObjectNumber
+        if (-not (Test-Path $JournalPath -PathType Container)) {
+            throw "Journal not found: $JournalPath"
+        }
 
-    # Validate dimension exists
-    $dim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $DimensionNumber
-    if (-not $dim) {
-        throw "Dimension $DimensionNumber does not exist. Add it with Add-LedgerDimension first."
-    }
+        Assert-LedgerKeyField -Name 'ObjectNumber' -Value $ObjectNumber
 
-    $ObjFile = Join-Path $JournalPath 'objects.txt'
+        # Validate dimension exists
+        $dim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $DimensionNumber
+        if (-not $dim) {
+            throw "Dimension $DimensionNumber does not exist. Add it with Add-LedgerDimension first."
+        }
 
-    if (Test-Path $ObjFile) {
-        foreach ($Line in (Get-Content $ObjFile)) {
-            if ($Line -match "^$DimensionNumber`t$([regex]::Escape($ObjectNumber))`t") {
-                throw "Object '$ObjectNumber' already exists in dimension $DimensionNumber."
+        $ObjFile = Join-Path $JournalPath 'objects.txt'
+
+        if (Test-Path $ObjFile) {
+            foreach ($Line in (Get-Content $ObjFile)) {
+                if ($Line -match "^$DimensionNumber`t$([regex]::Escape($ObjectNumber))`t") {
+                    throw "Object '$ObjectNumber' already exists in dimension $DimensionNumber."
+                }
+            }
+        }
+
+        if ($PSCmdlet.ShouldProcess($ObjectNumber, 'Add object')) {
+            Add-LedgerFileLine -Path $ObjFile -Line "$DimensionNumber`t$ObjectNumber`t$(ConvertTo-LedgerTextField $Name)"
+            if ($PassThru) {
+                Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $DimensionNumber -ObjectNumber $ObjectNumber
             }
         }
     }
-
-    if ($PSCmdlet.ShouldProcess($ObjectNumber, 'Add object')) {
-        Add-LedgerFileLine -Path $ObjFile -Line "$DimensionNumber`t$ObjectNumber`t$(ConvertTo-LedgerTextField $Name)"
-        if ($PassThru) {
-            Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $DimensionNumber -ObjectNumber $ObjectNumber
-        }
+    finally {
+        Exit-LedgerJournalLock -Lock $journalLock
     }
 }

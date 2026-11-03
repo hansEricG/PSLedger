@@ -415,9 +415,13 @@ function Import-LedgerSie {
 
             $lastNumber = $plan.FirstVerification + $plan.VerificationCount - 1
             $check = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
+            # An interruption can leave the planned ib.txt written but not yet sealed.
+            $plannedIbWritten = $ibHash -and (Test-Path -LiteralPath $ibFile -PathType Leaf) -and
+                (Get-LedgerContentHash -Path $ibFile) -eq $ibHash
             $issues = @($check.Issues | Where-Object {
                     -not ($_.Kind -eq 'Verification' -and $_.Problem -eq 'Unsealed' -and
-                        [int]$_.Key -ge $plan.FirstVerification -and [int]$_.Key -le $lastNumber)
+                        [int]$_.Key -ge $plan.FirstVerification -and [int]$_.Key -le $lastNumber) -and
+                    -not ($plannedIbWritten -and $_.Kind -eq 'Metadata' -and $_.Key -eq 'ib.txt')
                 })
             if ($issues.Count) {
                 throw "SIE import cannot continue because of integrity issues. Run Test-LedgerIntegrity and resolve them first: $($issues.Detail -join ' ')"
@@ -431,6 +435,7 @@ function Import-LedgerSie {
                     }
                     Write-LedgerOpeningBalance -YearDir $YearDir -Rows $ibRows
                 }
+                Register-LedgerYearMetadata -YearDir $YearDir -Name 'ib.txt'
             }
 
             $state = Get-LedgerIntegrityState -Chain (Read-LedgerIntegrityChain -YearDir $YearDir)

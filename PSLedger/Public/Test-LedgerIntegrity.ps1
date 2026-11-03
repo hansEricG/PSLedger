@@ -1,12 +1,20 @@
 <#
 .SYNOPSIS
-Checks that no sealed verification or attachment has been changed (tamper detection).
+Checks that no sealed verification, attachment or year metadata has been changed (tamper detection).
 
 .DESCRIPTION
 Every verification and attachment written by PSLedger is sealed in the fiscal
 year's integrity.txt, a hash chain where each record holds the SHA-256 of the item
-and a chain hash over the previous record. Test-LedgerIntegrity recomputes the
+and a chain hash over the previous record. The year's metadata, year.txt and the
+opening balance ib.txt, is sealed too: a new version is sealed only by the
+commands that legitimately change it (Close-LedgerFiscalYear,
+Copy-LedgerOpeningBalance, Import-LedgerSie). Test-LedgerIntegrity recomputes the
 chain and the hashes and returns one result per fiscal year. Nothing is modified.
+
+A chain written before metadata sealing has no Metadata records; its metadata is
+not checked until it is sealed. An open year is sealed by the next posting or by
+Protect-LedgerFiscalYear. A closed year is left as it is, so its stored final
+chain hash stays valid.
 
 The result's Status is:
 - Valid    - the chain is intact and matches every verification and attachment.
@@ -14,8 +22,9 @@ The result's Status is:
 - Unsealed - the year has verifications but no chain yet (a journal created
              before tamper detection). Seal it with Protect-LedgerFiscalYear.
 
-Each issue has Kind (Verification, Attachment or Chain), Key (the verification
-number, or number/file name), Problem and Detail. Problems:
+Each issue has Kind (Verification, Attachment, Metadata or Chain), Key (the
+verification number, number/file name, or year.txt/ib.txt), Problem and Detail.
+Problems:
 - Modified    - the item differs from the sealed hash.
 - Missing     - a sealed item has been deleted. Attachments removed with
                 Remove-LedgerAttachment are logged in the chain and not reported.
@@ -110,6 +119,7 @@ function Test-LedgerIntegrity {
                     IsValid       = $status -eq 'Valid'
                     Verifications = 0
                     Attachments   = 0
+                    Metadata      = 0
                     ChainHash     = $null
                     Issues        = $issues.ToArray()
                 }
@@ -171,6 +181,25 @@ function Test-LedgerIntegrity {
                 }
             }
 
+            # Metadata is checked once the chain seals it; older chains have no Metadata records.
+            if ($state.Metadata.Count -gt 0) {
+                foreach ($name in $script:LedgerIntegrityMetadataFiles) {
+                    $path = Join-Path $yearDir $name
+                    $exists = Test-Path -LiteralPath $path -PathType Leaf
+                    if (-not $state.Metadata.Contains($name)) {
+                        if ($exists) {
+                            & $addIssue 'Metadata' $name 'Unsealed' "$name is not in the integrity chain. Run Protect-LedgerFiscalYear if it is legitimate."
+                        }
+                    }
+                    elseif (-not $exists) {
+                        & $addIssue 'Metadata' $name 'Missing' "Sealed $name has been deleted."
+                    }
+                    elseif ((Get-LedgerContentHash -Path $path) -ne $state.Metadata[$name]) {
+                        & $addIssue 'Metadata' $name 'Modified' "$name has been changed since it was sealed."
+                    }
+                }
+            }
+
             $head = Get-LedgerIntegrityHead -Chain $chain
             if ($ExpectedHash -and $head -ne $ExpectedHash.ToLowerInvariant()) {
                 & $addIssue 'Chain' '' 'HashMismatch' "The final chain hash is $head, expected $($ExpectedHash.ToLowerInvariant())."
@@ -183,6 +212,7 @@ function Test-LedgerIntegrity {
                 IsValid       = $status -eq 'Valid'
                 Verifications = $state.Verifications.Count
                 Attachments   = $state.Attachments.Count
+                Metadata      = $state.Metadata.Count
                 ChainHash     = $head
                 Issues        = $issues.ToArray()
             }

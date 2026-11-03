@@ -303,6 +303,33 @@ Describe 'Import-LedgerSie' {
                 (Test-LedgerIntegrity -JournalPath $TargetJournal -FiscalYear $FiscalYear).Status | Should -Be 'Valid'
             }
 
+            It 'Should seal the imported opening balance when its seal was interrupted' {
+                foreach ($journal in $SourceJournal, $TargetJournal) {
+                    Add-LedgerAccount -JournalPath $journal -AccountNumber '2081' -AccountName 'Aktiekapital'
+                }
+                Set-Content -LiteralPath (Join-Path $SourceJournal $FiscalYear 'ib.txt') -Value "1910`t250.00", "2081`t-250.00"
+                $ibSie = Join-Path $TestDrive "ib-$([guid]::NewGuid().ToString('N')).se"
+                Export-LedgerSie -JournalPath $SourceJournal -FiscalYear $FiscalYear -Path $ibSie -Force
+                Add-LedgerEntry -JournalPath $TargetJournal -FiscalYear $FiscalYear -Date '2024-01-02' -Description 'Kassa' -Rows @(
+                    @{ Account = '1910'; Amount = 10 }; @{ Account = '3010'; Amount = -10 })
+                $script:failSeal = $true
+                $script:realRegister = & (Get-Module PSLedger) { (Get-Command Register-LedgerYearMetadata).ScriptBlock }
+                Mock -ModuleName PSLedger Register-LedgerYearMetadata -MockWith {
+                    if ($script:failSeal) { throw 'Simulated crash' }
+                    & $script:realRegister -YearDir $YearDir -Name $Name
+                }
+
+                { Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $ibSie -Force } |
+                    Should -Throw '*Repeat Import-LedgerSie with the same file*'
+                (Test-LedgerIntegrity -JournalPath $TargetJournal -FiscalYear $FiscalYear).Issues.Problem | Should -Be 'Unsealed'
+
+                $script:failSeal = $false
+                Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $ibSie -Force | Out-Null
+                $result = Test-LedgerIntegrity -JournalPath $TargetJournal -FiscalYear $FiscalYear
+                $result.Status | Should -Be 'Valid'
+                $result.Metadata | Should -Be 2
+            }
+
             It 'Should reserve the planned numbers for other entries while the import is unfinished' {
                 $script:failWrite = $true
                 { Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $SieFile } | Should -Throw
