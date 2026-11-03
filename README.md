@@ -538,7 +538,7 @@ Get-LedgerAccountsReceivable -Summary       # one row per bucket with the total
 Export-LedgerInvoice -InvoiceNumber 1 -Path .\faktura-1.pdf
 
 # Credit (reverse) a posted, unpaid invoice — books the reversing verification and
-# marks both the original and the credit note 'Credited'
+# marks both the original and the credit note 'Credited'. Repeat to resume.
 Add-LedgerCreditInvoice -InvoiceNumber 1
 
 # Send a payment reminder for an overdue invoice — records the reminder (no ledger
@@ -621,8 +621,28 @@ for another invoice. Bookkeeping corrections require separate handling.
 
 An unfinished payment started outside bank matching still needs to be resumed
 with its `PaymentId` first, then linked with `-VerificationNumber` and
-`-FiscalYear`; do not register another payment. Charges and credit notes do not
-yet have end-to-end recovery.
+`-FiscalYear`; do not register another payment.
+
+**Charges and credit notes are recoverable too.** Give a fee, interest charge or
+booked reminder fee a stable `-ChargeId` to resume it, or to return the current
+invoice if the charge already completed:
+
+```powershell
+$chargeId = New-Guid  # Save this ID before booking the charge.
+Add-LedgerInvoiceReminder -JournalPath .\HEG.ledger -InvoiceNumber 1 -Fee 60 -BookFee -ChargeId $chargeId
+```
+
+The plan in `invoices/charges/<guid>.txt` stores the charge type, date, amount,
+account and reserved verification. A retry with conflicting inputs is rejected,
+and interest resumes with the planned amount. Without `-ChargeId`, each call
+books a new charge. An unfinished charge blocks other changes to the invoice and
+reports the ID to resume with. `-ChargeId` on a reminder requires `-BookFee`.
+
+`Add-LedgerCreditInvoice` saves a plan in `invoices/credits/invNNNN.txt` (keyed
+by the original invoice) that reserves both the credit-note number and the
+verification. If crediting is interrupted, repeat the same command to complete
+it with the planned date; repeating after completion returns the existing credit
+note. An unfinished credit blocks payments and charges on the invoice.
 
 `Export-LedgerInvoice` produces the PDF with a built-in, dependency-free writer.
 Add payment details (bankgiro, plusgiro, IBAN/BIC) to the document by storing them
@@ -888,8 +908,9 @@ posting reports such a partial failure, inspect the saved verification and run
 again. `Invoke-LedgerInvoicePosting`, `Invoke-LedgerSupplierInvoicePosting`,
 `Add-LedgerInvoicePayment -PaymentId` and `Add-LedgerSupplierPayment -PaymentId`
 can resume their saved plans as described above, as can customer/supplier bank
-matches and bank rule/account postings. Charges, credit notes, payroll, imports
-and other multi-file workflows do not yet have this protection.
+matches, bank rule/account postings, invoice charges (`-ChargeId`) and credit
+notes. Payroll, imports and other multi-file workflows do not yet have this
+protection.
 
 Other register and metadata writers, older PSLedger versions and external
 editors do not all participate in the lock. Readers and backups do not acquire

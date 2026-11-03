@@ -11,7 +11,8 @@ BeforeAll {
         $env:PSLEDGER_USER_EXTENSIONS = Join-Path (Split-Path $Ready -Parent) 'extensions'
         Import-Module $ModulePath -Force
         $paymentId = '11111111-1111-1111-1111-111111111111'
-        if ($Mode -match '^(Invoice|Payment|Bank|SupplierInvoice|SupplierPayment|SupplierBank|Account)After') {
+        $chargeId = '22222222-2222-2222-2222-222222222222'
+        if ($Mode -match '^(Invoice|Payment|Bank|SupplierInvoice|SupplierPayment|SupplierBank|Account|Charge|Credit)After') {
             & (Get-Module PSLedger) {
                 param ($Ready, $Mode)
                 $script:PostingReady = $Ready
@@ -90,6 +91,12 @@ BeforeAll {
             elseif ($Mode -like 'Payment*') {
                 Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $paymentId -Amount 500.000 -Date '2024-01-20'
             }
+            elseif ($Mode -like 'Charge*') {
+                Add-LedgerInvoiceReminder -JournalPath $JournalPath -InvoiceNumber 1 -Fee 60 -BookFee -ChargeId $chargeId -Date '2024-01-20'
+            }
+            elseif ($Mode -like 'Credit*') {
+                Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-01-20'
+            }
             else { Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 }
             exit 0
         }
@@ -148,6 +155,12 @@ BeforeAll {
             $amount = if ($Mode -like '*Large') { 900 } else { 500.000 }
             $command = if ($Mode -like 'Supplier*') { 'Add-LedgerSupplierPayment' } else { 'Add-LedgerInvoicePayment' }
             & $command -JournalPath $JournalPath -InvoiceNumber 1 -PaymentId $paymentId -Amount $amount -Date '2024-01-20'
+        }
+        elseif ($Mode -eq 'Charge') {
+            Add-LedgerInvoiceReminder -JournalPath $JournalPath -InvoiceNumber 1 -Fee 60 -BookFee -ChargeId $chargeId -Date '2024-01-20'
+        }
+        elseif ($Mode -eq 'Credit') {
+            Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-01-20'
         }
         elseif ($Mode -eq 'Seal') {
             Protect-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' | Out-Null
@@ -535,6 +548,110 @@ Describe 'Journal write locking' {
         (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
         (Get-FileHash -LiteralPath $operationPath).Hash | Should -Be $hash
         if ($savedHash) { (Get-FileHash -LiteralPath $savedPath).Hash | Should -Be $savedHash }
+    }
+
+    It 'Recovers a reminder fee after process termination at <Checkpoint>' -ForEach @(
+        @{ Checkpoint = 'ChargeAfterPlan' }
+        @{ Checkpoint = 'ChargeAfterSave' }
+        @{ Checkpoint = 'ChargeAfterSeal' }
+        @{ Checkpoint = 'ChargeAfterStatus' }
+    ) {
+        New-LockTestInvoice
+        Add-LedgerAccount -JournalPath $journal -AccountNumber '3590' -AccountName 'Övriga sidointäkter'
+        Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 1
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        $operationPath = Join-Path $journal 'invoices' 'charges' '22222222-2222-2222-2222-222222222222.txt'
+        $hash = (Get-FileHash -LiteralPath $operationPath).Hash
+        $savedPath = Join-Path $journal $year 'ver0002.txt'
+        $savedHash = if (Test-Path -LiteralPath $savedPath) { (Get-FileHash -LiteralPath $savedPath).Hash }
+        if ($Checkpoint -ne 'ChargeAfterStatus') {
+            { Add-LedgerInvoicePayment -JournalPath $journal -InvoiceNumber 1 -Amount 100 -Date '2024-01-21' } |
+                Should -Throw '*unfinished charge*Add-LedgerInvoiceReminder*-ChargeId*'
+        }
+        (Add-LedgerEntry @entry -PassThru).VerificationNumber | Should -Be 3
+        Set-Content -LiteralPath $gate -Value 'go'
+        $retry = Start-LockTestWorker Charge
+        Complete-LockTestWorker $retry
+
+        $invoice = Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 1
+        $invoice.Charges | Should -HaveCount 1
+        $invoice.Charges[0].VerificationNumber | Should -Be 2
+        $invoice.ReminderCount | Should -Be 1
+        $invoice.RemainingAmount | Should -Be 1310
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
+        (Get-FileHash -LiteralPath $operationPath).Hash | Should -Be $hash
+        if ($savedHash) { (Get-FileHash -LiteralPath $savedPath).Hash | Should -Be $savedHash }
+    }
+
+    It 'Recovers a credit after process termination at <Checkpoint>' -ForEach @(
+        @{ Checkpoint = 'CreditAfterPlan' }
+        @{ Checkpoint = 'CreditAfterSave' }
+        @{ Checkpoint = 'CreditAfterSeal' }
+        @{ Checkpoint = 'CreditAfterStatus' }
+    ) {
+        New-LockTestInvoice
+        Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 1
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        $operationPath = Join-Path $journal 'invoices' 'credits' 'inv0001.txt'
+        $hash = (Get-FileHash -LiteralPath $operationPath).Hash
+        $savedPath = Join-Path $journal $year 'ver0002.txt'
+        $savedHash = if (Test-Path -LiteralPath $savedPath) { (Get-FileHash -LiteralPath $savedPath).Hash }
+        (Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 1).Status | Should -Be 'Booked'
+        (Add-LedgerEntry @entry -PassThru).VerificationNumber | Should -Be 3
+        Set-Content -LiteralPath $gate -Value 'go'
+        $retry = Start-LockTestWorker Credit
+        Complete-LockTestWorker $retry
+
+        (Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 1).Status | Should -Be 'Credited'
+        $credit = Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 2
+        $credit.Status | Should -Be 'Credited'
+        $credit.BookedVerification | Should -Be 2
+        $credit.Total | Should -Be (-1250)
+        @(Get-LedgerInvoice -JournalPath $journal) | Should -HaveCount 2
+        @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 3
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
+        (Get-FileHash -LiteralPath $operationPath).Hash | Should -Be $hash
+        if ($savedHash) { (Get-FileHash -LiteralPath $savedPath).Hash | Should -Be $savedHash }
+    }
+
+    It 'Handles <Kind> recovery in a closed year with saved verification=<Saved>' -ForEach @(
+        @{ Kind = 'Charge'; Saved = $true }
+        @{ Kind = 'Charge'; Saved = $false }
+        @{ Kind = 'Credit'; Saved = $true }
+        @{ Kind = 'Credit'; Saved = $false }
+    ) {
+        New-LockTestInvoice
+        Add-LedgerAccount -JournalPath $journal -AccountNumber '3590' -AccountName 'Övriga sidointäkter'
+        Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 1
+        $paused = Start-LockTestWorker "$Kind$(if ($Saved) { 'AfterSave' } else { 'AfterPlan' })"
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $year -SkipResultEntry | Out-Null
+        Set-Content -LiteralPath $gate -Value 'go'
+        $retry = Start-LockTestWorker $Kind
+        $invoice = $null
+        if ($Saved) {
+            Complete-LockTestWorker $retry
+            $invoice = Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 1
+            if ($Kind -eq 'Charge') { $invoice.Charges | Should -HaveCount 1 } else { $invoice.Status | Should -Be 'Credited' }
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 2
+        }
+        else {
+            $retry.Process.WaitForExit(30000) | Should -BeTrue
+            $retry.Process.ExitCode | Should -Not -Be 0
+            $retry.Error.Result | Should -BeLike '*closed*'
+            $invoice = Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 1
+            $invoice.Charges | Should -HaveCount 0
+            $invoice.Status | Should -Be 'Booked'
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 1
+        }
     }
 
     It 'Handles payment recovery in a closed year with saved verification=<Saved>' -ForEach @(

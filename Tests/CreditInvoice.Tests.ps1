@@ -98,10 +98,71 @@ Describe 'Add-LedgerCreditInvoice' {
             { Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber $n } | Should -Throw '*payments*'
         }
 
-        It 'Should throw when crediting an already-credited invoice' {
+        It 'Should treat a repeated credit of the same invoice as completed and throw for an already credited note' {
             New-BookedInvoice -JournalPath $JournalPath | Out-Null
             Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-04-30'
-            { Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 } | Should -Throw '*already been credited*'
+            $again = Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -PassThru
+            $again.InvoiceNumber | Should -Be 2
+            @(Get-LedgerInvoice -JournalPath $JournalPath).Count | Should -Be 2
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Count | Should -Be 2
+            { Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-05-01' } | Should -Throw '*saved credit plan*'
+            { Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 2 } | Should -Throw '*already been credited*'
+        }
+
+        It 'Should write nothing with -WhatIf' {
+            New-BookedInvoice -JournalPath $JournalPath | Out-Null
+            Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-04-30' -WhatIf
+            Test-Path (Join-Path $JournalPath 'invoices' 'credits') | Should -BeFalse
+            (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).Status | Should -Be 'Booked'
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Count | Should -Be 1
+        }
+
+        Context 'Recovery' {
+            BeforeEach {
+                New-BookedInvoice -JournalPath $JournalPath | Out-Null
+                $script:failCredit = $true
+                $script:realWrite = & (Get-Module PSLedger) { (Get-Command Write-LedgerVerification).ScriptBlock }
+                Mock -ModuleName PSLedger Write-LedgerVerification { & $script:realWrite -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description -Rows $Rows -Attachment $Attachment -PassThru:$PassThru -LegacyReversal:$LegacyReversal -OperationId $(if ($OperationId) { $OperationId } else { [guid]::Empty }) -ReservedNumber ([int]$ReservedNumber) -Confirm:$false }
+                Mock -ModuleName PSLedger Write-LedgerVerification { throw 'simulated interruption' } -ParameterFilter { $script:failCredit }
+                { Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-04-30' } | Should -Throw '*rerun Add-LedgerCreditInvoice*'
+                $script:failCredit = $false
+                $planPath = Join-Path $JournalPath 'invoices' 'credits' 'inv0001.txt'
+            }
+
+            It 'Should reserve the credit note and verification numbers in an immutable plan' {
+                $plan = Get-Content -LiteralPath $planPath
+                $plan | Should -Contain "CreditInvoiceNumber:`t2"
+                $plan | Should -Contain "VerificationNumber:`t2"
+                $plan | Should -Contain "CreditDate:`t2024-04-30"
+                Test-Path (Join-Path $JournalPath 'invoices' 'inv0002.txt') | Should -BeFalse
+
+                New-LedgerInvoice -JournalPath $JournalPath -CustomerNumber '10' -Date '2024-05-01' -Description 'Ny' -Rows @(@{ Account = '3010'; Amount = 100 }) -PassThru |
+                    Select-Object -ExpandProperty InvoiceNumber | Should -Be 3
+                Add-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Date '2024-05-01' -Description 'Annat' -Rows @(
+                    @{ Account = '1510'; Amount = 1 }, @{ Account = '3010'; Amount = -1 }) -PassThru |
+                    Select-Object -ExpandProperty VerificationNumber | Should -Be 3
+            }
+
+            It 'Should complete the saved credit and keep the planned date' {
+                $credit = Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -PassThru
+                $credit.InvoiceNumber | Should -Be 2
+                $credit.InvoiceDate | Should -Be ([datetime]'2024-04-30')
+                $credit.BookedVerification | Should -Be 2
+                (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).Status | Should -Be 'Credited'
+                (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Status | Should -Be 'Valid'
+            }
+
+            It 'Should stop when the original invoice changed after planning' {
+                $file = Join-Path $JournalPath 'invoices' 'inv0001.txt'
+                (Get-Content -LiteralPath $file -Raw) -replace 'DueDate:\t\S+', "DueDate:`t2024-12-31" | Set-Content -LiteralPath $file -NoNewline
+                { Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 } | Should -Throw '*changed since its credit was planned*'
+                Test-Path (Join-Path $JournalPath '2024-01_2024-12' 'ver0002.txt') | Should -BeFalse
+            }
+
+            It 'Should block other invoice changes until the credit is resumed' {
+                { Add-LedgerInvoiceFee -JournalPath $JournalPath -InvoiceNumber 1 -Amount 60 -Date '2024-05-01' } |
+                    Should -Throw '*unfinished credit*'
+            }
         }
     }
 }

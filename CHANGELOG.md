@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Added
+- **Recoverable invoice charges and credit notes.** `Add-LedgerInvoiceFee`,
+  `Add-LedgerInvoiceInterest` and `Add-LedgerInvoiceReminder -BookFee` accept an
+  optional `-ChargeId`. Plans in `invoices/charges/` reserve the verification and
+  retain the charge inputs. A retry resumes the charge or returns the invoice if
+  it already completed, and a retry with conflicting inputs is rejected.
+  `Add-LedgerCreditInvoice` saves a plan in `invoices/credits/` that reserves the
+  credit-note number and the verification. Repeating the command completes an
+  interrupted credit or returns the existing credit note. Unfinished charges and
+  credits block other changes to the invoice and name the command to resume
+  with. Both plan types are retained in archives.
 - **Resumable supplier-invoice posting.** Repeat `Invoke-LedgerSupplierInvoicePosting`
   after an interruption to finish the same posting with its reserved verification.
   Plans in `supplierinvoices/posting/` are typed `InvoiceType: Supplier`, share
@@ -16,7 +26,7 @@
   selected transaction is booked once. Later-imported unambiguous counterparts
   can join the same posting. Plans and source statements are retained in archives.
 - **Journal write locking for verification and integrity operations.** Posting,
-  reversals, attachment changes, sealing, year closing and credit-note rollback
+  reversals, attachment changes, sealing, year closing and credit notes
   share a reentrant journal lock. A competing process waits up to 30 seconds,
   then fails explicitly. The operating system releases the lock on process exit.
 - **Concurrent-writer and interruption cases** exercise real PowerShell
@@ -66,12 +76,18 @@
   invoice status, preventing stale concurrent updates.
 - **Archives retain invoices with pending payments in the selected year**, even
   when the invoice belongs to an earlier year and its payment row is not saved yet.
+  The same applies to charges and credit notes.
+
+### Changed
+- **`Add-LedgerCreditInvoice` no longer rolls back a partial credit.** It resumes
+  the saved plan instead. Repeating the command for an already credited invoice
+  returns the existing credit note instead of failing. Invoice numbers are
+  allocated under the journal lock and skip numbers reserved by credit plans.
 
 Recovery currently covers customer/supplier-invoice posting, customer/supplier payments
-and bank-created invoice, rule/account and own-account transfer postings. Changed inputs,
-conflicting verifications and damaged integrity chains stop recovery explicitly.
-Charges, credit notes, payroll
-and multi-statement imports still need recovery. Locking is not a multi-file
+and bank-created invoice, rule/account and own-account transfer postings, invoice charges
+and credit notes. Changed inputs, conflicting verifications and damaged integrity chains
+stop recovery explicitly. Payroll and multi-statement imports still need recovery. Locking is not a multi-file
 transaction or general multi-user support.
 
 ## [1.1.0] - 2026-10-30

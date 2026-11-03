@@ -14,6 +14,13 @@ Only an invoice with status 'Booked' (posted but unpaid) can be credited:
 - an invoice with payments ('Partial'/'Paid') must have its payments handled first;
 - an already 'Credited' invoice cannot be credited again.
 
+Crediting is safely resumable. Before the verification is written, an immutable
+plan in invoices/credits/ reserves the credit-note number and verification
+number. If the command is interrupted, run it again for the same invoice: it
+completes the saved credit (verification, credit note and status) without
+creating a second credit note or verification. Other changes to the invoice are
+blocked until the credit is completed.
+
 .PARAMETER JournalPath
 The path to an existing journal directory. If omitted, uses the current journal
 set via Set-LedgerCurrentJournal.
@@ -23,6 +30,7 @@ The number of the posted invoice to credit.
 
 .PARAMETER Date
 The date of the credit note and its reversing verification. Defaults to today.
+When an interrupted credit is resumed, the planned date is used.
 
 .PARAMETER FiscalYear
 Optional. The fiscal year to post the reversal into. If omitted, the fiscal year
@@ -43,7 +51,8 @@ Credits invoice 1, creating a credit note and a reversing verification such as:
 .EXAMPLE
 Add-LedgerCreditInvoice -InvoiceNumber 5 -Date '2024-04-30' -PassThru
 
-Credits invoice 5 as of 30 April 2024 and returns the created credit note.
+Credits invoice 5 as of 30 April 2024 and returns the created credit note. If the
+call is interrupted, repeating it completes the same credit note.
 #>
 function Add-LedgerCreditInvoice {
     [CmdletBinding(SupportsShouldProcess)]
@@ -68,6 +77,7 @@ function Add-LedgerCreditInvoice {
         $journalLock = $null
         try {
             $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
             $invoiceDir = Get-LedgerInvoiceDirectory -JournalPath $JournalPath
             $filePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber)
@@ -76,7 +86,39 @@ function Add-LedgerCreditInvoice {
             }
 
             $original = Read-LedgerInvoiceFile -Path $filePath
-            Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath -Invoice $original
+            if ($original.InvoiceNumber -ne $InvoiceNumber) {
+                throw "Invoice $InvoiceNumber has an inconsistent identity."
+            }
+            $operationPath = Get-LedgerInvoiceCreditPath -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+            $operation = if (Test-Path -LiteralPath $operationPath) { Read-LedgerInvoiceCreditOperation -Path $operationPath } else { $null }
+            $creditDate = $Date.Date
+            $creditYear = $FiscalYear
+            if ($operation) {
+                if (($PSBoundParameters.ContainsKey('Date') -and $Date.Date -ne $operation.CreditDate) -or
+                    ($FiscalYear -and $FiscalYear -ne $operation.FiscalYear)) {
+                    throw "Invoice $InvoiceNumber has a saved credit plan dated $($operation.CreditDate.ToString('yyyy-MM-dd')) in $($operation.FiscalYear). Use its original inputs to retry."
+                }
+                $creditDate = $operation.CreditDate
+                $creditYear = $operation.FiscalYear
+                $creditNotePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $operation.CreditInvoiceNumber)
+                if ($original.Status -eq 'Credited') {
+                    if (-not (Test-Path -LiteralPath $creditNotePath)) {
+                        throw "Invoice $InvoiceNumber is credited, but its planned credit invoice $($operation.CreditInvoiceNumber) is missing. Recovery stopped."
+                    }
+                    Assert-LedgerCreditNote -CreditNote (Read-LedgerInvoiceFile -Path $creditNotePath) -Original $original -Operation $operation
+                    $verificationPath = Join-Path $JournalPath $creditYear ('ver{0:D4}.txt' -f $operation.VerificationNumber)
+                    Assert-LedgerInvoicePostingVerification -Path $verificationPath -Operation $operation
+                    Assert-LedgerInvoicePostingIntegrity -JournalPath $JournalPath -FiscalYear $creditYear
+                    if ($PassThru -and -not $WhatIfPreference) {
+                        Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $operation.CreditInvoiceNumber
+                    }
+                    return
+                }
+                if ((Get-LedgerContentHash -Path $filePath) -ne $operation.InvoiceHash) {
+                    throw "Invoice $InvoiceNumber has changed since its credit was planned. Recovery stopped."
+                }
+            }
+            Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath -Invoice $original -ExceptCredit
 
             switch ($original.Status) {
                 'Booked' { }
@@ -86,10 +128,10 @@ function Add-LedgerCreditInvoice {
             }
 
             # Resolve the fiscal year from the credit-note date unless one was supplied.
-            if (-not $FiscalYear) {
-                $FiscalYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $Date
-                if (-not $FiscalYear) {
-                    throw "No fiscal year covers the date $($Date.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
+            if (-not $creditYear) {
+                $creditYear = Find-FiscalYearForDate -JournalPath $JournalPath -Date $creditDate
+                if (-not $creditYear) {
+                    throw "No fiscal year covers the date $($creditDate.ToString('yyyy-MM-dd')). Create one with New-LedgerFiscalYear or specify -FiscalYear."
                 }
             }
 
@@ -113,87 +155,99 @@ function Add-LedgerCreditInvoice {
                 @{ Account = $account; Amount = [Math]::Round([decimal]$accountSums[$account], 2) }
             }
 
-            # Allocate the next journal-wide invoice number for the credit note.
-            $existing = Get-ChildItem -Path $invoiceDir -Filter 'inv*.txt' -File -ErrorAction SilentlyContinue
-            if ($existing) {
-                $maxNum = $existing |
-                    ForEach-Object { if ($_.BaseName -match '^inv(\d+)$') { [int]$Matches[1] } } |
-                    Measure-Object -Maximum |
-                    Select-Object -ExpandProperty Maximum
-                $creditNumber = $maxNum + 1
+            $creditNumber = if ($operation) { $operation.CreditInvoiceNumber } else { Get-LedgerNextInvoiceNumber -JournalPath $JournalPath }
+            $creditNotePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $creditNumber)
+            $operationId = if ($operation) { $operation.OperationId } else { [guid]::NewGuid() }
+            $entryParameters = @{
+                JournalPath = $JournalPath; FiscalYear = $creditYear; Date = $creditDate
+                Description = "Kreditfaktura $creditNumber - kreditering av faktura $InvoiceNumber"
+                Rows = @($entryRows); OperationId = $operationId
             }
-            else {
-                $creditNumber = 1
+            $existingVerification = $false
+            if ($operation) {
+                $verificationPath = Join-Path $JournalPath $creditYear ('ver{0:D4}.txt' -f $operation.VerificationNumber)
+                $existingVerification = Test-Path -LiteralPath $verificationPath
+                if ($existingVerification) { Assert-LedgerInvoicePostingVerification -Path $verificationPath -Operation $operation }
             }
-
-            $description = "Kreditfaktura $creditNumber - kreditering av faktura $InvoiceNumber"
+            elseif (Test-Path -LiteralPath $creditNotePath) {
+                throw "Credit invoice number $creditNumber is already in use. Recovery stopped."
+            }
+            $unsealedNumber = if ($existingVerification) { $operation.VerificationNumber } else { 0 }
+            Assert-LedgerInvoicePostingIntegrity -JournalPath $JournalPath -FiscalYear $creditYear -UnsealedVerification $unsealedNumber
+            if (-not $existingVerification) {
+                $lines = @(Get-LedgerVerificationLines @entryParameters)
+                $hash = Get-LedgerSha256Hex -Bytes ([Text.Encoding]::UTF8.GetBytes(($lines -join "`n") + "`n"))
+                if ($operation -and $hash -ne $operation.VerificationHash) {
+                    throw "Invoice $InvoiceNumber no longer produces the saved credit verification plan. Recovery stopped."
+                }
+                if (-not $operation) {
+                    $operation = [pscustomobject]@{
+                        OperationId = $operationId; InvoiceNumber = $InvoiceNumber; CreditInvoiceNumber = $creditNumber
+                        FiscalYear = $creditYear
+                        VerificationNumber = Get-LedgerNextVerificationNumber -JournalPath $JournalPath -FiscalYear $creditYear
+                        InvoiceHash = Get-LedgerContentHash -Path $filePath; VerificationHash = $hash; CreditDate = $creditDate
+                    }
+                }
+            }
 
             if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", "Create credit invoice $creditNumber")) {
                 return
             }
 
-            # Snapshot the original invoice and track the files this call creates so a
-            # failure part-way through the multi-file booking can be rolled back, leaving
-            # no half-applied credit (a booked verification without the paired invoice
-            # status updates, or vice versa).
-            $originalSnapshot = Get-Content -LiteralPath $filePath -Raw -Encoding UTF8
-            $creditNotePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $creditNumber)
-            $verification = $null
-
+            if (-not (Test-Path -LiteralPath $operationPath)) {
+                Save-LedgerInvoiceCreditOperation -Path $operationPath -Operation $operation
+            }
             try {
-                $verification = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-                    -Date $Date -Description $description -Rows @($entryRows) -PassThru
+                if (-not $existingVerification) {
+                    Write-LedgerVerification @entryParameters -ReservedNumber $operation.VerificationNumber -Confirm:$false
+                }
+                Complete-LedgerInvoicePostingVerification -JournalPath $JournalPath -Operation $operation
+                if ((Get-LedgerContentHash -Path $filePath) -ne $operation.InvoiceHash) {
+                    throw "Invoice $InvoiceNumber changed during crediting. Its saved verification was not removed."
+                }
 
-                # Persist the credit note with negated rows.
-                $creditRows = foreach ($row in $original.Rows) {
-                    [PSCustomObject]@{
-                        Account     = $row.Account
-                        Amount      = - [decimal]$row.Amount
-                        VatRate     = $row.VatRate
-                        VatAccount  = $row.VatAccount
-                        VatAmount   = - [decimal]$row.VatAmount
-                        Description = $row.Description
-                        Quantity    = if ($null -ne $row.Quantity) { - [decimal]$row.Quantity } else { $null }
-                        Unit        = $row.Unit
-                        UnitPrice   = $row.UnitPrice
+                if (Test-Path -LiteralPath $creditNotePath) {
+                    Assert-LedgerCreditNote -CreditNote (Read-LedgerInvoiceFile -Path $creditNotePath) -Original $original -Operation $operation
+                }
+                else {
+                    # Persist the credit note with negated rows.
+                    $creditRows = foreach ($row in $original.Rows) {
+                        [PSCustomObject]@{
+                            Account     = $row.Account
+                            Amount      = - [decimal]$row.Amount
+                            VatRate     = $row.VatRate
+                            VatAccount  = $row.VatAccount
+                            VatAmount   = - [decimal]$row.VatAmount
+                            Description = $row.Description
+                            Quantity    = if ($null -ne $row.Quantity) { - [decimal]$row.Quantity } else { $null }
+                            Unit        = $row.Unit
+                            UnitPrice   = $row.UnitPrice
+                        }
                     }
+                    Save-LedgerInvoiceFile -Invoice ([PSCustomObject]@{
+                            InvoiceNumber      = $creditNumber
+                            CustomerNumber     = $original.CustomerNumber
+                            InvoiceDate        = $creditDate
+                            DueDate            = $creditDate
+                            Description        = "Kreditfaktura för faktura $InvoiceNumber"
+                            Status             = 'Credited'
+                            ReceivableAccount  = $original.ReceivableAccount
+                            BookedVerification = $operation.VerificationNumber
+                            BookedFiscalYear   = $creditYear
+                            Rows               = @($creditRows)
+                            Payments           = @()
+                            FilePath           = $creditNotePath
+                        })
                 }
-
-                $creditNote = [PSCustomObject]@{
-                    InvoiceNumber      = $creditNumber
-                    CustomerNumber     = $original.CustomerNumber
-                    InvoiceDate        = $Date
-                    DueDate            = $Date
-                    Description        = "Kreditfaktura för faktura $InvoiceNumber"
-                    Status             = 'Credited'
-                    ReceivableAccount  = $original.ReceivableAccount
-                    BookedVerification = $verification.VerificationNumber
-                    BookedFiscalYear   = $FiscalYear
-                    Rows               = @($creditRows)
-                    Payments           = @()
-                    FilePath           = $creditNotePath
-                }
-                Save-LedgerInvoiceFile -Invoice $creditNote
 
                 # Mark the original as credited so the receivable nets to zero.
                 $original.Status = 'Credited'
                 Save-LedgerInvoiceFile -Invoice $original
             }
             catch {
-                # Undo any partial writes: remove the reversing verification and the
-                # credit note, and restore the original invoice to its pre-call content.
-                if ($verification) {
-                    $verPath = Join-Path (Join-Path $JournalPath $FiscalYear) ('ver' + $verification.VerificationNumber.ToString('0000') + '.txt')
-                    if (Test-Path -LiteralPath $verPath) {
-                        Remove-Item -LiteralPath $verPath -Force -ErrorAction SilentlyContinue
-                    }
-                    Remove-LedgerIntegrityTail -YearDir (Join-Path $JournalPath $FiscalYear) -Kind Verification -Key "$($verification.VerificationNumber)"
-                }
-                if (Test-Path -LiteralPath $creditNotePath) {
-                    Remove-Item -LiteralPath $creditNotePath -Force -ErrorAction SilentlyContinue
-                }
-                Set-Content -LiteralPath $filePath -Value $originalSnapshot -NoNewline -Encoding UTF8
-                throw
+                throw [InvalidOperationException]::new(
+                    "Could not confirm completion of the credit of invoice $InvoiceNumber. Keep '$operationPath' and its reserved numbers; rerun Add-LedgerCreditInvoice -JournalPath '$JournalPath' -InvoiceNumber $InvoiceNumber to recover safely. $($_.Exception.Message)",
+                    $_.Exception)
             }
 
             if ($PassThru) {

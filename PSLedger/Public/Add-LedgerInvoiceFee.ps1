@@ -37,6 +37,13 @@ sidointäkter).
 Optional. The fiscal year to post the verification into. If omitted, the fiscal
 year containing the charge date is used.
 
+.PARAMETER ChargeId
+Optional stable identity for the fee. Supply the same ChargeId to safely retry a
+call that may have been interrupted: a completed fee is not booked again and an
+unfinished one is completed. Without a ChargeId every call books a new fee, and
+an interrupted call blocks further changes to the invoice until it is resumed
+with the ChargeId shown in the error.
+
 .PARAMETER PassThru
 If specified, returns the updated invoice object.
 
@@ -50,8 +57,16 @@ Add-LedgerInvoiceFee -InvoiceNumber 1 -Amount 450 -Date '2024-05-20' -Account '3
 
 Books the 450 kr statutory late-payment compensation (förseningsersättning) for a
 business invoice.
+
+.EXAMPLE
+$chargeId = [guid]::NewGuid()
+Add-LedgerInvoiceFee -JournalPath .\Volvo.ledger -InvoiceNumber 12 -Amount 450 -ChargeId $chargeId
+
+Books late-payment compensation with a stable identity. Repeating the same
+command after an interruption completes the fee instead of booking it twice.
 #>
 function Add-LedgerInvoiceFee {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '', Justification = 'The shared charge writer performs ShouldProcess; common parameters are forwarded.')]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
@@ -73,20 +88,22 @@ function Add-LedgerInvoiceFee {
         [string]$FiscalYear,
 
         [Parameter()]
+        [ValidateScript({ if ($_ -eq [guid]::Empty) { throw 'ChargeId must not be an empty GUID.' }; $true })]
+        [guid]$ChargeId,
+
+        [Parameter()]
         [switch]$PassThru
     )
     process {
-        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-
-        if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", "Book fee of $Amount")) {
+        $parameters = @{} + $PSBoundParameters
+        $parameters.Remove('PassThru')
+        $parameters.JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
+        if (-not (Add-LedgerInvoiceChargeInternal @parameters -Type 'Fee')) {
             return
         }
 
-        Add-LedgerInvoiceChargeInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
-            -Type 'Fee' -Amount $Amount -Account $Account -Date $Date -FiscalYear $FiscalYear
-
         if ($PassThru) {
-            Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
+            Get-LedgerInvoice -JournalPath $parameters.JournalPath -InvoiceNumber $InvoiceNumber
         }
     }
 }

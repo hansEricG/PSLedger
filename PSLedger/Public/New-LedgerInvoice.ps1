@@ -180,43 +180,39 @@ function New-LedgerInvoice {
         $DueDate = $Date.AddDays($customer.PaymentTermsDays)
     }
 
-    $invoiceDir = Get-LedgerInvoiceDirectory -JournalPath $JournalPath -Create
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
+        $invoiceDir = Get-LedgerInvoiceDirectory -JournalPath $JournalPath -Create
 
-    # Determine the next invoice number by scanning existing files.
-    $existing = Get-ChildItem -Path $invoiceDir -Filter 'inv*.txt' -File -ErrorAction SilentlyContinue
-    if ($existing) {
-        $maxNum = $existing |
-            ForEach-Object { if ($_.BaseName -match '^inv(\d+)$') { [int]$Matches[1] } } |
-            Measure-Object -Maximum |
-            Select-Object -ExpandProperty Maximum
-        $nextNum = $maxNum + 1
-    }
-    else {
-        $nextNum = 1
-    }
+        # Determine the next invoice number, skipping numbers reserved by credit plans.
+        $nextNum = Get-LedgerNextInvoiceNumber -JournalPath $JournalPath
 
-    $filePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $nextNum)
+        $filePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $nextNum)
 
-    $invoice = [PSCustomObject]@{
-        InvoiceNumber      = $nextNum
-        CustomerNumber     = $CustomerNumber
-        InvoiceDate        = $Date
-        DueDate            = $DueDate
-        Description        = $Description
-        Status             = 'Draft'
-        ReceivableAccount  = $ReceivableAccount
-        BookedVerification = $null
-        BookedFiscalYear   = ''
-        Rows               = $normalizedRows
-        Payments           = @()
-        FilePath           = $filePath
-    }
+        $invoice = [PSCustomObject]@{
+            InvoiceNumber      = $nextNum
+            CustomerNumber     = $CustomerNumber
+            InvoiceDate        = $Date
+            DueDate            = $DueDate
+            Description        = $Description
+            Status             = 'Draft'
+            ReceivableAccount  = $ReceivableAccount
+            BookedVerification = $null
+            BookedFiscalYear   = ''
+            Rows               = $normalizedRows
+            Payments           = @()
+            FilePath           = $filePath
+        }
 
-    if ($PSCmdlet.ShouldProcess("Customer $CustomerNumber", "Create invoice $nextNum")) {
-        Save-LedgerInvoiceFile -Invoice $invoice
+        if ($PSCmdlet.ShouldProcess("Customer $CustomerNumber", "Create invoice $nextNum")) {
+            Save-LedgerInvoiceFile -Invoice $invoice
 
-        if ($PassThru) {
-            Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $nextNum
+            if ($PassThru) {
+                Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $nextNum
+            }
         }
     }
+    finally { Exit-LedgerJournalLock -Lock $journalLock }
 }

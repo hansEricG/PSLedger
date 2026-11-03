@@ -28,7 +28,7 @@ Describe 'Atomic file writes and rollback' {
         }
     }
 
-    Context 'Add-LedgerCreditInvoice rolls back a partial booking' {
+    Context 'Add-LedgerCreditInvoice recovers a partial booking' {
         BeforeEach {
             $JournalPath = Join-Path $TestDrive ([guid]::NewGuid().ToString('N') + '.ledger')
             New-LedgerJournal -Path $JournalPath -Name 'Faktura AB' -CompanyType AB
@@ -42,27 +42,33 @@ Describe 'Atomic file writes and rollback' {
             Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1
         }
 
-        It 'Leaves the original invoice, verifications and invoice files unchanged when a save fails' {
+        It 'Keeps the reserved verification and completes the same credit when repeated after a failed save' {
             # Force the credit-note save to fail after the reversing verification
-            # has been booked, so the catch/rollback path runs.
-            Mock -ModuleName PSLedger Save-LedgerInvoiceFile { throw 'simulated write failure' }
+            # has been booked, then repeat the command without the failure.
+            $env:PSLEDGER_TEST_FAIL_SAVE = '1'
+            try {
+                $script:realSave = & (Get-Module PSLedger) { (Get-Command Save-LedgerInvoiceFile).ScriptBlock }
+                Mock -ModuleName PSLedger Save-LedgerInvoiceFile { & $script:realSave -Invoice $Invoice }
+                Mock -ModuleName PSLedger Save-LedgerInvoiceFile { throw 'simulated write failure' } -ParameterFilter { $env:PSLEDGER_TEST_FAIL_SAVE }
 
-            { Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-03-20' } |
-                Should -Throw '*simulated write failure*'
+                { Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-03-20' } |
+                    Should -Throw '*rerun Add-LedgerCreditInvoice*simulated write failure*'
+            }
+            finally { Remove-Item Env:\PSLEDGER_TEST_FAIL_SAVE -ErrorAction SilentlyContinue }
 
-            # Original invoice is still the posted receivable, not credited.
-            $original = Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1
-            $original.Status | Should -Be 'Booked'
-
-            # No credit note file was left behind.
+            (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).Status | Should -Be 'Booked'
             Test-Path (Join-Path $JournalPath 'invoices' 'inv0002.txt') | Should -BeFalse
+            Test-Path (Join-Path $JournalPath '2024-01_2024-12' 'ver0002.txt') | Should -BeTrue
+            { Add-LedgerInvoicePayment -JournalPath $JournalPath -InvoiceNumber 1 -Amount 100 -Date '2024-03-21' } |
+                Should -Throw '*unfinished credit*Add-LedgerCreditInvoice*'
 
-            # The reversing verification was rolled back: only the original posting remains.
-            $entries = @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12')
-            $entries.Count | Should -Be 1
-            Test-Path (Join-Path $JournalPath '2024-01_2024-12' 'ver0002.txt') | Should -BeFalse
+            $credit = Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -PassThru
 
-            # The rolled-back verification is also removed from the integrity chain.
+            $credit.InvoiceNumber | Should -Be 2
+            $credit.BookedVerification | Should -Be 2
+            $credit.InvoiceDate | Should -Be ([datetime]'2024-03-20')
+            (Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber 1).Status | Should -Be 'Credited'
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Count | Should -Be 2
             (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Status | Should -Be 'Valid'
         }
     }

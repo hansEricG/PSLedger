@@ -406,7 +406,12 @@ invoice-status writes. Other multi-file workflows still need equivalent protecti
 - [x] Make supplier invoice posting resumable through typed plans in
       `supplierinvoices/posting/`, sharing the customer-invoice recovery path,
       verification reservation, closed-year rules and archive retention.
-- [ ] Define recoverable operation boundaries for remaining invoice/payment/payroll
+- [x] Make customer-invoice charges (fee, interest, booked reminder fee) resumable
+      with an optional `ChargeId`, and credit notes resumable forward from a plan
+      that reserves the credit-note number and the verification (replacing rollback).
+      Unfinished charges/credits block conflicting invoice changes. Cover process
+      termination, closed years, conflicting inputs and archive retention.
+- [ ] Define recoverable operation boundaries for remaining payroll
       posting, SIE import, chart conversion and fiscal-year closing.
 - [ ] Extend durable operation identity and progress to those workflows without
       losing or duplicating bookkeeping.

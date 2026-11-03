@@ -464,6 +464,61 @@ Describe 'File format contract' {
             $verification | Should -Match "(?m)^OperationId: $([regex]::Escape($fields.OperationId))\r?$"
         }
 
+        It 'Should write a typed <Kind> plan for a customer invoice' -ForEach @(
+            @{ Kind = 'charge' }
+            @{ Kind = 'credit' }
+        ) {
+            $journal = Join-Path $TestDrive "adjustment-$Kind.ledger"
+            Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse
+            $hashText = {
+                param([string]$Text)
+                $bytes = [Text.Encoding]::UTF8.GetBytes($Text.Replace("`r`n", "`n"))
+                [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+            }
+            Invoke-LedgerInvoicePosting -JournalPath $journal -InvoiceNumber 2
+            $invoicePath = Join-Path $journal 'invoices' 'inv0002.txt'
+            $invoiceHash = & $hashText (Get-Content -LiteralPath $invoicePath -Raw -Encoding UTF8)
+            if ($Kind -eq 'charge') {
+                $id = New-Guid
+                $invoice = Add-LedgerInvoiceReminder -JournalPath $journal -InvoiceNumber 2 -Fee 60 -BookFee -ChargeId $id -Date '2024-06-01' -PassThru
+                $planPath = Join-Path $journal 'invoices' 'charges' "$id.txt"
+                $number = (Get-LedgerInvoice -JournalPath $journal -InvoiceNumber 2).Charges[0].VerificationNumber
+            }
+            else {
+                $credit = Add-LedgerCreditInvoice -JournalPath $journal -InvoiceNumber 2 -Date '2024-06-01' -PassThru
+                $planPath = Join-Path $journal 'invoices' 'credits' 'inv0002.txt'
+                $number = $credit.BookedVerification
+            }
+            $lines = @(Get-Content -LiteralPath $planPath -Encoding UTF8)
+            $fields = @{}
+            foreach ($line in $lines) {
+                if ($line -match '^([A-Za-z]+):\t(.+)$') { $fields[$Matches[1]] = $Matches[2] }
+            }
+            $verification = Get-Content -LiteralPath (Join-Path $journal $Y ('ver{0:D4}.txt' -f $number)) -Raw -Encoding UTF8
+            $fields.FormatVersion | Should -Be '1'
+            $fields.InvoiceNumber | Should -Be '2'
+            $fields.FiscalYear | Should -Be $Y
+            $fields.VerificationNumber | Should -Be "$number"
+            $fields.InvoiceHash | Should -Be $invoiceHash
+            $fields.VerificationHash | Should -Be (& $hashText $verification)
+            $verification | Should -Match "(?m)^OperationId: $([regex]::Escape($fields.OperationId))\r?$"
+            if ($Kind -eq 'charge') {
+                $lines[0] | Should -Be '; PSLedger customer invoice charge'
+                $fields.OperationId | Should -Be "$id"
+                $fields.ChargeType | Should -Be 'Fee'
+                $fields.ChargeDate | Should -Be '2024-06-01'
+                $fields.ChargeAmount | Should -Be '60'
+                $fields.ChargeAccount | Should -Be '3590'
+                $fields.ReminderCount | Should -Be "$($invoice.ReminderCount)"
+            }
+            else {
+                $lines[0] | Should -Be '; PSLedger customer credit invoice'
+                $fields.CreditInvoiceNumber | Should -Be "$($credit.InvoiceNumber)"
+                $fields.CreditDate | Should -Be '2024-06-01'
+            }
+            (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
+        }
+
         It 'Should bind a bank posting plan to its source, verification and counterpart' {
             $journal = Join-Path $TestDrive 'bank-posting.ledger'
             Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse

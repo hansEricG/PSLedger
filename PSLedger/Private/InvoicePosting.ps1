@@ -109,7 +109,9 @@ function Get-LedgerInvoicePostingReservation {
             if ($operation.FiscalYear -eq $FiscalYear) { $operation.VerificationNumber }
         }
     }
-    foreach ($operation in Get-LedgerInvoicePaymentOperation -JournalPath $JournalPath) {
+    foreach ($operation in @(Get-LedgerInvoicePaymentOperation -JournalPath $JournalPath) +
+        @(Get-LedgerInvoiceChargeOperation -JournalPath $JournalPath) +
+        @(Get-LedgerInvoiceCreditOperation -JournalPath $JournalPath)) {
         if ($operation.FiscalYear -eq $FiscalYear) { $operation.VerificationNumber }
     }
 }

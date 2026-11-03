@@ -46,6 +46,14 @@ The interest income account. Defaults to '8310' (Ränteintäkter).
 Optional. The fiscal year to post the verification into. If omitted, the fiscal
 year containing the charge date is used.
 
+.PARAMETER ChargeId
+Optional stable identity for the interest charge. Supply the same ChargeId to
+safely retry a call that may have been interrupted: completed interest is not
+booked again, and an unfinished charge is completed with its originally planned
+amount. Without a ChargeId every call books new interest, and an interrupted call
+blocks further changes to the invoice until it is resumed with the ChargeId shown
+in the error.
+
 .PARAMETER PassThru
 If specified, returns the updated invoice object.
 
@@ -59,8 +67,16 @@ days it is overdue and books it (debit 1510, credit 8310).
 Add-LedgerInvoiceInterest -InvoiceNumber 1 -Amount 250
 
 Books an explicit 250 kr interest charge on invoice 1.
+
+.EXAMPLE
+$chargeId = [guid]::NewGuid()
+Add-LedgerInvoiceInterest -JournalPath .\Volvo.ledger -InvoiceNumber 12 -AnnualRate 0.105 -Date '2024-06-01' -ChargeId $chargeId
+
+Books interest with a stable identity, so the same command can be repeated after
+an interruption without booking the interest twice.
 #>
 function Add-LedgerInvoiceInterest {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSShouldProcess', '', Justification = 'The shared charge writer performs ShouldProcess; common parameters are forwarded.')]
     [CmdletBinding(SupportsShouldProcess)]
     param (
         [Parameter()]
@@ -86,47 +102,22 @@ function Add-LedgerInvoiceInterest {
         [string]$FiscalYear,
 
         [Parameter()]
+        [ValidateScript({ if ($_ -eq [guid]::Empty) { throw 'ChargeId must not be an empty GUID.' }; $true })]
+        [guid]$ChargeId,
+
+        [Parameter()]
         [switch]$PassThru
     )
     process {
-        $JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
-        $journalLock = $null
-        try {
-            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
-            Assert-LedgerJournalSchema -Path $JournalPath -Write
-            $invoiceDir = Get-LedgerInvoiceDirectory -JournalPath $JournalPath
-            $filePath = Join-Path $invoiceDir (Get-LedgerInvoiceFileName -InvoiceNumber $InvoiceNumber)
-            if (-not (Test-Path $filePath)) {
-                throw "Invoice $InvoiceNumber does not exist."
-            }
-            $invoice = Read-LedgerInvoiceFile -Path $filePath
-            Assert-LedgerNoPendingInvoicePayment -JournalPath $JournalPath -Invoice $invoice
-
-            if (-not $PSBoundParameters.ContainsKey('Amount')) {
-                if (-not $PSBoundParameters.ContainsKey('AnnualRate')) {
-                    throw "Specify either -AnnualRate (to calculate interest) or -Amount (to book an explicit amount)."
-                }
-                $daysOverdue = [int]([datetime]$Date - [datetime]$invoice.DueDate).TotalDays
-                if ($daysOverdue -le 0) {
-                    throw "Invoice $InvoiceNumber is not overdue on $($Date.ToString('yyyy-MM-dd')) (due $($invoice.DueDate.ToString('yyyy-MM-dd'))). No interest to charge."
-                }
-                $Amount = [Math]::Round([decimal]$invoice.RemainingAmount * $AnnualRate * $daysOverdue / 365, 2)
-                if ($Amount -le 0) {
-                    throw "The calculated interest for invoice $InvoiceNumber is zero. Nothing to book."
-                }
-            }
-
-            if (-not $PSCmdlet.ShouldProcess("Invoice $InvoiceNumber", "Book interest of $Amount")) {
-                return
-            }
-
-            Add-LedgerInvoiceChargeInternal -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber `
-                -Type 'Interest' -Amount $Amount -Account $Account -Date $Date -FiscalYear $FiscalYear
-
-            if ($PassThru) {
-                Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $InvoiceNumber
-            }
+        $parameters = @{} + $PSBoundParameters
+        $parameters.Remove('PassThru')
+        $parameters.JournalPath = Resolve-LedgerJournalPath -JournalPath $JournalPath -SchemaCheck Write
+        if (-not (Add-LedgerInvoiceChargeInternal @parameters -Type 'Interest')) {
+            return
         }
-        finally { Exit-LedgerJournalLock -Lock $journalLock }
+
+        if ($PassThru) {
+            Get-LedgerInvoice -JournalPath $parameters.JournalPath -InvoiceNumber $InvoiceNumber
+        }
     }
 }

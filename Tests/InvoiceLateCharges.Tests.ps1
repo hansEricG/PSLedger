@@ -190,3 +190,76 @@ Describe 'Invoice charge persistence' {
         }
     }
 }
+
+Describe 'Recoverable invoice charges' {
+    BeforeEach {
+        $JournalPath = New-ChargeTestJournal -Root $TestDrive
+        $n = New-PostedInvoice -JournalPath $JournalPath
+        $chargeId = [guid]'33333333-3333-3333-3333-333333333333'
+    }
+
+    It 'Should book a fee only once when the same ChargeId is repeated' {
+        Add-LedgerInvoiceFee -JournalPath $JournalPath -InvoiceNumber $n -Amount 60 -Date '2024-05-01' -ChargeId $chargeId
+        $inv = Add-LedgerInvoiceFee -JournalPath $JournalPath -InvoiceNumber $n -Amount 60 -Date '2024-05-01' -ChargeId $chargeId -PassThru
+        @($inv.Charges).Count | Should -Be 1
+        @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Count | Should -Be 2
+        Test-Path (Join-Path $JournalPath 'invoices' 'charges' "$chargeId.txt") | Should -BeTrue
+    }
+
+    It 'Should reject a ChargeId reused with different inputs' {
+        Add-LedgerInvoiceFee -JournalPath $JournalPath -InvoiceNumber $n -Amount 60 -Date '2024-05-01' -ChargeId $chargeId
+        { Add-LedgerInvoiceFee -JournalPath $JournalPath -InvoiceNumber $n -Amount 450 -Date '2024-05-01' -ChargeId $chargeId } |
+            Should -Throw '*different charge inputs*'
+        { Add-LedgerInvoiceInterest -JournalPath $JournalPath -InvoiceNumber $n -Amount 60 -Date '2024-05-01' -ChargeId $chargeId } |
+            Should -Throw '*different charge inputs*'
+    }
+
+    It 'Should write no plan or verification with -WhatIf' {
+        Add-LedgerInvoiceFee -JournalPath $JournalPath -InvoiceNumber $n -Amount 60 -Date '2024-05-01' -WhatIf
+        Add-LedgerInvoiceReminder -JournalPath $JournalPath -InvoiceNumber $n -Fee 60 -BookFee -Date '2024-05-01' -WhatIf
+        Test-Path (Join-Path $JournalPath 'invoices' 'charges') | Should -BeFalse
+        $inv = Get-LedgerInvoice -JournalPath $JournalPath -InvoiceNumber $n
+        $inv.ChargesTotal | Should -Be 0
+        $inv.ReminderCount | Should -Be 0
+    }
+
+    It 'Should reject -ChargeId on a reminder without -BookFee' {
+        { Add-LedgerInvoiceReminder -JournalPath $JournalPath -InvoiceNumber $n -ChargeId $chargeId } | Should -Throw '*only be used together with -BookFee*'
+    }
+
+    Context 'Interrupted charge' {
+        BeforeEach {
+            $script:failCharge = $true
+            $script:realSave = & (Get-Module PSLedger) { (Get-Command Save-LedgerInvoiceFile).ScriptBlock }
+            Mock -ModuleName PSLedger Save-LedgerInvoiceFile { & $script:realSave -Invoice $Invoice }
+            Mock -ModuleName PSLedger Save-LedgerInvoiceFile { throw 'simulated interruption' } -ParameterFilter { $script:failCharge }
+            { Add-LedgerInvoiceInterest -JournalPath $JournalPath -InvoiceNumber $n -AnnualRate 0.1 -Date '2024-06-14' } |
+                Should -Throw '*retry Add-LedgerInvoiceInterest*-ChargeId*'
+            $script:failCharge = $false
+            $plan = Get-ChildItem -LiteralPath (Join-Path $JournalPath 'invoices' 'charges') -File
+            $savedId = [guid]$plan.BaseName
+        }
+
+        It 'Should block other changes to the invoice and name the ChargeId' {
+            { Add-LedgerInvoiceFee -JournalPath $JournalPath -InvoiceNumber $n -Amount 60 -Date '2024-06-15' } |
+                Should -Throw "*unfinished charge*-ChargeId '$savedId'*"
+            { Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber $n } | Should -Throw '*unfinished charge*'
+        }
+
+        It 'Should complete the saved verification with the planned amount' {
+            $inv = Add-LedgerInvoiceInterest -JournalPath $JournalPath -InvoiceNumber $n -AnnualRate 0.1 -ChargeId $savedId -PassThru
+            @($inv.Charges).Count | Should -Be 1
+            $inv.Charges[0].Amount | Should -Be 208.9
+            $inv.Charges[0].Date | Should -Be ([datetime]'2024-06-14')
+            $inv.Charges[0].VerificationNumber | Should -Be 2
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Count | Should -Be 2
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Status | Should -Be 'Valid'
+        }
+
+        It 'Should stop when the invoice changed after planning' {
+            $file = Join-Path $JournalPath 'invoices' 'inv0001.txt'
+            (Get-Content -LiteralPath $file -Raw) -replace 'DueDate:\t\S+', "DueDate:`t2024-12-31" | Set-Content -LiteralPath $file -NoNewline
+            { Add-LedgerInvoiceInterest -JournalPath $JournalPath -InvoiceNumber $n -ChargeId $savedId } | Should -Throw '*changed since charge*'
+        }
+    }
+}

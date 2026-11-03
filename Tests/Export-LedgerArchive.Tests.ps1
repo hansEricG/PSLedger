@@ -177,6 +177,32 @@ Describe 'Export-LedgerArchive' {
             (Get-FileHash -LiteralPath $archived).Hash | Should -Be (Get-FileHash -LiteralPath $original).Hash
         }
 
+        It 'Includes an earlier invoice and its <Kind> plan when the <Kind> belongs to the archived year' -ForEach @(
+            @{ Kind = 'charge' }
+            @{ Kind = 'credit' }
+        ) {
+            $journal = New-TestLedger -Root $TestDrive -Customers @(@{ Number = '10'; Name = 'Volvo AB' })
+            Set-LedgerJournal -JournalPath $journal -OrgNumber '556677-8899'
+            New-TestPostedInvoice -JournalPath $journal | Out-Null
+            New-LedgerFiscalYear -JournalPath $journal -StartDate '2025-01-01' -EndDate '2025-12-31'
+            if ($Kind -eq 'charge') {
+                Mock Write-LedgerVerification -ModuleName PSLedger { throw 'Injected interruption after plan' }
+                $id = New-Guid
+                { Add-LedgerInvoiceFee -JournalPath $journal -InvoiceNumber 1 -Amount 60 -Date '2025-01-20' -ChargeId $id } | Should -Throw '*retry*'
+                $relative = Join-Path 'invoices' 'charges' "$id.txt"
+            }
+            else {
+                Add-LedgerCreditInvoice -JournalPath $journal -InvoiceNumber 1 -Date '2025-01-20'
+                $relative = Join-Path 'invoices' 'credits' 'inv0001.txt'
+            }
+            $package = Export-LedgerArchive -JournalPath $journal -FiscalYear '2025-01_2025-12' -AsDirectory -Force -WarningAction SilentlyContinue
+            $archivedJournal = Join-Path $package.FullName 'journal'
+            Test-Path -LiteralPath (Join-Path $archivedJournal 'invoices' 'inv0001.txt') | Should -BeTrue
+            if ($Kind -eq 'credit') { Test-Path -LiteralPath (Join-Path $archivedJournal 'invoices' 'inv0002.txt') | Should -BeTrue }
+            (Get-FileHash -LiteralPath (Join-Path $archivedJournal $relative)).Hash |
+                Should -Be (Get-FileHash -LiteralPath (Join-Path $journal $relative)).Hash
+        }
+
         It 'Leaves out invoices, payslips and bank statements of other years' {
             $dir = Export-LedgerArchive -JournalPath $J -FiscalYear $ClosedYear -AsDirectory
 

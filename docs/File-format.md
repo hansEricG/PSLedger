@@ -113,8 +113,10 @@ are named by a prefix and a number zero-padded to at least four digits.
 - A new document gets the highest existing number plus one, or 1 if there is
   none. For verifications, the maximum also includes numbers reserved by
   `invoices/posting/invNNNN.txt`, `supplierinvoices/posting/supNNNN.txt`,
-  `invoices/payments/<guid>.txt`, `supplierinvoices/payments/<guid>.txt` and
-  `bank/posting/txnN.txt`.
+  `invoices/payments/<guid>.txt`, `supplierinvoices/payments/<guid>.txt`,
+  `invoices/charges/<guid>.txt`, `invoices/credits/invNNNN.txt` and
+  `bank/posting/txnN.txt`. For customer invoices, the maximum also includes the
+  credit-note numbers reserved by `invoices/credits/invNNNN.txt`.
   Recovery uses its already reserved number,
   even if later numbers have since been written. Gaps are allowed.
 - Verifications are numbered per fiscal year. Every other kind of document is
@@ -188,6 +190,7 @@ to store their own data SHOULD use their own files.
 │   └── documents/              other documents for the year
 ├── recurring/<name>.txt        recurring entry templates
 ├── invoices/inv0001.txt        customer invoices and credit notes
+├── invoices/{posting,payments,charges,credits}/  customer-invoice recovery plans
 ├── supplierinvoices/sup0001.txt
 ├── payslips/pay0001.txt
 ├── bank/
@@ -695,12 +698,61 @@ Reset clears only the bank link, never the plan: only the same payment may be
 relinked. Duplicate transaction IDs or conflicting plans are rejected.
 
 Existing payment plans without bank fields remain supported and are not
-automatically associated with a bank transaction. Supplier invoice posting
-does not yet have end-to-end recovery. Rule/account bank plans are described below.
+automatically associated with a bank transaction. Rule/account bank plans are
+described below.
+
+### `invoices/charges/<guid>.txt` — customer-invoice charge plans
+
+`Add-LedgerInvoiceFee`, `Add-LedgerInvoiceInterest` and
+`Add-LedgerInvoiceReminder -BookFee` save this immutable plan before writing the
+charge verification. The first line is `; PSLedger customer invoice charge`.
+It uses the posting-plan fields above. `OperationId` is the `ChargeId` and
+matches the filename. `InvoiceHash` covers the invoice immediately before the
+charge. Additional fields:
+
+| Key | Required | Value |
+|-----|----------|-------|
+| `ChargeType` | yes | `Fee` or `Interest`. |
+| `ChargeDate` | yes | Charge date, `yyyy-MM-dd`. |
+| `ChargeAmount` | yes | Positive invariant decimal, at most two fraction digits. |
+| `ChargeAccount` | yes | Income account credited, digits only. |
+| `ReminderCount` | no | `Fee` only: the invoice's reminder count after a booked reminder fee. |
+
+The charge row on the invoice is matched by fiscal year and verification number;
+conflicting type, date, amount or account stop recovery. A retry with the same
+`ChargeId` resumes the plan, or returns the invoice if the charge is recorded.
+Explicit conflicting inputs are rejected. Interest resumes with the planned
+amount instead of recalculating it. Without `ChargeId`, each call generates a
+new ID. An unfinished charge blocks payments, other charges, reminders and
+credits on that invoice and the error names the resume command. Plans follow
+the posting-plan reservation, closed-year, retention and archive rules.
+
+### `invoices/credits/invNNNN.txt` — customer credit plans
+
+`Add-LedgerCreditInvoice` saves this immutable plan before writing the reversing
+verification. The filename number is the **original** invoice. The first line
+is `; PSLedger customer credit invoice`. It uses the posting-plan fields above,
+where `InvoiceHash` covers the original invoice before crediting. Additional
+required fields:
+
+| Key | Value |
+|-----|-------|
+| `CreditInvoiceNumber` | Reserved credit-note number, unique among credit plans. |
+| `CreditDate` | Credit date, `yyyy-MM-dd`. |
+
+Recovery is forward-only: repeating the command writes or validates the
+verification, its seal, the credit note (`Status: Credited`, negated rows,
+`Kreditfaktura för faktura N`, total equal to the negated original total) and
+finally marks the original `Credited`. A different explicit date or fiscal year
+is rejected. Once the original is `Credited`, a repeat validates the result and
+returns the existing credit note. An unfinished credit blocks payments and
+charges on the invoice. Archives include the plan when either the original or
+the credit note is included.
 
 ### `invoices/invNNNN.txt` — customer invoices
 
-Customer invoices and credit notes share one number series.
+Customer invoices and credit notes share one number series. Numbers reserved by
+credit plans are skipped when allocating new invoice numbers.
 
 ```
 ; PSLedger Invoice

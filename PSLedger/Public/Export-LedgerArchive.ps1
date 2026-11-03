@@ -163,10 +163,16 @@ function Export-LedgerArchive {
 
             $invoices = 0
             $paymentOperations = @(Get-LedgerInvoicePaymentOperation -JournalPath $journalDir)
+            $chargeOperations = @(Get-LedgerInvoiceChargeOperation -JournalPath $journalDir)
+            $creditOperations = @(Get-LedgerInvoiceCreditOperation -JournalPath $journalDir)
             foreach ($inv in @(Get-LedgerInvoice -JournalPath $journalDir)) {
                 $invoicePayments = @($paymentOperations | Where-Object { $_.InvoiceType -eq 'Customer' -and $_.InvoiceNumber -eq $inv.InvoiceNumber })
+                $invoiceCharges = @($chargeOperations | Where-Object InvoiceNumber -eq $inv.InvoiceNumber)
+                $invoiceCredits = @($creditOperations | Where-Object { $_.InvoiceNumber -eq $inv.InvoiceNumber -or $_.CreditInvoiceNumber -eq $inv.InvoiceNumber })
                 if ((& $inYear $inv.InvoiceDate) -or $inv.BookedFiscalYear -eq $FiscalYear -or
-                    @($inv.Payments | Where-Object { $_.FiscalYear -eq $FiscalYear }).Count -gt 0 -or $FiscalYear -in $invoicePayments.FiscalYear) {
+                    @($inv.Payments | Where-Object { $_.FiscalYear -eq $FiscalYear }).Count -gt 0 -or $FiscalYear -in $invoicePayments.FiscalYear -or
+                    @($inv.Charges | Where-Object { $_.FiscalYear -eq $FiscalYear }).Count -gt 0 -or $FiscalYear -in $invoiceCharges.FiscalYear -or
+                    $FiscalYear -in $invoiceCredits.FiscalYear) {
                     & $copyDocument $inv.FilePath 'invoices'
                     $postingPath = Get-LedgerInvoicePostingPath -JournalPath $journalDir -InvoiceNumber $inv.InvoiceNumber
                     if (Test-Path -LiteralPath $postingPath -PathType Leaf) {
@@ -175,6 +181,12 @@ function Export-LedgerArchive {
                     foreach ($operation in $invoicePayments) {
                         $paymentPath = Join-Path $journalDir 'invoices' 'payments' "$($operation.OperationId).txt"
                         & $copyDocument $paymentPath (Join-Path 'invoices' 'payments')
+                    }
+                    foreach ($operation in $invoiceCharges) {
+                        & $copyDocument (Join-Path $journalDir 'invoices' 'charges' "$($operation.OperationId).txt") (Join-Path 'invoices' 'charges')
+                    }
+                    foreach ($operation in $invoiceCredits) {
+                        & $copyDocument (Get-LedgerInvoiceCreditPath -JournalPath $journalDir -InvoiceNumber $operation.InvoiceNumber) (Join-Path 'invoices' 'credits')
                     }
                     $invoices++
                 }

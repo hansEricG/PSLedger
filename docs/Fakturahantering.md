@@ -227,6 +227,13 @@ kundreskontran nettar till noll för paret. Bara en faktura med status `Booked`
 kan krediteras – ett utkast måste bokföras först (eller raderas), och en faktura
 med betalningar måste hanteras via betalningarna.
 
+Innan något skrivs sparas en plan i `invoices/credits/inv0001.txt` som reserverar
+kreditfakturans nummer och verifikationsnumret. Avbryts krediteringen, kör samma
+kommando igen så slutförs den med det planerade datumet. Om fakturan redan är
+krediterad returneras den befintliga kreditfakturan. Så länge en kreditering är
+ofullständig går det inte att registrera betalningar eller avgifter på fakturan.
+Ta aldrig bort planfilerna.
+
 ### 9. Skicka betalningspåminnelse
 
 `Add-LedgerInvoiceReminder` registrerar en påminnelse på en bokförd men inte
@@ -297,6 +304,22 @@ Ger verifikationen:
 `-Account` styr intäktskontot (standard `3590`). Samma sak sker automatiskt när
 du kör `Add-LedgerInvoiceReminder ... -Fee 60 -BookFee`.
 
+Vill du kunna återuppta en avgift säkert efter ett avbrott, ange ett eget
+`-ChargeId` (samma princip som `-PaymentId` för betalningar):
+
+```powershell
+$chargeId = New-Guid   # spara id:t innan du bokför
+Add-LedgerInvoiceFee -InvoiceNumber 1 -Amount 60 -Date '2024-05-01' -ChargeId $chargeId
+# Upprepa med samma id: återupptar, eller returnerar fakturan om avgiften redan är bokförd
+Add-LedgerInvoiceFee -InvoiceNumber 1 -Amount 60 -Date '2024-05-01' -ChargeId $chargeId
+```
+
+Planen sparas i `invoices/charges/<guid>.txt`. Utan `-ChargeId` blir varje anrop
+en ny avgift. En ofullständig avgift spärrar andra ändringar av fakturan, och
+felmeddelandet visar vilket kommando (med id) som återupptar den.
+`-ChargeId` fungerar också för `Add-LedgerInvoiceInterest` och för
+`Add-LedgerInvoiceReminder -BookFee`.
+
 ### 12. Bokföra dröjsmålsränta
 
 `Add-LedgerInvoiceInterest` beräknar och bokför dröjsmålsränta. Räntan räknas ut
@@ -321,7 +344,8 @@ Ger t.ex. verifikationen:
 
 Ange antingen `-AnnualRate` eller `-Amount`. En faktura som inte är förfallen
 (förfallodatum efter `-Date`) kan inte räntedebiteras. Liksom avgifter höjer
-räntan den öppna fordran och stämmer mot saldot på 1510.
+räntan den öppna fordran och stämmer mot saldot på 1510. Med `-ChargeId`
+återupptas räntan med det planerade beloppet, utan ny beräkning.
 
 ## Avstämning mot huvudboken
 

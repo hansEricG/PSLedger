@@ -28,6 +28,7 @@
 . $PSScriptRoot\Private\InvoicePosting.ps1
 . $PSScriptRoot\Private\InvoicePayment.ps1
 . $PSScriptRoot\Private\InvoicePaymentCommand.ps1
+. $PSScriptRoot\Private\InvoiceAdjustment.ps1
 . $PSScriptRoot\Private\SupplierInvoiceStore.ps1
 . $PSScriptRoot\Private\OcrReference.ps1
 . $PSScriptRoot\Private\InvoiceCharge.ps1
