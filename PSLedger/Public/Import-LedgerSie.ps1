@@ -29,6 +29,14 @@ balances do not sum to zero by a small rounding difference (within
 -RoundingTolerance), the difference is posted to -RoundingAccount; a larger
 difference aborts the import.
 
+The whole file is validated before anything is written, and the import runs
+under the journal write lock. Before writing the opening balance and the
+verifications, the import saves a plan in <year>/import.txt that reserves the
+verification numbers. If the import is interrupted, run the same command with
+the same file again: verifications already written are checked and kept, and
+the rest are added with their reserved numbers. A changed SIE file stops the
+recovery. The plan is removed when the import completes.
+
 .PARAMETER JournalPath
 The path to an existing journal directory.
 
@@ -110,43 +118,48 @@ function Import-LedgerSie {
             throw $msg
         }
 
+        $sourceHash = Get-LedgerSha256Hex -Bytes ([IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $Path).ProviderPath))
         $text = Read-SieText -Path $Path
         $records = ConvertFrom-SieText -Text $text
+        $invariant = [System.Globalization.CultureInfo]::InvariantCulture
 
-        if (-not $PSCmdlet.ShouldProcess($Path, 'Import SIE file')) {
-            return
-        }
+        $journalLock = $null
+        $planReady = $false
+        try {
+            $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+            Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-        # Resolve fiscal year: use parameter, fall back to #RAR 0, then latest existing
-        if (-not $FiscalYear) {
-            $rarRecord = $records | Where-Object { $_.Tag -eq 'RAR' -and $_.Fields.Count -ge 3 -and $_.Fields[0] -eq '0' } | Select-Object -First 1
-            if ($rarRecord) {
-                $rarStart = [datetime]::ParseExact($rarRecord.Fields[1], 'yyyyMMdd', [System.Globalization.CultureInfo]::InvariantCulture)
-                $rarEnd = [datetime]::ParseExact($rarRecord.Fields[2], 'yyyyMMdd', [System.Globalization.CultureInfo]::InvariantCulture)
-                $FiscalYear = '{0}_{1}' -f $rarStart.ToString('yyyy-MM'), $rarEnd.ToString('yyyy-MM')
-
-                # Create fiscal year if it does not exist
-                $YearDir = Join-Path $JournalPath $FiscalYear
-                if (-not (Test-Path $YearDir -PathType Container)) {
-                    # Guard against creating a gap in the fiscal year series.
-                    if (-not $Force) {
+            # Everything is validated before the first write, so an invalid file
+            # leaves the journal untouched.
+            $createYear = $false
+            $yearStart = $null
+            $yearEnd = $null
+            if (-not $FiscalYear) {
+                $rarRecord = $records | Where-Object { $_.Tag -eq 'RAR' -and $_.Fields.Count -ge 3 -and $_.Fields[0] -eq '0' } | Select-Object -First 1
+                if ($rarRecord) {
+                    $yearStart = [datetime]::ParseExact($rarRecord.Fields[1], 'yyyyMMdd', $invariant)
+                    $yearEnd = [datetime]::ParseExact($rarRecord.Fields[2], 'yyyyMMdd', $invariant)
+                    $FiscalYear = '{0}_{1}' -f $yearStart.ToString('yyyy-MM'), $yearEnd.ToString('yyyy-MM')
+                    $createYear = -not (Test-Path (Join-Path $JournalPath $FiscalYear) -PathType Container)
+                    if ($createYear -and -not $Force) {
+                        # Guard against creating a gap in the fiscal year series.
                         $existingYears = @(Get-LedgerFiscalYear -JournalPath $JournalPath)
                         if ($existingYears.Count -gt 0) {
                             $gapStart = $null
                             $gapEnd = $null
                             $closestBefore = $existingYears |
-                                Where-Object { [datetime]$_.EndDate -lt $rarStart } |
+                                Where-Object { [datetime]$_.EndDate -lt $yearStart } |
                                 Sort-Object { [datetime]$_.EndDate } | Select-Object -Last 1
                             $closestAfter = $existingYears |
-                                Where-Object { [datetime]$_.StartDate -gt $rarEnd } |
+                                Where-Object { [datetime]$_.StartDate -gt $yearEnd } |
                                 Sort-Object { [datetime]$_.StartDate } | Select-Object -First 1
 
-                            if ($closestBefore -and ([datetime]$closestBefore.EndDate).AddDays(1) -lt $rarStart) {
+                            if ($closestBefore -and ([datetime]$closestBefore.EndDate).AddDays(1) -lt $yearStart) {
                                 $gapStart = ([datetime]$closestBefore.EndDate).AddDays(1)
-                                $gapEnd = $rarStart.AddDays(-1)
+                                $gapEnd = $yearStart.AddDays(-1)
                             }
-                            elseif ($closestAfter -and $rarEnd.AddDays(1) -lt [datetime]$closestAfter.StartDate) {
-                                $gapStart = $rarEnd.AddDays(1)
+                            elseif ($closestAfter -and $yearEnd.AddDays(1) -lt [datetime]$closestAfter.StartDate) {
+                                $gapStart = $yearEnd.AddDays(1)
                                 $gapEnd = ([datetime]$closestAfter.StartDate).AddDays(-1)
                             }
 
@@ -155,195 +168,308 @@ function Import-LedgerSie {
                             }
                         }
                     }
-                    New-LedgerFiscalYear -JournalPath $JournalPath -StartDate $rarStart -EndDate $rarEnd
+                } else {
+                    $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear '' -JournalPath $JournalPath
                 }
-            } else {
-                $FiscalYear = Resolve-LedgerFiscalYear -FiscalYear '' -JournalPath $JournalPath
             }
-        }
 
-        $YearDir = Join-Path $JournalPath $FiscalYear
-        if (-not (Test-Path $YearDir -PathType Container)) {
-            throw "Fiscal year not found: $FiscalYear"
-        }
-
-        $YearFile = Join-Path $YearDir 'year.txt'
-        if (Test-Path $YearFile) {
-            foreach ($Line in (Get-Content $YearFile)) {
-                if ($Line -match '^Status:\s*Closed') {
+            $YearDir = Join-Path $JournalPath $FiscalYear
+            if (-not $createYear) {
+                if (-not (Test-Path $YearDir -PathType Container)) {
+                    throw "Fiscal year not found: $FiscalYear"
+                }
+                $yearInfo = Get-LedgerFiscalYear -JournalPath $JournalPath | Where-Object Name -eq $FiscalYear | Select-Object -First 1
+                if ($yearInfo -and $yearInfo.Status -eq 'Closed') {
                     throw "Fiscal year $FiscalYear is Closed. Cannot import entries."
                 }
-            }
-        }
-
-        # Guard against duplicate imports: only import into an empty fiscal year.
-        if (-not $Force) {
-            $ExistingVer = Get-ChildItem -Path $YearDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
-            $ExistingIb = Get-LedgerOpeningBalancePath -YearDir $YearDir
-            if ($ExistingVer -or (Test-Path $ExistingIb -PathType Leaf)) {
-                throw "Fiscal year $FiscalYear already contains verifications or an opening balance. Import only into an empty fiscal year to avoid duplicating entries. Use -Force to import anyway."
-            }
-        }
-
-        $sieAccountOrder = New-Object System.Collections.Generic.List[string]
-        $sieAccounts = @{}
-        $sieDimensions = @{}
-        $sieObjects = New-Object System.Collections.Generic.List[object]
-        foreach ($rec in $records) {
-            if ($rec.Tag -eq 'KONTO' -and $rec.Fields.Count -ge 1) {
-                $name = if ($rec.Fields.Count -ge 2) { $rec.Fields[1] } else { '' }
-                if (-not $sieAccounts.ContainsKey($rec.Fields[0])) {
-                    $sieAccountOrder.Add($rec.Fields[0]) | Out-Null
+                if ($yearInfo -and $yearInfo.StartDate -and $yearInfo.EndDate) {
+                    $yearStart = [datetime]$yearInfo.StartDate
+                    $yearEnd = [datetime]$yearInfo.EndDate
                 }
-                $sieAccounts[$rec.Fields[0]] = $name
             }
-            elseif ($rec.Tag -eq 'DIM' -and $rec.Fields.Count -ge 2) {
-                $sieDimensions[[int]$rec.Fields[0]] = $rec.Fields[1]
+
+            $planPath = Get-LedgerSieImportPath -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $plan = if (-not $createYear -and (Test-Path -LiteralPath $planPath)) { Read-LedgerSieImport -Path $planPath } else { $null }
+            $ibFile = Get-LedgerOpeningBalancePath -YearDir $YearDir
+
+            # Guard against duplicate imports: only import into an empty fiscal year.
+            # An unfinished import of this file is completed instead.
+            if (-not $Force -and -not $plan -and -not $createYear) {
+                $ExistingVer = Get-ChildItem -Path $YearDir -Filter 'ver*.txt' -File -ErrorAction SilentlyContinue
+                if ($ExistingVer -or (Test-Path $ibFile -PathType Leaf)) {
+                    throw "Fiscal year $FiscalYear already contains verifications or an opening balance. Import only into an empty fiscal year to avoid duplicating entries. Use -Force to import anyway."
+                }
             }
-            elseif ($rec.Tag -eq 'OBJEKT' -and $rec.Fields.Count -ge 3) {
-                $sieObjects.Add([PSCustomObject]@{
-                    DimensionNumber = [int]$rec.Fields[0]
-                    ObjectNumber    = $rec.Fields[1]
-                    Name            = $rec.Fields[2]
-                }) | Out-Null
+
+            $sieAccountOrder = New-Object System.Collections.Generic.List[string]
+            $sieAccounts = @{}
+            $sieDimensions = @{}
+            $sieObjects = New-Object System.Collections.Generic.List[object]
+            foreach ($rec in $records) {
+                if ($rec.Tag -eq 'KONTO' -and $rec.Fields.Count -ge 1) {
+                    $name = if ($rec.Fields.Count -ge 2) { $rec.Fields[1] } else { '' }
+                    if (-not $sieAccounts.ContainsKey($rec.Fields[0])) {
+                        $sieAccountOrder.Add($rec.Fields[0]) | Out-Null
+                    }
+                    $sieAccounts[$rec.Fields[0]] = $name
+                }
+                elseif ($rec.Tag -eq 'DIM' -and $rec.Fields.Count -ge 2) {
+                    $sieDimensions[[int]$rec.Fields[0]] = $rec.Fields[1]
+                }
+                elseif ($rec.Tag -eq 'OBJEKT' -and $rec.Fields.Count -ge 3) {
+                    $sieObjects.Add([PSCustomObject]@{
+                        DimensionNumber = [int]$rec.Fields[0]
+                        ObjectNumber    = $rec.Fields[1]
+                        Name            = $rec.Fields[2]
+                    }) | Out-Null
+                }
             }
-        }
 
-        # Import dimensions and objects
-        foreach ($dimNum in ($sieDimensions.Keys | Sort-Object)) {
-            $existDim = Get-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum
-            if (-not $existDim) {
-                Add-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum -Name $sieDimensions[$dimNum]
+            $journalDimensions = @{}
+            foreach ($dimension in @(Get-LedgerDimension -JournalPath $JournalPath)) {
+                $journalDimensions[[int]$dimension.DimensionNumber] = $true
             }
-        }
-        foreach ($obj in $sieObjects) {
-            $existObj = Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $obj.DimensionNumber -ObjectNumber $obj.ObjectNumber
-            if (-not $existObj) {
-                Add-LedgerObject -JournalPath $JournalPath -DimensionNumber $obj.DimensionNumber -ObjectNumber $obj.ObjectNumber -Name $obj.Name
+            $knownObjects = @{}
+            foreach ($obj in $sieObjects) {
+                if (-not $journalDimensions.ContainsKey($obj.DimensionNumber) -and -not $sieDimensions.ContainsKey($obj.DimensionNumber)) {
+                    throw "Object '$($obj.ObjectNumber)' in SIE file belongs to dimension $($obj.DimensionNumber), which is neither in the journal nor in the file."
+                }
+                $knownObjects["$($obj.DimensionNumber)`t$($obj.ObjectNumber)"] = $true
             }
-        }
 
-        $existing = @{}
-        foreach ($a in (Get-LedgerAccount -JournalPath $JournalPath)) {
-            $existing[$a.AccountNumber] = $true
-        }
-
-        # Collect opening balances (#IB for year index 0) so they can be imported
-        # as an opening balance verification (ingående balans).
-        $ibRows = New-Object System.Collections.Generic.List[object]
-        foreach ($rec in $records) {
-            if ($rec.Tag -ne 'IB') { continue }
-            if ($rec.Fields.Count -lt 3) { continue }
-            if ($rec.Fields[0] -ne '0') { continue }
-            $ibAmountText = $rec.Fields[2] -replace ',', '.'
-            $ibAmount = [decimal]::Parse($ibAmountText, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture)
-            if ($ibAmount -eq 0) { continue }
-            $ibRows.Add([PSCustomObject]@{ Account = $rec.Fields[1]; Amount = $ibAmount }) | Out-Null
-        }
-
-        $referenced = @{}
-        foreach ($rec in $records) {
-            if ($rec.Tag -ne 'VER') { continue }
-            foreach ($t in $rec.Transactions) {
-                if ($t.Fields.Count -ge 1) { $referenced[$t.Fields[0]] = $true }
+            $existing = @{}
+            foreach ($a in (Get-LedgerAccount -JournalPath $JournalPath)) {
+                $existing[$a.AccountNumber] = $true
             }
-        }
-        foreach ($r in $ibRows) { $referenced[$r.Account] = $true }
 
-        # Walk accounts in SIE file order so the imported chart preserves order.
-        $orderedReferenced = New-Object System.Collections.Generic.List[string]
-        foreach ($acct in $sieAccountOrder) {
-            if ($referenced.ContainsKey($acct)) { $orderedReferenced.Add($acct) | Out-Null }
-        }
-        foreach ($acct in $referenced.Keys) {
-            if (-not $sieAccounts.ContainsKey($acct)) { $orderedReferenced.Add($acct) | Out-Null }
-        }
+            # Collect opening balances (#IB for year index 0).
+            $ibRows = New-Object System.Collections.Generic.List[object]
+            foreach ($rec in $records) {
+                if ($rec.Tag -ne 'IB') { continue }
+                if ($rec.Fields.Count -lt 3) { continue }
+                if ($rec.Fields[0] -ne '0') { continue }
+                $ibAmountText = $rec.Fields[2] -replace ',', '.'
+                $ibAmount = [decimal]::Parse($ibAmountText, [System.Globalization.NumberStyles]::Float, $invariant)
+                if ($ibAmount -eq 0) { continue }
+                $ibRows.Add([PSCustomObject]@{ Account = $rec.Fields[1]; Amount = $ibAmount }) | Out-Null
+            }
 
-        foreach ($acct in $orderedReferenced) {
-            if (-not $existing.ContainsKey($acct)) {
-                if ($CreateMissingAccounts) {
+            $referenced = @{}
+            foreach ($rec in $records) {
+                if ($rec.Tag -ne 'VER') { continue }
+                foreach ($t in $rec.Transactions) {
+                    if ($t.Fields.Count -ge 1) { $referenced[$t.Fields[0]] = $true }
+                }
+            }
+            foreach ($r in $ibRows) { $referenced[$r.Account] = $true }
+
+            # Walk accounts in SIE file order so the imported chart preserves order.
+            $orderedReferenced = New-Object System.Collections.Generic.List[string]
+            foreach ($acct in $sieAccountOrder) {
+                if ($referenced.ContainsKey($acct)) { $orderedReferenced.Add($acct) | Out-Null }
+            }
+            foreach ($acct in $referenced.Keys) {
+                if (-not $sieAccounts.ContainsKey($acct)) { $orderedReferenced.Add($acct) | Out-Null }
+            }
+
+            $accountsToAdd = New-Object System.Collections.Generic.List[object]
+            foreach ($acct in $orderedReferenced) {
+                if (-not $existing.ContainsKey($acct)) {
+                    if (-not $CreateMissingAccounts) {
+                        throw "Account $acct in SIE file does not exist in chart of accounts. Use -CreateMissingAccounts to add it automatically."
+                    }
                     $name = if ($sieAccounts.ContainsKey($acct)) { $sieAccounts[$acct] } else { "Imported $acct" }
-                    Add-LedgerAccount -JournalPath $JournalPath -AccountNumber $acct -AccountName $name
+                    $accountsToAdd.Add([pscustomobject]@{ Number = $acct; Name = $name }) | Out-Null
                     $existing[$acct] = $true
                 }
-                else {
-                    throw "Account $acct in SIE file does not exist in chart of accounts. Use -CreateMissingAccounts to add it automatically."
-                }
             }
-        }
 
-        # Import opening balances as metadata (ib.txt), not as a verification, so
-        # imported #VER records keep their source numbering (ver0001..verN).
-        $ibRounding = [decimal]0
-        if ($ibRows.Count -gt 0) {
-            # Sum as decimal (Measure-Object -Sum returns a double and introduces
-            # floating-point noise on otherwise exact 2-decimal amounts).
-            $ibSum = [decimal]0
-            foreach ($r in $ibRows) { $ibSum += $r.Amount }
-            $ibDiff = [Math]::Round($ibSum, 2)
+            # Opening balances are imported as metadata (ib.txt), not as a verification,
+            # so imported #VER records keep their source numbering (ver0001..verN).
+            $ibRounding = [decimal]0
+            if ($ibRows.Count -gt 0) {
+                # Sum as decimal (Measure-Object -Sum returns a double and introduces
+                # floating-point noise on otherwise exact 2-decimal amounts).
+                $ibSum = [decimal]0
+                foreach ($r in $ibRows) { $ibSum += $r.Amount }
+                $ibDiff = [Math]::Round($ibSum, 2)
 
-            if ($ibDiff -ne 0) {
-                if ([Math]::Abs($ibDiff) -gt $RoundingTolerance) {
-                    throw "Opening balances (#IB) do not balance. Sum of rows: $ibDiff (must be 0, tolerance ±$RoundingTolerance). Correct the source file or raise -RoundingTolerance."
-                }
+                if ($ibDiff -ne 0) {
+                    if ([Math]::Abs($ibDiff) -gt $RoundingTolerance) {
+                        throw "Opening balances (#IB) do not balance. Sum of rows: $ibDiff (must be 0, tolerance ±$RoundingTolerance). Correct the source file or raise -RoundingTolerance."
+                    }
 
-                # Small rounding difference (öresdifferens): post it to the rounding account.
-                if (-not $existing.ContainsKey($RoundingAccount)) {
-                    if ($CreateMissingAccounts) {
+                    # Small rounding difference (öresdifferens): post it to the rounding account.
+                    if (-not $existing.ContainsKey($RoundingAccount)) {
+                        if (-not $CreateMissingAccounts) {
+                            throw "Opening balances (#IB) differ by $ibDiff and rounding account $RoundingAccount does not exist in the chart of accounts. Add it, choose another -RoundingAccount, or use -CreateMissingAccounts."
+                        }
                         $roundingName = if ($sieAccounts.ContainsKey($RoundingAccount)) { $sieAccounts[$RoundingAccount] } else { 'Öres- och kronutjämning' }
-                        Add-LedgerAccount -JournalPath $JournalPath -AccountNumber $RoundingAccount -AccountName $roundingName
+                        $accountsToAdd.Add([pscustomobject]@{ Number = $RoundingAccount; Name = $roundingName }) | Out-Null
                         $existing[$RoundingAccount] = $true
                     }
-                    else {
-                        throw "Opening balances (#IB) differ by $ibDiff and rounding account $RoundingAccount does not exist in the chart of accounts. Add it, choose another -RoundingAccount, or use -CreateMissingAccounts."
-                    }
+
+                    $ibRounding = -$ibDiff
+                    $ibRows.Add([PSCustomObject]@{ Account = $RoundingAccount; Amount = $ibRounding }) | Out-Null
+                }
+            }
+            $ibLines = @(Get-LedgerOpeningBalanceLines -Rows $ibRows)
+            $ibHash = if ($ibLines.Count) { Get-LedgerTextLinesHash -Lines $ibLines } else { $null }
+
+            $entries = New-Object System.Collections.Generic.List[object]
+            foreach ($rec in $records) {
+                if ($rec.Tag -ne 'VER') { continue }
+                if ($rec.Fields.Count -lt 3) { continue }
+
+                $verDesc = if ($rec.Fields.Count -ge 4 -and $rec.Fields[3] -ne '') { $rec.Fields[3] } else { '(No description)' }
+                $date = [datetime]::ParseExact($rec.Fields[2], 'yyyyMMdd', $invariant)
+                if ($yearStart -and $yearEnd -and ($date -lt $yearStart -or $date -gt $yearEnd)) {
+                    throw "Verification dated $($date.ToString('yyyy-MM-dd')) ('$verDesc') is outside fiscal year $FiscalYear ($($yearStart.ToString('yyyy-MM-dd')) to $($yearEnd.ToString('yyyy-MM-dd')))."
                 }
 
-                $ibRounding = -$ibDiff
-                $ibRows.Add([PSCustomObject]@{ Account = $RoundingAccount; Amount = $ibRounding }) | Out-Null
-            }
-
-            Write-LedgerOpeningBalance -YearDir $YearDir -Rows $ibRows
-        }
-
-        $imported = 0
-        foreach ($rec in $records) {
-            if ($rec.Tag -ne 'VER') { continue }
-            if ($rec.Fields.Count -lt 3) { continue }
-
-            $verDate = $rec.Fields[2]
-            $verDesc = if ($rec.Fields.Count -ge 4 -and $rec.Fields[3] -ne '') { $rec.Fields[3] } else { '(No description)' }
-            $date = [datetime]::ParseExact($verDate, 'yyyyMMdd', [System.Globalization.CultureInfo]::InvariantCulture)
-
-            $rows = foreach ($t in $rec.Transactions) {
-                $amountText = $t.Fields[1] -replace ',', '.'
-                $amount = [decimal]::Parse($amountText, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture)
-                $rowHash = @{ Account = $t.Fields[0]; Amount = $amount }
-                # Parse object list from TRANS (pairs: dimNum objId)
-                if ($t.Objects -and $t.Objects.Count -ge 2) {
-                    $objHash = @{}
-                    for ($oi = 0; $oi -lt $t.Objects.Count; $oi += 2) {
-                        if ($oi + 1 -lt $t.Objects.Count) {
-                            $objHash[[int]$t.Objects[$oi]] = $t.Objects[$oi + 1]
+                $rows = foreach ($t in $rec.Transactions) {
+                    $amountText = $t.Fields[1] -replace ',', '.'
+                    $amount = [decimal]::Parse($amountText, [System.Globalization.NumberStyles]::Float, $invariant)
+                    $rowHash = @{ Account = $t.Fields[0]; Amount = $amount }
+                    # Parse object list from TRANS (pairs: dimNum objId)
+                    if ($t.Objects -and $t.Objects.Count -ge 2) {
+                        $objHash = @{}
+                        for ($oi = 0; $oi -lt $t.Objects.Count; $oi += 2) {
+                            if ($oi + 1 -lt $t.Objects.Count) {
+                                $objHash[[int]$t.Objects[$oi]] = $t.Objects[$oi + 1]
+                            }
                         }
+                        foreach ($dimNum in $objHash.Keys) {
+                            if (-not $journalDimensions.ContainsKey($dimNum) -and -not $sieDimensions.ContainsKey($dimNum)) {
+                                throw "Dimension $dimNum does not exist."
+                            }
+                            if (-not $knownObjects.ContainsKey("$dimNum`t$($objHash[$dimNum])") -and
+                                -not (Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $dimNum -ObjectNumber $objHash[$dimNum])) {
+                                throw "Object '$($objHash[$dimNum])' does not exist in dimension $dimNum."
+                            }
+                        }
+                        if ($objHash.Count -gt 0) { $rowHash['Objects'] = $objHash }
                     }
-                    if ($objHash.Count -gt 0) { $rowHash['Objects'] = $objHash }
+                    $rowHash
                 }
-                $rowHash
+                Assert-LedgerEntryAmounts -Rows @($rows)
+                $entries.Add([pscustomobject]@{ Date = $date; Description = $verDesc; Rows = @($rows) }) | Out-Null
             }
 
-            Add-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear `
-                -Date $date -Description $verDesc -Rows @($rows)
-            $imported++
+            if (-not $PSCmdlet.ShouldProcess($Path, 'Import SIE file')) {
+                return
+            }
+
+            if ($createYear) {
+                New-LedgerFiscalYear -JournalPath $JournalPath -StartDate $yearStart -EndDate $yearEnd
+            }
+            foreach ($dimNum in ($sieDimensions.Keys | Sort-Object)) {
+                if (-not $journalDimensions.ContainsKey($dimNum)) {
+                    Add-LedgerDimension -JournalPath $JournalPath -DimensionNumber $dimNum -Name $sieDimensions[$dimNum]
+                }
+            }
+            foreach ($obj in $sieObjects) {
+                $existObj = Get-LedgerObject -JournalPath $JournalPath -DimensionNumber $obj.DimensionNumber -ObjectNumber $obj.ObjectNumber
+                if (-not $existObj) {
+                    Add-LedgerObject -JournalPath $JournalPath -DimensionNumber $obj.DimensionNumber -ObjectNumber $obj.ObjectNumber -Name $obj.Name
+                }
+            }
+            foreach ($account in $accountsToAdd) {
+                Add-LedgerAccount -JournalPath $JournalPath -AccountNumber $account.Number -AccountName $account.Name
+            }
+
+            # The plan binds the import to this file and reserves its verification numbers.
+            $operationId = if ($plan) { $plan.OperationId } else { [guid]::NewGuid() }
+            foreach ($entry in $entries) {
+                $lines = @(Get-LedgerVerificationLines -JournalPath $JournalPath -FiscalYear $FiscalYear `
+                        -Date $entry.Date -Description (ConvertTo-LedgerTextField $entry.Description) -Rows $entry.Rows -OperationId $operationId)
+                $entry | Add-Member -NotePropertyName Hash -NotePropertyValue (Get-LedgerTextLinesHash -Lines $lines)
+            }
+            $verificationsHash = Get-LedgerTextLinesHash -Lines @($entries | ForEach-Object Hash)
+
+            if ($plan) {
+                if ($plan.SourceHash -ne $sourceHash -or $plan.VerificationsHash -ne $verificationsHash -or
+                    $plan.VerificationCount -ne $entries.Count -or [string]$plan.OpeningBalanceHash -ne [string]$ibHash) {
+                    throw "Fiscal year $FiscalYear has an unfinished SIE import of another file or other options; the SIE file or the journal has changed since its import plan was saved. Recovery stopped. Repeat Import-LedgerSie with the original file and options."
+                }
+            }
+            else {
+                $priorIbHash = $null
+                if ($ibHash -and (Test-Path -LiteralPath $ibFile -PathType Leaf)) {
+                    $currentIbHash = Get-LedgerContentHash -Path $ibFile
+                    if ($currentIbHash -ne $ibHash) { $priorIbHash = $currentIbHash }
+                }
+                $plan = [pscustomobject]@{
+                    OperationId             = $operationId
+                    FiscalYear              = $FiscalYear
+                    SourceHash              = $sourceHash
+                    FirstVerification       = Get-LedgerNextVerificationNumber -JournalPath $JournalPath -FiscalYear $FiscalYear
+                    VerificationCount       = $entries.Count
+                    VerificationsHash       = $verificationsHash
+                    OpeningBalanceHash      = $ibHash
+                    PriorOpeningBalanceHash = $priorIbHash
+                }
+                Save-LedgerSieImport -Path $planPath -Operation $plan
+            }
+            $planReady = $true
+
+            $lastNumber = $plan.FirstVerification + $plan.VerificationCount - 1
+            $check = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
+            $issues = @($check.Issues | Where-Object {
+                    -not ($_.Kind -eq 'Verification' -and $_.Problem -eq 'Unsealed' -and
+                        [int]$_.Key -ge $plan.FirstVerification -and [int]$_.Key -le $lastNumber)
+                })
+            if ($issues.Count) {
+                throw "SIE import cannot continue because of integrity issues. Run Test-LedgerIntegrity and resolve them first: $($issues.Detail -join ' ')"
+            }
+
+            if ($ibHash) {
+                $currentIbHash = if (Test-Path -LiteralPath $ibFile -PathType Leaf) { Get-LedgerContentHash -Path $ibFile } else { $null }
+                if ($currentIbHash -ne $ibHash) {
+                    if ($currentIbHash -and $currentIbHash -ne $plan.PriorOpeningBalanceHash) {
+                        throw "Opening balance '$ibFile' has changed since the SIE import plan was saved. Recovery stopped without rewriting it."
+                    }
+                    Write-LedgerOpeningBalance -YearDir $YearDir -Rows $ibRows
+                }
+            }
+
+            $state = Get-LedgerIntegrityState -Chain (Read-LedgerIntegrityChain -YearDir $YearDir)
+            for ($index = 0; $index -lt $entries.Count; $index++) {
+                $entry = $entries[$index]
+                $number = $plan.FirstVerification + $index
+                $verificationPath = Join-Path $YearDir ('ver' + $number.ToString('0000') + '.txt')
+                if (Test-Path -LiteralPath $verificationPath) {
+                    Assert-LedgerInvoicePostingVerification -Path $verificationPath -Label 'SIE import' -Operation ([pscustomobject]@{
+                            OperationId = $plan.OperationId; VerificationHash = $entry.Hash
+                        })
+                    if (-not $state.Verifications.Contains("$number")) {
+                        Register-LedgerIntegrityItem -YearDir $YearDir -Kind Verification -Key "$number" -Path $verificationPath
+                    }
+                }
+                else {
+                    Write-LedgerVerification -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $entry.Date `
+                        -Description $entry.Description -Rows $entry.Rows -OperationId $plan.OperationId `
+                        -ReservedNumber $number -Confirm:$false
+                }
+            }
+
+            # The plan only marks an unfinished import; a completed one needs no reservation.
+            Remove-Item -LiteralPath $planPath -Force
         }
+        catch {
+            if (-not $planReady) { throw }
+            throw [System.InvalidOperationException]::new(
+                "SIE import of '$Path' into fiscal year $FiscalYear was interrupted. Repeat Import-LedgerSie with the same file and options to complete it safely. $($_.Exception.Message)",
+                $_.Exception)
+        }
+        finally { Exit-LedgerJournalLock -Lock $journalLock }
 
         [PSCustomObject]@{
             Path                   = $Path
-            ImportedEntries        = $imported
+            ImportedEntries        = $entries.Count
             ImportedOpeningBalance = ($ibRows.Count -gt 0)
             OpeningBalanceRounding = $ibRounding
             ImportedAccounts       = if ($CreateMissingAccounts) { ($referenced.Keys | Where-Object { $sieAccounts.ContainsKey($_) }).Count } else { 0 }
         }
     }
 }
-

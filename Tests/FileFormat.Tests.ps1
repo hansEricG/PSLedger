@@ -585,6 +585,51 @@ Describe 'File format contract' {
             (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
         }
 
+        It 'Should write a SIE import plan until the import completes' {
+            $sie = Join-Path $TestDrive 'contract-import.se'
+            Export-LedgerSie -JournalPath $Fixture -FiscalYear $Y -Path $sie
+            $journal = Join-Path $TestDrive 'sie-import.ledger'
+            New-LedgerJournal -Path $journal -Name 'Mottagaren AB' | Out-Null
+            $hashText = {
+                param([string]$Text)
+                $bytes = [Text.Encoding]::UTF8.GetBytes($Text.Replace("`r`n", "`n"))
+                [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+            }
+            $script:realWrite = & (Get-Module PSLedger) { (Get-Command Write-LedgerVerification).ScriptBlock }
+            $script:failWrite = $true
+            Mock -ModuleName PSLedger Write-LedgerVerification {
+                & $script:realWrite -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description `
+                    -Rows $Rows -OperationId $OperationId -ReservedNumber $ReservedNumber
+            }
+            Mock -ModuleName PSLedger Write-LedgerVerification { throw 'simulated interruption' } -ParameterFilter { $script:failWrite -and $ReservedNumber -eq 2 }
+            { Import-LedgerSie -JournalPath $journal -Path $sie -CreateMissingAccounts } | Should -Throw '*Repeat Import-LedgerSie*'
+            $path = Join-Path $journal $Y 'import.txt'
+            $lines = @(Get-Content -LiteralPath $path -Encoding UTF8)
+            $fields = @{}
+            foreach ($line in $lines) {
+                if ($line -match '^([A-Za-z]+):\t(.+)$') { $fields[$Matches[1]] = $Matches[2] }
+            }
+            $verification = Get-Content -LiteralPath (Join-Path $journal $Y 'ver0001.txt') -Raw -Encoding UTF8
+            $count = @(Get-ChildItem -LiteralPath (Join-Path $Fixture $Y) -Filter 'ver*.txt').Count
+            $lines[0] | Should -Be '; PSLedger SIE import'
+            $fields.FormatVersion | Should -Be '1'
+            [guid]::Parse($fields.OperationId) | Should -Not -Be ([guid]::Empty)
+            $fields.FiscalYear | Should -Be $Y
+            $fields.SourceHash | Should -Be (Get-FileHash -LiteralPath $sie -Algorithm SHA256).Hash.ToLowerInvariant()
+            $fields.FirstVerification | Should -Be '1'
+            $fields.VerificationCount | Should -Be "$count"
+            $fields.VerificationsHash | Should -Match '^[0-9a-f]{64}$'
+            $fields.OpeningBalanceHash | Should -Be (& $hashText (Get-Content -LiteralPath (Join-Path $journal $Y 'ib.txt') -Raw -Encoding UTF8))
+            $fields.ContainsKey('PriorOpeningBalanceHash') | Should -BeFalse
+            $verification | Should -Match "(?m)^OperationId: $([regex]::Escape($fields.OperationId))\r?$"
+
+            $script:failWrite = $false
+            Import-LedgerSie -JournalPath $journal -Path $sie | Out-Null
+            Test-Path -LiteralPath $path | Should -BeFalse
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $Y) | Should -HaveCount $count
+            (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
+        }
+
         It 'Should bind a bank posting plan to its source, verification and counterpart' {
             $journal = Join-Path $TestDrive 'bank-posting.ledger'
             Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse

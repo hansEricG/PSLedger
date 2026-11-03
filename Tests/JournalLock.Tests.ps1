@@ -12,7 +12,7 @@ BeforeAll {
         Import-Module $ModulePath -Force
         $paymentId = '11111111-1111-1111-1111-111111111111'
         $chargeId = '22222222-2222-2222-2222-222222222222'
-        if ($Mode -match '^(Invoice|Payment|Bank|SupplierInvoice|SupplierPayment|SupplierBank|Account|Charge|Credit|Payroll|Close|Convert)After') {
+        if ($Mode -match '^(Invoice|Payment|Bank|SupplierInvoice|SupplierPayment|SupplierBank|Account|Charge|Credit|Payroll|Close|Convert|Sie)After') {
             & (Get-Module PSLedger) {
                 param ($Ready, $Mode)
                 $script:PostingReady = $Ready
@@ -117,6 +117,9 @@ BeforeAll {
             elseif ($Mode -like 'Convert*') {
                 Convert-LedgerChart -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Date '2024-03-01' | Out-Null
             }
+            elseif ($Mode -like 'Sie*') {
+                Import-LedgerSie -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Path (Join-Path (Split-Path $JournalPath -Parent) 'import.se') | Out-Null
+            }
             elseif ($Mode -like 'Close*') {
                 Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -EquityAccount '2099' | Out-Null
             }
@@ -190,6 +193,9 @@ BeforeAll {
         }
         elseif ($Mode -eq 'Convert') {
             Convert-LedgerChart -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Date '2024-03-01' | Out-Null
+        }
+        elseif ($Mode -eq 'Sie') {
+            Import-LedgerSie -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Path (Join-Path (Split-Path $JournalPath -Parent) 'import.se') | Out-Null
         }
         elseif ($Mode -eq 'Close') {
             Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -EquityAccount '2099' | Out-Null
@@ -790,6 +796,44 @@ Describe 'Journal write locking' {
         ($balances | Where-Object AccountNumber -eq '3308').Balance | Should -Be -800
         Protect-LedgerFiscalYear -JournalPath $journal -FiscalYear $year | Out-Null
         (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).Status | Should -Be 'Valid'
+    }
+
+    It 'Recovers SIE import after process termination at <Checkpoint>' -ForEach @(
+        @{ Checkpoint = 'SieAfterPlan' }
+        @{ Checkpoint = 'SieAfterSave' }
+    ) {
+        $source = Join-Path (Split-Path $journal -Parent) "source-$Checkpoint.ledger"
+        New-LedgerJournal -Path $source -Name 'Källföretaget AB' | Out-Null
+        Add-LedgerAccount -JournalPath $source -AccountNumber '1930' -AccountName 'Företagskonto'
+        Add-LedgerAccount -JournalPath $source -AccountNumber '3010' -AccountName 'Försäljning'
+        New-LedgerFiscalYear -JournalPath $source -StartDate '2024-01-01' -EndDate '2024-12-31' | Out-Null
+        foreach ($amount in 100, 200) {
+            Add-LedgerEntry -JournalPath $source -FiscalYear $year -Date '2024-02-01' -Description "Försäljning $amount" -Rows @(
+                @{ Account = '1930'; Amount = $amount }; @{ Account = '3010'; Amount = -$amount })
+        }
+        Export-LedgerSie -JournalPath $source -FiscalYear $year -Path (Join-Path (Split-Path $journal -Parent) 'import.se') -Force
+
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $blocked = Start-LockTestWorker TryLock
+        $blocked.Process.WaitForExit(30000) | Should -BeTrue
+        $blocked.Error.Result | Should -BeLike '*is busy*'
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        $operationPath = Join-Path $journal $year 'import.txt'
+        Test-Path -LiteralPath $operationPath | Should -BeTrue
+        # A regular entry must skip the numbers reserved for the import.
+        (Add-LedgerEntry -JournalPath $journal -FiscalYear $year -Date '2024-03-01' -Description 'Kassa' -PassThru -Rows @(
+                @{ Account = '1930'; Amount = 50 }; @{ Account = '3010'; Amount = -50 })).VerificationNumber | Should -Be 3
+        Set-Content -LiteralPath $gate -Value 'go'
+        Complete-LockTestWorker (Start-LockTestWorker Sie)
+
+        $entries = @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year)
+        $entries | Should -HaveCount 3
+        @($entries | Where-Object Description -like 'Försäljning *' | Sort-Object VerificationNumber).VerificationNumber |
+            Should -Be @(1, 2)
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).Status | Should -Be 'Valid'
+        Test-Path -LiteralPath $operationPath | Should -BeFalse
     }
 
     It 'Handles payroll recovery in a closed year with saved verification=<Saved>' -ForEach @(

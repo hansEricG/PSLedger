@@ -19,7 +19,7 @@ when it reads a file; they are not an invitation to write files that way.
 - [Directory layout](#directory-layout)
 - [Journal-level files](#journal-level-files): `journal.txt`, `accounts.txt`,
   `dimensions.txt`, `objects.txt`, `vat.txt`
-- [Fiscal years](#fiscal-years): `year.txt`, `closing.txt`, `verNNNN.txt`,
+- [Fiscal years](#fiscal-years): `year.txt`, `closing.txt`, `import.txt`, `verNNNN.txt`,
   `verNNNN/`, `ib.txt`, `holdings.txt`, `report.txt`, `documents/`, `integrity.txt`
 - [Recurring entries](#recurring-entries): `recurring/`
 - [Customers and invoices](#customers-and-invoices): `customers.txt`, `invoices/`
@@ -115,7 +115,7 @@ are named by a prefix and a number zero-padded to at least four digits.
   `invoices/posting/invNNNN.txt`, `supplierinvoices/posting/supNNNN.txt`,
   `invoices/payments/<guid>.txt`, `supplierinvoices/payments/<guid>.txt`,
   `invoices/charges/<guid>.txt`, `invoices/credits/invNNNN.txt`,
-  `payslips/posting/payNNNN.txt`, `bank/posting/txnN.txt` and `<year>/closing.txt`. For customer invoices, the maximum also includes the
+  `payslips/posting/payNNNN.txt`, `bank/posting/txnN.txt`, `<year>/closing.txt` and the range in `<year>/import.txt`. For customer invoices, the maximum also includes the
   credit-note numbers reserved by `invoices/credits/invNNNN.txt`.
   Recovery uses its already reserved number,
   even if later numbers have since been written. Gaps are allowed.
@@ -143,7 +143,7 @@ writers hold an exclusive open handle while validating and writing a
 verification and its integrity records. New verification files are published
 without replacing an existing filename. The same journal lock covers attachment
 changes, customer-invoice posting and payments, charges, reminders, bank imports and matching,
-sealing, year closing, chart conversion and credit-note rollback.
+sealing, year closing, chart conversion, SIE import and credit-note rollback.
 
 The file remains after the handle is released, including after a crashed
 process. Its existence does not indicate ownership. It MUST NOT be deleted or
@@ -158,8 +158,8 @@ distributed lock for synchronised or network directories. An interrupted
 operation can still leave a saved but unsealed verification; the integrity
 check diagnoses that state. Customer-invoice posting and customer/supplier payments can resume
 from their saved plans below, and an interrupted `Convert-LedgerChart` is completed
-by repeating it, since it skips what already exists; other multi-file recovery
-remains separate work.
+by repeating it, since it skips what already exists. Other register and metadata
+writers are not covered by recovery plans.
 
 ### Unknown content
 
@@ -184,6 +184,7 @@ to store their own data SHOULD use their own files.
 ├── <yyyy-MM>_<yyyy-MM>/        one directory per fiscal year
 │   ├── year.txt                required: dates and status
 │   ├── closing.txt             unfinished fiscal-year closing plan
+│   ├── import.txt              unfinished SIE import plan
 │   ├── ib.txt                  opening balance
 │   ├── holdings.txt            securities holdings at the balance date
 │   ├── report.txt              annual report input
@@ -352,6 +353,32 @@ or other integrity issues stop recovery. A year whose `Status` is `Closed` but
 that still has the plan is only sealed. The plan is deleted once the year is
 closed and sealed. It is additive and does not change the schema version.
 
+### `import.txt` — SIE import plan
+
+`Import-LedgerSie` validates the whole file first and then saves this immutable
+record before writing `ib.txt` or any verification. The first line is
+`; PSLedger SIE import`.
+
+| Key | Value |
+|-----|-------|
+| `FormatVersion` | `1`. |
+| `OperationId` | GUID (`D` form) written as `OperationId:` in every imported verification. |
+| `FiscalYear` | MUST match the directory name. |
+| `SourceHash` | Lowercase SHA-256 of the SIE file's bytes. |
+| `FirstVerification` | First reserved verification number. |
+| `VerificationCount` | Number of imported verifications (`0` or more). Numbers `FirstVerification` to `FirstVerification + VerificationCount - 1` are reserved. |
+| `VerificationsHash` | Lowercase SHA-256 of the planned verifications' hashes, one per line in order (LF-normalised). |
+| `OpeningBalanceHash` | Lowercase SHA-256 of the planned `ib.txt` (LF-normalised). Only when the file has opening balances. |
+| `PriorOpeningBalanceHash` | Hash of an `ib.txt` that `-Force` replaces. Only with `OpeningBalanceHash`. |
+
+The file exists only while an import is unfinished. Repeating the import with
+the same file and options resumes it: saved verifications are checked against
+their planned content and sealed, and missing ones are written with their
+reserved numbers. A changed source file or journal, a differing saved
+verification or opening balance, or other integrity issues stop recovery. The
+year cannot be closed while the plan exists. The plan is deleted once the
+import completes. It is additive and does not change the schema version.
+
 ### `verNNNN.txt` — verifications
 
 One file per verification (verifikation).
@@ -371,7 +398,7 @@ Description: Kontorsmaterial
 |-----|----------|-------|
 | `Date` | yes | Transaction date. MUST fall within the fiscal year. |
 | `Description` | yes | Text of the verification. |
-| `OperationId` | no | Non-empty GUID in `D` form identifying the customer-invoice posting, customer/supplier payment or bank posting plan. Included in the verification content hash; ordinary entries omit it. |
+| `OperationId` | no | Non-empty GUID in `D` form identifying the recovery plan (invoice, payment, bank, charge, credit, payroll, closing or SIE import) that wrote it. Included in the verification content hash; ordinary entries omit it. |
 
 A blank line follows the header.
 

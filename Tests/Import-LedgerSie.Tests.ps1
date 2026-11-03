@@ -273,7 +273,90 @@ Describe 'Import-LedgerSie' {
                 $entries.Count | Should -Be 4
             }
 
-            It 'Should have a Force switch parameter' {
+            Context 'Recovery' {
+            BeforeEach {
+                $script:failWrite = $false
+                $script:realWrite = & (Get-Module PSLedger) { (Get-Command Write-LedgerVerification).ScriptBlock }
+                Mock -ModuleName PSLedger Write-LedgerVerification -MockWith {
+                    & $script:realWrite -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description `
+                        -Rows $Rows -Attachment $Attachment -PassThru:$PassThru -OperationId ($OperationId ?? [guid]::Empty) -ReservedNumber ([int]$ReservedNumber)
+                }
+                Mock -ModuleName PSLedger Write-LedgerVerification -ParameterFilter {
+                    $script:failWrite -and $Description -eq 'Försäljning 2'
+                } -MockWith { throw 'Simulated crash' }
+                $PlanPath = Join-Path $TargetJournal $FiscalYear 'import.txt'
+            }
+
+            It 'Should complete an interrupted import without duplicating verifications' {
+                $script:failWrite = $true
+                { Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $SieFile } |
+                    Should -Throw '*Repeat Import-LedgerSie with the same file*'
+                Test-Path -LiteralPath $PlanPath | Should -BeTrue
+                @(Get-LedgerEntry -JournalPath $TargetJournal -FiscalYear $FiscalYear) | Should -HaveCount 1
+
+                $script:failWrite = $false
+                $result = Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $SieFile
+                $result.ImportedEntries | Should -Be 2
+                $entries = @(Get-LedgerEntry -JournalPath $TargetJournal -FiscalYear $FiscalYear | Sort-Object VerificationNumber)
+                $entries.Description | Should -Be @('Försäljning', 'Försäljning 2')
+                Test-Path -LiteralPath $PlanPath | Should -BeFalse
+                (Test-LedgerIntegrity -JournalPath $TargetJournal -FiscalYear $FiscalYear).Status | Should -Be 'Valid'
+            }
+
+            It 'Should reserve the planned numbers for other entries while the import is unfinished' {
+                $script:failWrite = $true
+                { Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $SieFile } | Should -Throw
+                $other = Add-LedgerEntry -JournalPath $TargetJournal -FiscalYear $FiscalYear -Date '2024-05-01' -Description 'Kassa' -PassThru -Rows @(
+                    @{ Account = '1910'; Amount = 10 }; @{ Account = '3010'; Amount = -10 })
+                $other.VerificationNumber | Should -Be 3
+
+                $script:failWrite = $false
+                Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $SieFile | Out-Null
+                (Get-LedgerEntry -JournalPath $TargetJournal -FiscalYear $FiscalYear -VerificationNumber 2).Description |
+                    Should -Be 'Försäljning 2'
+            }
+
+            It 'Should stop recovery when the SIE file has changed since the plan was saved' {
+                $script:failWrite = $true
+                { Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $SieFile } | Should -Throw
+                $script:failWrite = $false
+                $latin1 = [Text.Encoding]::Latin1
+                $changed = $latin1.GetString([IO.File]::ReadAllBytes($SieFile)).Replace('500.25', '600.25').Replace('-500.25', '-600.25')
+                [IO.File]::WriteAllBytes($SieFile, $latin1.GetBytes($changed))
+
+                { Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $SieFile } |
+                    Should -Throw '*changed since its import plan*'
+                @(Get-LedgerEntry -JournalPath $TargetJournal -FiscalYear $FiscalYear) | Should -HaveCount 1
+                Test-Path -LiteralPath $PlanPath | Should -BeTrue
+            }
+
+            It 'Should write nothing when a later verification is invalid' {
+                $latin1 = [Text.Encoding]::Latin1
+                $changed = $latin1.GetString([IO.File]::ReadAllBytes($SieFile)).Replace('20240401', '20250401')
+                [IO.File]::WriteAllBytes($SieFile, $latin1.GetBytes($changed))
+
+                { Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $SieFile } |
+                    Should -Throw '*outside fiscal year*'
+                @(Get-LedgerEntry -JournalPath $TargetJournal -FiscalYear $FiscalYear) | Should -HaveCount 0
+                Test-Path -LiteralPath $PlanPath | Should -BeFalse
+            }
+
+            It 'Should not save a plan under -WhatIf' {
+                Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $SieFile -WhatIf
+                Test-Path -LiteralPath $PlanPath | Should -BeFalse
+                @(Get-LedgerEntry -JournalPath $TargetJournal -FiscalYear $FiscalYear) | Should -HaveCount 0
+            }
+
+            It 'Should refuse to close the fiscal year while an import is unfinished' {
+                Add-LedgerAccount -JournalPath $TargetJournal -AccountNumber '2099' -AccountName 'Årets resultat'
+                $script:failWrite = $true
+                { Import-LedgerSie -JournalPath $TargetJournal -FiscalYear $FiscalYear -Path $SieFile } | Should -Throw
+                { Close-LedgerFiscalYear -JournalPath $TargetJournal -FiscalYear $FiscalYear -EquityAccount '2099' -Confirm:$false } |
+                    Should -Throw '*unfinished SIE import*'
+            }
+        }
+
+        It 'Should have a Force switch parameter' {
                 $Command.Parameters['Force'].ParameterType.Name | Should -Be 'SwitchParameter'
             }
         }

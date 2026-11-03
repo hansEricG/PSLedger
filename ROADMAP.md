@@ -419,12 +419,15 @@ invoice-status writes. Other multi-file workflows still need equivalent protecti
       Cover process termination, changed results and interrupted seals.
 - [x] Run chart conversion under the journal lock and verify that repeating an
       interrupted conversion completes it without a second transfer.
-- [ ] Define recoverable operation boundaries for the remaining SIE import.
-- [ ] Extend durable operation identity and progress to those workflows without
+- [x] Make SIE import recoverable through `<year>/import.txt`, which binds the
+      import to its source file and reserves its verification numbers. The whole
+      file is validated before the first write. Cover process termination, changed
+      files, number reservation and closing during an unfinished import.
+- [x] Extend durable operation identity and progress to those workflows without
       losing or duplicating bookkeeping.
-- [ ] Validate their complete plans before the first write; report partial failures
+- [x] Validate their complete plans before the first write; report partial failures
       with actionable recovery instructions instead of a success-shaped result.
-- [ ] Integrate their recovery with the locks and integrity chain in steps 11–12.
+- [x] Integrate their recovery with the locks and integrity chain in steps 11–12.
 
 #### 31. Reproducible declarations and final reports
 The journal-wide `vat.txt` can change how old periods are reported. Closing

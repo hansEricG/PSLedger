@@ -72,15 +72,24 @@ function Write-LedgerOpeningBalance {
     )
 
     $ibFile = Get-LedgerOpeningBalancePath -YearDir $YearDir
+    $lines = @(Get-LedgerOpeningBalanceLines -Rows $Rows)
+    Set-LedgerFileContent -Path $ibFile -Value $lines
+}
 
-    $lines = New-Object System.Collections.Generic.List[string]
+function Get-LedgerOpeningBalanceLines {
+    # The ib.txt lines Write-LedgerOpeningBalance writes for the given rows.
+    [CmdletBinding()]
+    [OutputType([string])]
+    param (
+        [Parameter(Mandatory)]
+        [AllowNull()]
+        $Rows
+    )
     foreach ($row in $Rows) {
         if ($null -eq $row) { continue }
         $account = $row.Account
         $amount = [decimal]$row.Amount
         if ([Math]::Round($amount, 2) -eq 0) { continue }
-        $lines.Add("$account`t$amount") | Out-Null
+        "$account`t$amount"
     }
-
-    Set-LedgerFileContent -Path $ibFile -Value $lines
 }

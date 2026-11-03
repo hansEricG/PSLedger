@@ -36,6 +36,7 @@
 . $PSScriptRoot\Private\PayslipStore.ps1
 . $PSScriptRoot\Private\PayrollPosting.ps1
 . $PSScriptRoot\Private\YearClosing.ps1
+. $PSScriptRoot\Private\SieImport.ps1
 . $PSScriptRoot\Private\BankStore.ps1
 . $PSScriptRoot\Private\BankImport.ps1
 . $PSScriptRoot\Private\BankMatching.ps1

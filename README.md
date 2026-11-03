@@ -912,8 +912,10 @@ can resume their saved plans as described above, as can customer/supplier bank
 matches, bank rule/account postings, invoice charges (`-ChargeId`), credit
 notes, `Invoke-LedgerPayrollPosting` and `Close-LedgerFiscalYear`.
 `Convert-LedgerChart` needs no plan: repeating it skips existing accounts and
-VAT rules and finds the transferred balance already moved. SIE import and other
-multi-file workflows do not yet have this protection.
+VAT rules and finds the transferred balance already moved. `Import-LedgerSie`
+validates the whole file before writing and saves `<year>/import.txt`, which
+reserves the verification numbers; repeat the import with the same file to
+complete an interrupted one without duplicates.
 
 Other register and metadata writers, older PSLedger versions and external
 editors do not all participate in the lock. Readers and backups do not acquire

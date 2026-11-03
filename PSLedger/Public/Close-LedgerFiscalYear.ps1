@@ -143,6 +143,9 @@ function Close-LedgerFiscalYear {
                 }
             }
             else {
+                if (Test-Path -LiteralPath (Get-LedgerSieImportPath -JournalPath $JournalPath -FiscalYear $FiscalYear)) {
+                    throw "Fiscal year $FiscalYear has an unfinished SIE import. Repeat Import-LedgerSie with the same file to complete it before closing the year."
+                }
                 if ($operation) {
                     if ([bool]$SkipResultEntry -ne $operation.SkipResultEntry) {
                         throw "Fiscal year $FiscalYear has a closing plan $(if ($operation.SkipResultEntry) { 'without' } else { 'with' }) a result entry. Repeat Close-LedgerFiscalYear with the same options to complete it."

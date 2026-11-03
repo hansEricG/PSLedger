@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- **Recoverable SIE import.** `Import-LedgerSie` validates the whole file
+  (accounts, dates, amounts, dimensions and objects) before the first write and
+  holds the journal lock. `<year>/import.txt` binds the import to the source file,
+  reserves its verification numbers and records hashes of the planned opening
+  balance and verifications. Repeating the import with the same file completes an
+  interrupted one without duplicates; a changed file, changed verifications or
+  damaged integrity stop recovery. The year cannot be closed while the plan
+  exists. The plan is removed once the import completes.
 - **Chart conversion under the journal lock.** `Convert-LedgerChart` now holds
   the journal write lock while it plans and writes, so concurrent runs cannot
   transfer a balance twice. An interrupted conversion is completed by running the
@@ -104,8 +112,8 @@
 
 Recovery currently covers customer/supplier-invoice posting, customer/supplier payments
 and bank-created invoice, rule/account and own-account transfer postings, invoice charges
-credit notes, payroll posting, fiscal-year closing and chart conversion. Changed inputs, conflicting verifications and damaged integrity chains
-stop recovery explicitly. SIE import still needs recovery. Locking is not a multi-file
+credit notes, payroll posting, fiscal-year closing, chart conversion and SIE import. Changed inputs, conflicting verifications and damaged integrity chains
+stop recovery explicitly. Locking is not a multi-file
 transaction or general multi-user support.
 
 ## [1.1.0] - 2026-10-30

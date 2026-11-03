@@ -120,6 +120,11 @@ function Get-LedgerInvoicePostingReservation {
         $closing = Read-LedgerYearClosing -Path $closingPath
         if ($closing.VerificationNumber -gt 0) { $closing.VerificationNumber }
     }
+    $importPath = Get-LedgerSieImportPath -JournalPath $JournalPath -FiscalYear $FiscalYear
+    if (Test-Path -LiteralPath $importPath) {
+        $import = Read-LedgerSieImport -Path $importPath
+        if ($import.VerificationCount -gt 0) { $import.FirstVerification + $import.VerificationCount - 1 }
+    }
 }
 
 function Save-LedgerInvoicePosting {
