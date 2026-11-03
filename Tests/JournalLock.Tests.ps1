@@ -12,7 +12,7 @@ BeforeAll {
         Import-Module $ModulePath -Force
         $paymentId = '11111111-1111-1111-1111-111111111111'
         $chargeId = '22222222-2222-2222-2222-222222222222'
-        if ($Mode -match '^(Invoice|Payment|Bank|SupplierInvoice|SupplierPayment|SupplierBank|Account|Charge|Credit)After') {
+        if ($Mode -match '^(Invoice|Payment|Bank|SupplierInvoice|SupplierPayment|SupplierBank|Account|Charge|Credit|Payroll)After') {
             & (Get-Module PSLedger) {
                 param ($Ready, $Mode)
                 $script:PostingReady = $Ready
@@ -35,10 +35,21 @@ BeforeAll {
                         elseif ($Mode -like 'Supplier*') {
                             function script:Save-LedgerSupplierInvoiceFile { & $script:PostingPause }
                         }
+                        elseif ($Mode -like 'Payroll*') {
+                            function script:Save-LedgerPayslipFile { & $script:PostingPause }
+                        }
                         else { function script:Save-LedgerInvoiceFile { & $script:PostingPause } }
                     }
                     'AfterStatus$' {
-                        if ($Mode -like 'Supplier*') {
+                        if ($Mode -like 'Payroll*') {
+                            $script:OriginalPayslipSave = (Get-Command Save-LedgerPayslipFile).ScriptBlock
+                            function script:Save-LedgerPayslipFile {
+                                param ($Payslip)
+                                & $script:OriginalPayslipSave -Payslip $Payslip
+                                & $script:PostingPause
+                            }
+                        }
+                        elseif ($Mode -like 'Supplier*') {
                             $script:OriginalInvoiceSave = (Get-Command Save-LedgerSupplierInvoiceFile).ScriptBlock
                             function script:Save-LedgerSupplierInvoiceFile {
                                 param ($Invoice)
@@ -96,6 +107,9 @@ BeforeAll {
             }
             elseif ($Mode -like 'Credit*') {
                 Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-01-20'
+            }
+            elseif ($Mode -like 'Payroll*') {
+                Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1
             }
             else { Invoke-LedgerInvoicePosting -JournalPath $JournalPath -InvoiceNumber 1 }
             exit 0
@@ -161,6 +175,9 @@ BeforeAll {
         }
         elseif ($Mode -eq 'Credit') {
             Add-LedgerCreditInvoice -JournalPath $JournalPath -InvoiceNumber 1 -Date '2024-01-20'
+        }
+        elseif ($Mode -eq 'Payroll') {
+            Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1
         }
         elseif ($Mode -eq 'Seal') {
             Protect-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' | Out-Null
@@ -235,6 +252,14 @@ BeforeAll {
         New-LedgerSupplierInvoice -JournalPath $journal -SupplierNumber '100' -Date '2024-01-15' -Description 'Hyra' `
             -Reference 'SUP-1' -Rows @(@{ Account = '5010'; Amount = 1000; VatRate = 0.25; VatAccount = '2640' })
         if (-not $Draft) { Invoke-LedgerSupplierInvoicePosting -JournalPath $journal -InvoiceNumber 1 }
+    }
+
+    function New-LockTestPayslip {
+        foreach ($number in '7210', '2710', '7510', '2730') {
+            Add-LedgerAccount -JournalPath $journal -AccountNumber $number -AccountName "Konto $number"
+        }
+        Add-LedgerEmployee -JournalPath $journal -EmployeeNumber '1' -Name 'Anna Andersson' -SalaryAccount '7210' -TaxRate 0.30
+        New-LedgerPayslip -JournalPath $journal -EmployeeNumber '1' -GrossSalary 30000 -PayDate '2024-01-25' | Out-Null
     }
 
     function New-LockTestTransfer {
@@ -651,6 +676,65 @@ Describe 'Journal write locking' {
             $invoice.Charges | Should -HaveCount 0
             $invoice.Status | Should -Be 'Booked'
             @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 1
+        }
+    }
+
+    It 'Recovers payroll posting after process termination at <Checkpoint>' -ForEach @(
+        @{ Checkpoint = 'PayrollAfterPlan' }
+        @{ Checkpoint = 'PayrollAfterSave' }
+        @{ Checkpoint = 'PayrollAfterSeal' }
+        @{ Checkpoint = 'PayrollAfterStatus' }
+    ) {
+        New-LockTestPayslip
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        $operationPath = Join-Path $journal 'payslips' 'posting' 'pay0001.txt'
+        $hash = (Get-FileHash -LiteralPath $operationPath).Hash
+        $savedPath = Join-Path $journal $year 'ver0001.txt'
+        $savedHash = if (Test-Path -LiteralPath $savedPath) { (Get-FileHash -LiteralPath $savedPath).Hash }
+        (Add-LedgerEntry @entry -PassThru).VerificationNumber | Should -Be 2
+        Set-Content -LiteralPath $gate -Value 'go'
+        $retry = Start-LockTestWorker Payroll
+        if ($Checkpoint -eq 'PayrollAfterStatus') {
+            $retry.Process.WaitForExit(60000) | Should -BeTrue
+            $retry.Error.Result | Should -BeLike '*already posted*'
+        }
+        else { Complete-LockTestWorker $retry }
+
+        $payslip = Get-LedgerPayslip -JournalPath $journal -PayslipNumber 1
+        $payslip.Status | Should -Be 'Booked'
+        $payslip.BookedVerification | Should -Be 1
+        @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 2
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).IsValid | Should -BeTrue
+        (Get-FileHash -LiteralPath $operationPath).Hash | Should -Be $hash
+        if ($savedHash) { (Get-FileHash -LiteralPath $savedPath).Hash | Should -Be $savedHash }
+    }
+
+    It 'Handles payroll recovery in a closed year with saved verification=<Saved>' -ForEach @(
+        @{ Saved = $true; Checkpoint = 'PayrollAfterSave' }
+        @{ Saved = $false; Checkpoint = 'PayrollAfterPlan' }
+    ) {
+        New-LockTestPayslip
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        Close-LedgerFiscalYear -JournalPath $journal -FiscalYear $year -SkipResultEntry | Out-Null
+        Set-Content -LiteralPath $gate -Value 'go'
+        $retry = Start-LockTestWorker Payroll
+        if ($Saved) {
+            Complete-LockTestWorker $retry
+            (Get-LedgerPayslip -JournalPath $journal -PayslipNumber 1).Status | Should -Be 'Booked'
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 1
+        }
+        else {
+            $retry.Process.WaitForExit(30000) | Should -BeTrue
+            $retry.Process.ExitCode | Should -Not -Be 0
+            $retry.Error.Result | Should -BeLike '*closed*'
+            (Get-LedgerPayslip -JournalPath $journal -PayslipNumber 1).Status | Should -Be 'Draft'
+            @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year) | Should -HaveCount 0
         }
     }
 

@@ -110,6 +110,13 @@ det). Lönespecifikationen får status `Booked` och sparar `BookedVerification`
 och `BookedFiscalYear`. Att bokföra en redan bokförd lönespecifikation ger ett
 fel.
 
+Bokföringen går att återuppta. Innan verifikationen skrivs sparas en plan i
+`payslips/posting/pay0001.txt` som reserverar verifikationsnumret. Avbryts
+kommandot, till exempel av ett strömavbrott, kör du samma kommando igen: det
+slutför den sparade bokföringen med samma verifikationsnummer i stället för att
+skapa en ny. Har lönespecifikationen ändrats sedan planen sparades stoppas
+återupptagningen. Planen ska ligga kvar och följer med i arkivpaket.
+
 ### 4. Skriv ut ett lönebesked
 
 `Export-LedgerPayslip` skriver ut ett enskilt lönebesked som ett dokument – PDF

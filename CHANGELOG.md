@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- **Resumable payroll posting.** Repeat `Invoke-LedgerPayrollPosting` after an
+  interruption to finish the same posting with its reserved verification. Plans
+  in `payslips/posting/` follow the invoice-posting rules (hash checks, closed-year
+  completion only of saved verifications) and are retained in archives.
+  `New-LedgerPayslip` allocates payslip numbers under the journal lock.
 - **Recoverable invoice charges and credit notes.** `Add-LedgerInvoiceFee`,
   `Add-LedgerInvoiceInterest` and `Add-LedgerInvoiceReminder -BookFee` accept an
   optional `-ChargeId`. Plans in `invoices/charges/` reserve the verification and
@@ -89,8 +94,8 @@
 
 Recovery currently covers customer/supplier-invoice posting, customer/supplier payments
 and bank-created invoice, rule/account and own-account transfer postings, invoice charges
-and credit notes. Changed inputs, conflicting verifications and damaged integrity chains
-stop recovery explicitly. Payroll and multi-statement imports still need recovery. Locking is not a multi-file
+credit notes and payroll posting. Changed inputs, conflicting verifications and damaged integrity chains
+stop recovery explicitly. Imports, chart conversion and year closing still need recovery. Locking is not a multi-file
 transaction or general multi-user support.
 
 ## [1.1.0] - 2026-10-30

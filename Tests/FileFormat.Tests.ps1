@@ -519,6 +519,34 @@ Describe 'File format contract' {
             (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
         }
 
+        It 'Should write a payslip posting plan' {
+            $journal = Join-Path $TestDrive 'payslip-posting.ledger'
+            Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse
+            $hashText = {
+                param([string]$Text)
+                $bytes = [Text.Encoding]::UTF8.GetBytes($Text.Replace("`r`n", "`n"))
+                [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+            }
+            New-LedgerPayslip -JournalPath $journal -EmployeeNumber '1' -GrossSalary 30000 -PayDate '2024-04-25' | Out-Null
+            $payslipHash = & $hashText (Get-Content -LiteralPath (Join-Path $journal 'payslips' 'pay0002.txt') -Raw -Encoding UTF8)
+            $payslip = Invoke-LedgerPayrollPosting -JournalPath $journal -PayslipNumber 2 -PassThru
+            $lines = @(Get-Content -LiteralPath (Join-Path $journal 'payslips' 'posting' 'pay0002.txt') -Encoding UTF8)
+            $fields = @{}
+            foreach ($line in $lines) {
+                if ($line -match '^([A-Za-z]+):\t(.+)$') { $fields[$Matches[1]] = $Matches[2] }
+            }
+            $verification = Get-Content -LiteralPath (Join-Path $journal $Y ('ver{0:D4}.txt' -f $payslip.BookedVerification)) -Raw -Encoding UTF8
+            $lines[0] | Should -Be '; PSLedger payslip posting'
+            $fields.FormatVersion | Should -Be '1'
+            $fields.PayslipNumber | Should -Be '2'
+            $fields.FiscalYear | Should -Be $Y
+            $fields.VerificationNumber | Should -Be "$($payslip.BookedVerification)"
+            $fields.PayslipHash | Should -Be $payslipHash
+            $fields.VerificationHash | Should -Be (& $hashText $verification)
+            $verification | Should -Match "(?m)^OperationId: $([regex]::Escape($fields.OperationId))\r?$"
+            (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $Y).Status | Should -Be 'Valid'
+        }
+
         It 'Should bind a bank posting plan to its source, verification and counterpart' {
             $journal = Join-Path $TestDrive 'bank-posting.ledger'
             Copy-Item -LiteralPath $Fixture -Destination $journal -Recurse

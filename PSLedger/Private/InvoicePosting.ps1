@@ -111,7 +111,8 @@ function Get-LedgerInvoicePostingReservation {
     }
     foreach ($operation in @(Get-LedgerInvoicePaymentOperation -JournalPath $JournalPath) +
         @(Get-LedgerInvoiceChargeOperation -JournalPath $JournalPath) +
-        @(Get-LedgerInvoiceCreditOperation -JournalPath $JournalPath)) {
+        @(Get-LedgerInvoiceCreditOperation -JournalPath $JournalPath) +
+        @(Get-LedgerPayslipPostingOperation -JournalPath $JournalPath)) {
         if ($operation.FiscalYear -eq $FiscalYear) { $operation.VerificationNumber }
     }
 }
@@ -162,14 +163,15 @@ function Assert-LedgerInvoicePostingIntegrity {
     param (
         [Parameter(Mandatory)] [string]$JournalPath,
         [Parameter(Mandatory)] [string]$FiscalYear,
-        [int]$UnsealedVerification = 0
+        [int]$UnsealedVerification = 0,
+        [string]$Label = 'Invoice posting'
     )
     $check = Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear $FiscalYear
     $issues = @($check.Issues | Where-Object {
         -not ($_.Kind -eq 'Verification' -and $_.Problem -eq 'Unsealed' -and $_.Key -eq "$UnsealedVerification")
     })
     if ($issues.Count) {
-        throw "Invoice posting cannot continue because of integrity issues. Run Test-LedgerIntegrity and resolve them first: $($issues.Detail -join ' ')"
+        throw "$Label cannot continue because of integrity issues. Run Test-LedgerIntegrity and resolve them first: $($issues.Detail -join ' ')"
     }
 }
 
@@ -177,11 +179,12 @@ function Assert-LedgerInvoicePostingVerification {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)] [string]$Path,
-        [Parameter(Mandatory)] [psobject]$Operation
+        [Parameter(Mandatory)] [psobject]$Operation,
+        [string]$Label = 'invoice posting'
     )
     if ((Get-LedgerContentHash -Path $Path) -ne $Operation.VerificationHash -or
         "OperationId: $($Operation.OperationId)" -notin @(Get-Content -LiteralPath $Path -Encoding UTF8 -ErrorAction Stop)) {
-        throw "Saved verification '$Path' differs from the invoice posting plan. Recovery stopped without rewriting it."
+        throw "Saved verification '$Path' differs from the $Label plan. Recovery stopped without rewriting it."
     }
 }
 
@@ -189,13 +192,14 @@ function Complete-LedgerInvoicePostingVerification {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory)] [string]$JournalPath,
-        [Parameter(Mandatory)] [psobject]$Operation
+        [Parameter(Mandatory)] [psobject]$Operation,
+        [string]$Label = 'invoice posting'
     )
     $yearDir = Join-Path $JournalPath $Operation.FiscalYear
     $path = Join-Path $yearDir ('ver' + $Operation.VerificationNumber.ToString('0000') + '.txt')
-    Assert-LedgerInvoicePostingVerification -Path $path -Operation $Operation
+    Assert-LedgerInvoicePostingVerification -Path $path -Operation $Operation -Label $Label
     Assert-LedgerInvoicePostingIntegrity -JournalPath $JournalPath -FiscalYear $Operation.FiscalYear `
-        -UnsealedVerification $Operation.VerificationNumber
+        -UnsealedVerification $Operation.VerificationNumber -Label ($Label.Substring(0, 1).ToUpperInvariant() + $Label.Substring(1))
     $chain = Read-LedgerIntegrityChain -YearDir $yearDir
     $state = Get-LedgerIntegrityState -Chain $chain
     if (-not $state.Verifications.Contains("$($Operation.VerificationNumber)")) {

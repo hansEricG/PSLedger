@@ -411,8 +411,10 @@ invoice-status writes. Other multi-file workflows still need equivalent protecti
       that reserves the credit-note number and the verification (replacing rollback).
       Unfinished charges/credits block conflicting invoice changes. Cover process
       termination, closed years, conflicting inputs and archive retention.
-- [ ] Define recoverable operation boundaries for remaining payroll
-      posting, SIE import, chart conversion and fiscal-year closing.
+- [x] Make payroll posting resumable through plans in `payslips/posting/`
+      that reserve the verification, with payslip numbering under the journal
+      lock. Cover process termination, closed years and archive retention.
+- [ ] Define recoverable operation boundaries for remaining SIE import, chart conversion and fiscal-year closing.
 - [ ] Extend durable operation identity and progress to those workflows without
       losing or duplicating bookkeeping.
 - [ ] Validate their complete plans before the first write; report partial failures

@@ -203,6 +203,16 @@ Describe 'Export-LedgerArchive' {
                 Should -Be (Get-FileHash -LiteralPath (Join-Path $journal $relative)).Hash
         }
 
+        It 'Includes the posting plan of a payslip in the archived year' {
+            $journal = Copy-TestFixture
+            New-LedgerPayslip -JournalPath $journal -EmployeeNumber '1' -GrossSalary 30000 -PayDate '2024-04-25' | Out-Null
+            Invoke-LedgerPayrollPosting -JournalPath $journal -PayslipNumber 2
+            $package = Export-LedgerArchive -JournalPath $journal -FiscalYear $OpenYear -AsDirectory -Force -WarningAction SilentlyContinue
+            $relative = Join-Path 'payslips' 'posting' 'pay0002.txt'
+            (Get-FileHash -LiteralPath (Join-Path $package.FullName 'journal' $relative)).Hash |
+                Should -Be (Get-FileHash -LiteralPath (Join-Path $journal $relative)).Hash
+        }
+
         It 'Leaves out invoices, payslips and bank statements of other years' {
             $dir = Export-LedgerArchive -JournalPath $J -FiscalYear $ClosedYear -AsDirectory
 

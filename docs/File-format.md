@@ -114,8 +114,8 @@ are named by a prefix and a number zero-padded to at least four digits.
   none. For verifications, the maximum also includes numbers reserved by
   `invoices/posting/invNNNN.txt`, `supplierinvoices/posting/supNNNN.txt`,
   `invoices/payments/<guid>.txt`, `supplierinvoices/payments/<guid>.txt`,
-  `invoices/charges/<guid>.txt`, `invoices/credits/invNNNN.txt` and
-  `bank/posting/txnN.txt`. For customer invoices, the maximum also includes the
+  `invoices/charges/<guid>.txt`, `invoices/credits/invNNNN.txt`,
+  `payslips/posting/payNNNN.txt` and `bank/posting/txnN.txt`. For customer invoices, the maximum also includes the
   credit-note numbers reserved by `invoices/credits/invNNNN.txt`.
   Recovery uses its already reserved number,
   even if later numbers have since been written. Gaps are allowed.
@@ -193,6 +193,7 @@ to store their own data SHOULD use their own files.
 ├── invoices/{posting,payments,charges,credits}/  customer-invoice recovery plans
 ├── supplierinvoices/sup0001.txt
 ├── payslips/pay0001.txt
+├── payslips/posting/pay0001.txt  payroll posting plans
 ├── bank/
 │   ├── stmt0001.txt            imported bank statements and their transactions
 │   └── rules.txt               bank posting rules
@@ -1000,6 +1001,29 @@ The following values are computed when the payslip is read and are not stored:
 - Net pay = `GrossSalary` − `TaxAmount`.
 - Employer contribution = `GrossSalary` × `EmployerContributionRate`, rounded to
   two decimals.
+
+### `payslips/posting/payNNNN.txt` — payroll posting plans
+
+`Invoke-LedgerPayrollPosting` saves this immutable record before writing the
+salary verification. The first line is `; PSLedger payslip posting`.
+
+| Key | Value |
+|-----|-------|
+| `FormatVersion` | `1`. |
+| `OperationId` | GUID (`D` form) written as `OperationId:` in the verification. |
+| `PayslipNumber` | MUST match the filename. |
+| `FiscalYear` | Fiscal-year directory of the verification. |
+| `VerificationNumber` | Reserved verification number, greater than 0. |
+| `PayslipHash` | Lowercase SHA-256 of the draft payslip file (LF-normalised). |
+| `VerificationHash` | Lowercase SHA-256 of the planned verification (LF-normalised). |
+
+Every key is required exactly once. Repeating the command for a draft payslip
+resumes the plan: a changed payslip, a different `-FiscalYear`, a differing
+saved verification or other integrity issues stop recovery. A saved verification
+is sealed and the payslip marked `Booked` even if the year has since been
+closed; a missing verification is never created in a closed year. Plans MUST
+remain after completion and in backups; archive packages copy them with their
+payslips. They are additive and do not change the schema version.
 
 ## Bank
 

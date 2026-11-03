@@ -181,49 +181,56 @@ function New-LedgerPayslip {
         $SalaryAccount = $employee.SalaryAccount
     }
 
-    $payslipDir = Get-LedgerPayslipDirectory -JournalPath $JournalPath -Create
+    $journalLock = $null
+    try {
+        $journalLock = Enter-LedgerJournalLock -JournalPath $JournalPath
+        Assert-LedgerJournalSchema -Path $JournalPath -Write
 
-    # Determine the next payslip number by scanning existing files.
-    $existing = Get-ChildItem -Path $payslipDir -Filter 'pay*.txt' -File -ErrorAction SilentlyContinue
-    if ($existing) {
-        $maxNum = $existing |
-            ForEach-Object { if ($_.BaseName -match '^pay(\d+)$') { [int]$Matches[1] } } |
-            Measure-Object -Maximum |
-            Select-Object -ExpandProperty Maximum
-        $nextNum = $maxNum + 1
-    }
-    else {
-        $nextNum = 1
-    }
+        $payslipDir = Get-LedgerPayslipDirectory -JournalPath $JournalPath -Create
 
-    $filePath = Join-Path $payslipDir (Get-LedgerPayslipFileName -PayslipNumber $nextNum)
+        # Determine the next payslip number by scanning existing files.
+        $existing = Get-ChildItem -Path $payslipDir -Filter 'pay*.txt' -File -ErrorAction SilentlyContinue
+        if ($existing) {
+            $maxNum = $existing |
+                ForEach-Object { if ($_.BaseName -match '^pay(\d+)$') { [int]$Matches[1] } } |
+                Measure-Object -Maximum |
+                Select-Object -ExpandProperty Maximum
+            $nextNum = $maxNum + 1
+        }
+        else {
+            $nextNum = 1
+        }
 
-    $payslip = [PSCustomObject]@{
-        PayslipNumber                        = $nextNum
-        EmployeeNumber                       = $EmployeeNumber
-        PayDate                              = $PayDate
-        PeriodStart                          = if ($PSBoundParameters.ContainsKey('PeriodStart')) { $PeriodStart } else { $null }
-        PeriodEnd                            = if ($PSBoundParameters.ContainsKey('PeriodEnd')) { $PeriodEnd } else { $null }
-        Description                          = $Description
-        Status                               = 'Draft'
-        GrossSalary                          = [Math]::Round($GrossSalary, 2)
-        TaxAmount                            = $tax
-        EmployerContributionRate             = $EmployerContributionRate
-        SalaryAccount                        = $SalaryAccount
-        TaxLiabilityAccount                  = $TaxLiabilityAccount
-        NetPayAccount                        = $NetPayAccount
-        EmployerContributionAccount          = $EmployerContributionAccount
-        EmployerContributionLiabilityAccount = $EmployerContributionLiabilityAccount
-        BookedVerification                   = $null
-        BookedFiscalYear                     = ''
-        FilePath                             = $filePath
-    }
+        $filePath = Join-Path $payslipDir (Get-LedgerPayslipFileName -PayslipNumber $nextNum)
 
-    if ($PSCmdlet.ShouldProcess("Employee $EmployeeNumber", "Create payslip $nextNum")) {
-        Save-LedgerPayslipFile -Payslip $payslip
+        $payslip = [PSCustomObject]@{
+            PayslipNumber                        = $nextNum
+            EmployeeNumber                       = $EmployeeNumber
+            PayDate                              = $PayDate
+            PeriodStart                          = if ($PSBoundParameters.ContainsKey('PeriodStart')) { $PeriodStart } else { $null }
+            PeriodEnd                            = if ($PSBoundParameters.ContainsKey('PeriodEnd')) { $PeriodEnd } else { $null }
+            Description                          = $Description
+            Status                               = 'Draft'
+            GrossSalary                          = [Math]::Round($GrossSalary, 2)
+            TaxAmount                            = $tax
+            EmployerContributionRate             = $EmployerContributionRate
+            SalaryAccount                        = $SalaryAccount
+            TaxLiabilityAccount                  = $TaxLiabilityAccount
+            NetPayAccount                        = $NetPayAccount
+            EmployerContributionAccount          = $EmployerContributionAccount
+            EmployerContributionLiabilityAccount = $EmployerContributionLiabilityAccount
+            BookedVerification                   = $null
+            BookedFiscalYear                     = ''
+            FilePath                             = $filePath
+        }
 
-        if ($PassThru) {
-            Get-LedgerPayslip -JournalPath $JournalPath -PayslipNumber $nextNum
+        if ($PSCmdlet.ShouldProcess("Employee $EmployeeNumber", "Create payslip $nextNum")) {
+            Save-LedgerPayslipFile -Payslip $payslip
+
+            if ($PassThru) {
+                Get-LedgerPayslip -JournalPath $JournalPath -PayslipNumber $nextNum
+            }
         }
     }
+    finally { Exit-LedgerJournalLock -Lock $journalLock }
 }

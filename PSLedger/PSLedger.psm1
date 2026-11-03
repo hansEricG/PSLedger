@@ -34,6 +34,7 @@
 . $PSScriptRoot\Private\InvoiceCharge.ps1
 . $PSScriptRoot\Private\PdfWriter.ps1
 . $PSScriptRoot\Private\PayslipStore.ps1
+. $PSScriptRoot\Private\PayrollPosting.ps1
 . $PSScriptRoot\Private\BankStore.ps1
 . $PSScriptRoot\Private\BankImport.ps1
 . $PSScriptRoot\Private\BankMatching.ps1

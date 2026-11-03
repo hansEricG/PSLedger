@@ -124,6 +124,71 @@ Describe 'Invoke-LedgerPayrollPosting' {
         It 'Should throw for an unknown payslip' {
             { Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 99 } | Should -Throw '*does not exist*'
         }
+
+        It 'Should write no plan or verification with -WhatIf' {
+            Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1 -WhatIf
+            Test-Path (Join-Path $JournalPath 'payslips' 'posting') | Should -BeFalse
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Count | Should -Be 0
+        }
+    }
+
+    Context 'Interrupted posting' {
+        BeforeEach {
+            $JournalPath = New-PayslipTestJournal -Root $TestDrive
+            New-LedgerPayslip -JournalPath $JournalPath -EmployeeNumber '1' -GrossSalary 30000 -PayDate '2024-03-25' | Out-Null
+            $script:failPayslip = $true
+            $script:realSave = & (Get-Module PSLedger) { (Get-Command Save-LedgerPayslipFile).ScriptBlock }
+            Mock -ModuleName PSLedger Save-LedgerPayslipFile { & $script:realSave -Payslip $Payslip }
+            Mock -ModuleName PSLedger Save-LedgerPayslipFile { throw 'simulated interruption' } -ParameterFilter { $script:failPayslip }
+            { Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1 } |
+                Should -Throw '*rerun Invoke-LedgerPayrollPosting*'
+            $script:failPayslip = $false
+            $planPath = Join-Path $JournalPath 'payslips' 'posting' 'pay0001.txt'
+        }
+
+        It 'Should keep the plan and leave the payslip as a draft' {
+            Test-Path -LiteralPath $planPath | Should -BeTrue
+            (Get-LedgerPayslip -JournalPath $JournalPath -PayslipNumber 1).Status | Should -Be 'Draft'
+        }
+
+        It 'Should complete the saved verification without creating another' {
+            $ps = Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1 -PassThru
+            $ps.Status | Should -Be 'Booked'
+            $ps.BookedVerification | Should -Be 1
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Count | Should -Be 1
+            (Test-LedgerIntegrity -JournalPath $JournalPath -FiscalYear '2024-01_2024-12').Status | Should -Be 'Valid'
+        }
+
+        It 'Should stop when the payslip changed after planning' {
+            $file = Join-Path $JournalPath 'payslips' 'pay0001.txt'
+            (Get-Content -LiteralPath $file -Raw) -replace 'PayDate:\t\S+', "PayDate:`t2024-03-26" | Set-Content -LiteralPath $file -NoNewline
+            { Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1 } | Should -Throw '*changed since its posting plan*'
+        }
+
+        It 'Should reject a different fiscal year than the plan' {
+            { Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1 -FiscalYear '2025-01_2025-12' } |
+                Should -Throw '*posting plan for 2024-01_2024-12*'
+        }
+    }
+
+    Context 'Reserved verification number' {
+        It 'Should not let a new entry take a planned but unwritten number' {
+            $JournalPath = New-PayslipTestJournal -Root $TestDrive
+            New-LedgerPayslip -JournalPath $JournalPath -EmployeeNumber '1' -GrossSalary 30000 -PayDate '2024-03-25' | Out-Null
+            $script:failWrite = $true
+            $script:realWrite = & (Get-Module PSLedger) { (Get-Command Write-LedgerVerification).ScriptBlock }
+            Mock -ModuleName PSLedger Write-LedgerVerification {
+                & $script:realWrite -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description -Rows $Rows `
+                    -Attachment $Attachment -PassThru:$PassThru -LegacyReversal:$LegacyReversal `
+                    -OperationId $(if ($OperationId) { $OperationId } else { [guid]::Empty }) -ReservedNumber ([int]$ReservedNumber) -Confirm:$false
+            }
+            Mock -ModuleName PSLedger Write-LedgerVerification { throw 'simulated interruption' } -ParameterFilter { $script:failWrite }
+            { Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1 } | Should -Throw '*rerun Invoke-LedgerPayrollPosting*'
+            $script:failWrite = $false
+            $entry = Add-LedgerEntry -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Date '2024-03-26' -Description 'Annan' -PassThru -Rows @(
+                @{ Account = '1930'; Amount = 100 }, @{ Account = '2081'; Amount = -100 })
+            $entry.VerificationNumber | Should -Be 2
+        }
     }
 }
 

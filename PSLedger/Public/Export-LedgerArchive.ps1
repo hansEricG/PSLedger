@@ -212,6 +212,10 @@ function Export-LedgerArchive {
             foreach ($slip in @(Get-LedgerPayslip -JournalPath $journalDir)) {
                 if ((& $inYear $slip.PayDate) -or $slip.BookedFiscalYear -eq $FiscalYear) {
                     & $copyDocument $slip.FilePath 'payslips'
+                    $postingPath = Get-LedgerPayslipPostingPath -JournalPath $journalDir -PayslipNumber $slip.PayslipNumber
+                    if (Test-Path -LiteralPath $postingPath -PathType Leaf) {
+                        & $copyDocument $postingPath (Join-Path 'payslips' 'posting')
+                    }
                     $payslips++
                 }
             }
