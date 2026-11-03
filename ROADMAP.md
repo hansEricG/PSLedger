@@ -101,7 +101,7 @@ a later cleanup phase. Refactoring in 14–16 and documentation work in 20 shoul
 support these outcomes. Currency, payment integrations, expanded payroll,
 K10, ROT/RUT and new business types remain demand-driven backlog items.
 
-### 1.2.0 — reliable storage and recovery
+### 1.2.0 — released 2026-11-03
 
 This release completes milestone B (11–12, 30):
 
@@ -112,7 +112,7 @@ This release completes milestone B (11–12, 30):
       resume from durable plans without lost or duplicate verifications.
 - [x] The integrity chain also seals `year.txt` and `ib.txt`.
 - [x] Set `ModuleVersion` to 1.2.0 and prepare the changelog.
-- [ ] Tag and publish the release after the cross-platform checks pass.
+- [x] Tag and publish the release after the cross-platform checks pass.
 
 ### 1.1.0 — released 2026-10-30
 
