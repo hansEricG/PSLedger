@@ -888,8 +888,8 @@ the files and the chain is only caught by `-ExpectedHash`. Opening balances,
 ### Concurrent writes and interrupted operations
 
 Verification posting (including reversals), customer-invoice posting and payments,
-charges, reminders, bank imports and matching, attachment changes, sealing, fiscal-year closing
-and credit-note rollback share a journal-level write lock.
+charges, reminders, bank imports and matching, attachment changes, sealing, fiscal-year closing,
+chart conversion and credit-note rollback share a journal-level write lock.
 The verification writer holds it across validation, number allocation, file
 creation and integrity registration. Nested calls reuse the same lock. A
 competing process waits for up to 30 seconds, then reports that the journal is
@@ -910,8 +910,10 @@ again. `Invoke-LedgerInvoicePosting`, `Invoke-LedgerSupplierInvoicePosting`,
 `Add-LedgerInvoicePayment -PaymentId` and `Add-LedgerSupplierPayment -PaymentId`
 can resume their saved plans as described above, as can customer/supplier bank
 matches, bank rule/account postings, invoice charges (`-ChargeId`), credit
-notes, `Invoke-LedgerPayrollPosting` and `Close-LedgerFiscalYear`. Imports,
-chart conversion and other multi-file workflows do not yet have this protection.
+notes, `Invoke-LedgerPayrollPosting` and `Close-LedgerFiscalYear`.
+`Convert-LedgerChart` needs no plan: repeating it skips existing accounts and
+VAT rules and finds the transferred balance already moved. SIE import and other
+multi-file workflows do not yet have this protection.
 
 Other register and metadata writers, older PSLedger versions and external
 editors do not all participate in the lock. Readers and backups do not acquire

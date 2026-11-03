@@ -143,7 +143,7 @@ writers hold an exclusive open handle while validating and writing a
 verification and its integrity records. New verification files are published
 without replacing an existing filename. The same journal lock covers attachment
 changes, customer-invoice posting and payments, charges, reminders, bank imports and matching,
-sealing, year closing and credit-note rollback.
+sealing, year closing, chart conversion and credit-note rollback.
 
 The file remains after the handle is released, including after a crashed
 process. Its existence does not indicate ownership. It MUST NOT be deleted or
@@ -157,7 +157,9 @@ are not yet covered by a journal-wide transaction or snapshot. This is not a
 distributed lock for synchronised or network directories. An interrupted
 operation can still leave a saved but unsealed verification; the integrity
 check diagnoses that state. Customer-invoice posting and customer/supplier payments can resume
-from their saved plans below; other multi-file recovery remains separate work.
+from their saved plans below, and an interrupted `Convert-LedgerChart` is completed
+by repeating it, since it skips what already exists; other multi-file recovery
+remains separate work.
 
 ### Unknown content
 

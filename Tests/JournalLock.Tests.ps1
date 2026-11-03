@@ -12,7 +12,7 @@ BeforeAll {
         Import-Module $ModulePath -Force
         $paymentId = '11111111-1111-1111-1111-111111111111'
         $chargeId = '22222222-2222-2222-2222-222222222222'
-        if ($Mode -match '^(Invoice|Payment|Bank|SupplierInvoice|SupplierPayment|SupplierBank|Account|Charge|Credit|Payroll|Close)After') {
+        if ($Mode -match '^(Invoice|Payment|Bank|SupplierInvoice|SupplierPayment|SupplierBank|Account|Charge|Credit|Payroll|Close|Convert)After') {
             & (Get-Module PSLedger) {
                 param ($Ready, $Mode)
                 $script:PostingReady = $Ready
@@ -114,6 +114,9 @@ BeforeAll {
             elseif ($Mode -like 'Payroll*') {
                 Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1
             }
+            elseif ($Mode -like 'Convert*') {
+                Convert-LedgerChart -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Date '2024-03-01' | Out-Null
+            }
             elseif ($Mode -like 'Close*') {
                 Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -EquityAccount '2099' | Out-Null
             }
@@ -184,6 +187,9 @@ BeforeAll {
         }
         elseif ($Mode -eq 'Payroll') {
             Invoke-LedgerPayrollPosting -JournalPath $JournalPath -PayslipNumber 1
+        }
+        elseif ($Mode -eq 'Convert') {
+            Convert-LedgerChart -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -Date '2024-03-01' | Out-Null
         }
         elseif ($Mode -eq 'Close') {
             Close-LedgerFiscalYear -JournalPath $JournalPath -FiscalYear '2024-01_2024-12' -EquityAccount '2099' | Out-Null
@@ -757,6 +763,33 @@ Describe 'Journal write locking' {
         (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).Status | Should -Be 'Valid'
         Test-Path -LiteralPath $operationPath | Should -BeFalse
         if ($savedHash) { (Get-FileHash -LiteralPath $savedPath).Hash | Should -Be $savedHash }
+    }
+
+    It 'Recovers chart conversion after process termination at <Checkpoint>' -ForEach @(
+        @{ Checkpoint = 'ConvertAfterPlan' }
+        @{ Checkpoint = 'ConvertAfterSave' }
+    ) {
+        Add-LedgerAccount -JournalPath $journal -AccountNumber '3300' -AccountName 'Försäljning tjänster inom EU'
+        Add-LedgerEntry -JournalPath $journal -FiscalYear $year -Date '2024-02-01' -Description 'EU-tjänst' -Rows @(
+            @{ Account = '1930'; Amount = 800 }; @{ Account = '3300'; Amount = -800 })
+        $paused = Start-LockTestWorker $Checkpoint
+        Wait-LockTestReady $paused
+        $blocked = Start-LockTestWorker TryLock
+        $blocked.Process.WaitForExit(30000) | Should -BeTrue
+        $blocked.Error.Result | Should -BeLike '*is busy*'
+        $paused.Process.Kill($true)
+        $paused.Process.WaitForExit()
+        Get-LedgerAccount -JournalPath $journal -AccountNumber '3308' | Should -Not -BeNullOrEmpty
+        Set-Content -LiteralPath $gate -Value 'go'
+        Complete-LockTestWorker (Start-LockTestWorker Convert)
+
+        @(Get-LedgerEntry -JournalPath $journal -FiscalYear $year | Where-Object Description -eq 'Omföring till BAS-konton') |
+            Should -HaveCount 1
+        $balances = Get-LedgerBalance -JournalPath $journal -FiscalYear $year
+        ($balances | Where-Object AccountNumber -eq '3300').Balance | Should -Be 0
+        ($balances | Where-Object AccountNumber -eq '3308').Balance | Should -Be -800
+        Protect-LedgerFiscalYear -JournalPath $journal -FiscalYear $year | Out-Null
+        (Test-LedgerIntegrity -JournalPath $journal -FiscalYear $year).Status | Should -Be 'Valid'
     }
 
     It 'Handles payroll recovery in a closed year with saved verification=<Saved>' -ForEach @(

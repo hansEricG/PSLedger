@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Added
+- **Chart conversion under the journal lock.** `Convert-LedgerChart` now holds
+  the journal write lock while it plans and writes, so concurrent runs cannot
+  transfer a balance twice. An interrupted conversion is completed by running the
+  same command again.
 - **Resumable fiscal-year closing.** Repeat `Close-LedgerFiscalYear` after an
   interruption to finish the same close: `<year>/closing.txt` records the result
   amount and accounts and reserves the result verification, so the result is never
@@ -100,8 +104,8 @@
 
 Recovery currently covers customer/supplier-invoice posting, customer/supplier payments
 and bank-created invoice, rule/account and own-account transfer postings, invoice charges
-credit notes, payroll posting and fiscal-year closing. Changed inputs, conflicting verifications and damaged integrity chains
-stop recovery explicitly. Imports and chart conversion still need recovery. Locking is not a multi-file
+credit notes, payroll posting, fiscal-year closing and chart conversion. Changed inputs, conflicting verifications and damaged integrity chains
+stop recovery explicitly. SIE import still needs recovery. Locking is not a multi-file
 transaction or general multi-user support.
 
 ## [1.1.0] - 2026-10-30

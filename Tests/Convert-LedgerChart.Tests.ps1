@@ -112,6 +112,26 @@ Describe 'Convert-LedgerChart' {
             $transferPeriod | Where-Object Amount -ne 0 | Should -BeNullOrEmpty
         }
 
+        It 'Should complete an interrupted conversion on rerun without a second transfer' {
+            $script:failEntry = $true
+            $script:realEntry = Get-Command Add-LedgerEntry -Module PSLedger
+            Mock -ModuleName PSLedger Add-LedgerEntry { & $script:realEntry -JournalPath $JournalPath -FiscalYear $FiscalYear -Date $Date -Description $Description -Rows $Rows -Confirm:$false }
+            Mock -ModuleName PSLedger Add-LedgerEntry { throw 'simulated interruption' } -ParameterFilter { $script:failEntry }
+            { Convert-LedgerChart -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2025-03-01' -WarningAction SilentlyContinue } |
+                Should -Throw '*simulated interruption*'
+            Get-LedgerAccount -JournalPath $JournalPath -AccountNumber '3308' | Should -Not -BeNullOrEmpty
+            $script:failEntry = $false
+
+            Convert-LedgerChart -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2025-03-01' -WarningAction SilentlyContinue | Out-Null
+            Convert-LedgerChart -JournalPath $JournalPath -FiscalYear $FiscalYear -Date '2025-03-01' -WarningAction SilentlyContinue | Out-Null
+
+            @(Get-LedgerEntry -JournalPath $JournalPath -FiscalYear $FiscalYear | Where-Object Description -eq 'Omföring till BAS-konton') |
+                Should -HaveCount 1
+            $balances = Get-LedgerBalance -JournalPath $JournalPath -FiscalYear $FiscalYear
+            ($balances | Where-Object AccountNumber -eq '3300').Balance | Should -Be 0
+            ($balances | Where-Object AccountNumber -eq '3308').Balance | Should -Be -8000
+        }
+
         It 'Should convert opening balances and be safe to run again' {
             Add-LedgerAccount -JournalPath $JournalPath -AccountNumber '2660' -AccountName 'Moms omvänd skattskyldighet'
             Set-Content -LiteralPath (Join-Path $JournalPath $FiscalYear 'ib.txt') -Value @("1930`t1000", "2660`t-1000")

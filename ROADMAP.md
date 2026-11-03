@@ -417,7 +417,9 @@ invoice-status writes. Other multi-file workflows still need equivalent protecti
 - [x] Make fiscal-year closing resumable through `<year>/closing.txt`, which
       reserves the result verification until the year is closed and sealed.
       Cover process termination, changed results and interrupted seals.
-- [ ] Define recoverable operation boundaries for remaining SIE import and chart conversion.
+- [x] Run chart conversion under the journal lock and verify that repeating an
+      interrupted conversion completes it without a second transfer.
+- [ ] Define recoverable operation boundaries for the remaining SIE import.
 - [ ] Extend durable operation identity and progress to those workflows without
       losing or duplicating bookkeeping.
 - [ ] Validate their complete plans before the first write; report partial failures
