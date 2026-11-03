@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-03
+
 ### Added
 - **Fiscal-year metadata is sealed.** `integrity.txt` now also seals `year.txt`
   and `ib.txt` as `Metadata` records. `Test-LedgerIntegrity` reports hand edits
